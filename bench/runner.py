@@ -13,6 +13,7 @@ import random
 import shutil
 import tempfile
 import time
+from collections import Counter
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -260,16 +261,40 @@ def status(ledger: Path = LEDGER) -> str:
         t for t, rs in by_task.items() if 0 < sum(r["resolve"] for r in rs) < len(rs)
     ]
     seconds = sum(r["seconds"] for r in rows)
-    return "\n".join(
-        [
-            f"attempts           {len(rows)} over {len(by_task)} tasks",
-            f"coverage rate      {coverage / len(rows):.1%}  ({coverage}/{len(rows)})",
-            f"resolve rate       {resolve / len(rows):.1%}  ({resolve}/{len(rows)})",
-            f"mixed on coverage  {len(mixed)} tasks",
-            f"mixed on resolve   {len(mixed_resolve)} tasks",
-            f"wall clock         {seconds / 3600:.2f} h  ({seconds / len(rows):.0f}s per run)",
-        ]
-    )
+    lines = [
+        f"attempts           {len(rows)} over {len(by_task)} tasks",
+        f"coverage rate      {coverage / len(rows):.1%}  ({coverage}/{len(rows)})",
+        f"resolve rate       {resolve / len(rows):.1%}  ({resolve}/{len(rows)})",
+        f"mixed on coverage  {len(mixed)} tasks",
+        f"mixed on resolve   {len(mixed_resolve)} tasks",
+        f"wall clock         {seconds / 3600:.2f} h  ({seconds / len(rows):.0f}s per run)",
+    ]
+    for label in ("coverage", "resolve"):
+        lines.append("")
+        lines.append(f"successes per task, {label} (only tasks with every run in):")
+        lines.append(_histogram(by_task, label))
+    return "\n".join(lines)
+
+
+def _histogram(by_task: dict[str, list[dict]], label: str, runs: int = 5) -> str:
+    """How many tasks came out all-fail, all-pass, or somewhere in between.
+
+    The average rate cannot distinguish a corpus where every task is genuinely
+    uncertain from one where half the tasks are trivial and half are impossible.
+    Both average out the same, and only the second has no pairs to align.
+    """
+    complete = {t: rs for t, rs in by_task.items() if len(rs) >= runs}
+    if not complete:
+        return f"  no task has all {runs} runs in yet"
+    counts = Counter(sum(r[label] for r in rs[:runs]) for t, rs in complete.items())
+    out = []
+    for successes in range(runs + 1):
+        n = counts.get(successes, 0)
+        edge = "  <- no pair" if successes in (0, runs) else ""
+        out.append(f"  {successes}/{runs} passed   {'#' * n:<20} {n}{edge}")
+    usable = sum(n for s, n in counts.items() if 0 < s < runs)
+    out.append(f"  usable pairs: {usable} of {len(complete)} completed tasks")
+    return "\n".join(out)
 
 
 def store_summary(store: Path = STORE) -> str:

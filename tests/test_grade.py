@@ -210,3 +210,37 @@ def test_any_prefix_of_the_job_spans_the_repositories(monkeypatch) -> None:
 
     first_twenty = {t.repo for t, _ in planned[:20]}
     assert len(first_twenty) >= 6, f"a 20-attempt prefix only reached {first_twenty}"
+
+
+def test_the_histogram_separates_a_plateau_from_two_spikes(tmp_path: Path) -> None:
+    """The mean cannot tell these apart, and only one of them has pairs."""
+
+    def ledger_for(per_task: dict[str, int], path: Path) -> Path:
+        for task_id, successes in per_task.items():
+            for index in range(5):
+                runner.record_attempt(
+                    Attempt(
+                        task_id=task_id,
+                        run_index=index,
+                        run_id=f"{task_id}{index}",
+                        coverage=index < successes,
+                        resolve=False,
+                        steps=4,
+                        edits=1,
+                        parse_failures=0,
+                        seconds=10.0,
+                        summary="",
+                    ),
+                    path,
+                )
+        return path
+
+    plateau = ledger_for({f"p{n}": 3 for n in range(4)}, tmp_path / "plateau.jsonl")
+    bimodal = ledger_for(
+        {f"b{n}": (5 if n % 2 else 0) for n in range(4)}, tmp_path / "bimodal.jsonl"
+    )
+
+    # Both average 60% and 50% respectively; what matters is the pair count.
+    assert "usable pairs: 4 of 4" in runner.status(plateau)
+    assert "usable pairs: 0 of 4" in runner.status(bimodal)
+    assert "<- no pair" in runner.status(bimodal)
