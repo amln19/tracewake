@@ -183,3 +183,30 @@ def test_shards_partition_the_work_without_overlap(tmp_path: Path, monkeypatch) 
     ]
     assert set.union(*covered) == {f"{t.task_id}#{i}" for t, i in planned}
     assert sum(len(c) for c in covered) == len(planned), "a shard claimed work twice"
+
+
+def test_any_prefix_of_the_job_spans_the_repositories(monkeypatch) -> None:
+    """The job is read long before it ends; in task order the first hour is one repo."""
+    import random as random_module
+
+    made = [
+        Task(
+            task_id=f"{repo}-off_by_one-{n}",
+            repo=repo,
+            operator="off_by_one",
+            ground_truth_file="pkg/window.py",
+            ground_truth_line=2,
+            mutation=Mutation("off_by_one", "window.py", 2, 0, 2, 1, "a", "b", ""),
+            issue="",
+            broken_tests=(),
+            baseline_summary="",
+            broken_summary="",
+        )
+        for repo in ("aaa", "bbb", "ccc", "ddd", "eee", "fff", "ggg", "hhh")
+        for n in range(4)
+    ]
+    planned = [(t, i) for t in made for i in range(5)]
+    random_module.Random(runner.ORDER_SEED).shuffle(planned)
+
+    first_twenty = {t.repo for t, _ in planned[:20]}
+    assert len(first_twenty) >= 6, f"a 20-attempt prefix only reached {first_twenty}"

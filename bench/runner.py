@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import random
 import shutil
 import tempfile
 import time
@@ -22,6 +23,8 @@ from . import agent, repos
 from .backend import DEFAULT_MODEL, PROVIDER, LocalModel
 from .repos import CORPUS_ROOT, BY_NAME, SuiteReport, working_copy
 from .tasks import Task, apply_mutation, load, relative_source_files
+
+ORDER_SEED = 20260729
 
 STORE = CORPUS_ROOT / "store"
 LEDGER = CORPUS_ROOT / "runs.jsonl"
@@ -209,6 +212,11 @@ def batch(
     model.warm()
     finished = done(ledger)
     planned = [(t, i) for t in tasks for i in range(runs)]
+    # Shuffled, with a fixed seed, so that any prefix of the job is a sample
+    # across every repository rather than everything the first one has to offer.
+    # A run this long gets read before it finishes, and in task order the first
+    # hour says nothing about the corpus.
+    random.Random(ORDER_SEED).shuffle(planned)
     mine = [pair for position, pair in enumerate(planned) if position % shards == shard]
     remaining = [(t, i) for t, i in mine if f"{t.task_id}#{i}" not in finished]
     label = f"shard {shard + 1}/{shards} " if shards > 1 else ""
