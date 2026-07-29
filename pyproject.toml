@@ -6,7 +6,13 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.13"
-dependencies = ["pydantic>=2.11"]
+dependencies = ["pydantic>=2.11", "typer>=0.15"]
+
+[project.scripts]
+locus = "locus.cli:main"
+
+[project.entry-points.pytest11]
+locus = "locus.pytest_plugin"
 
 [dependency-groups]
 dev = ["pytest>=8.4"]
