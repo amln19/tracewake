@@ -3,6 +3,8 @@ name = "locus"
 version = "0.1.0"
 description = "Find where two coding agent runs diverged."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.13"
 dependencies = ["pydantic>=2.11"]
 
@@ -20,7 +22,7 @@ packages = ["locus"]
 # what keeps local working notes out of a published sdist. Denylisting them by
 # name would leak the names and would not cover notes added later.
 [tool.hatch.build.targets.sdist]
-include = ["locus", "tests", "README.md"]
+include = ["locus", "tests", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
