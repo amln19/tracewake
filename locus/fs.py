@@ -31,23 +31,52 @@ class Fs:
     Replay serves reads from the log and never touches the disk, including for
     writes: a write is checked against what was recorded and raises when it
     differs, rather than being applied a second time.
+
+    Given a `root`, paths are resolved against it and recorded relative to it.
+    Repeated runs over the same repo each get their own working copy, so without
+    a root the same file would be logged under a different absolute path in every
+    run — which leaves nothing to compare across runs and makes the cassette
+    describe a directory that no longer exists.
     """
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, root: Path | None = None) -> None:
         self._session = session
+        self._root = root.resolve() if root is not None else None
+
+    def rooted(self, root: str | Path) -> Fs:
+        return Fs(self._session, Path(root))
+
+    def resolve(self, path: str | Path) -> Path:
+        if self._root is None:
+            return Path(path)
+        candidate = Path(path)
+        target = (self._root / candidate).resolve() if not candidate.is_absolute() else (
+            candidate.resolve()
+        )
+        if not target.is_relative_to(self._root):
+            raise ValueError(
+                f"{path} resolves outside the root {self._root}. A task's agent may only "
+                f"read and write inside the working copy it was given."
+            )
+        return target
+
+    def _locate(self, path: str | Path) -> tuple[str, Path]:
+        target = self.resolve(path)
+        if self._root is None:
+            return (self._session._fs_key(path), target)
+        return (self._session._fs_key(target.relative_to(self._root)), target)
 
     def read_text(self, path: str | Path) -> str:
         return self.read_bytes(path).decode("utf-8")
 
     def read_bytes(self, path: str | Path) -> bytes:
-        key = self._session._fs_key(path)
+        key, target = self._locate(path)
         recorded = self._session._replay_fs("content", key)
         if recorded is not None:
             if not recorded.exists or recorded.content is None:
                 raise FileNotFoundError(key)
             return self._session._store.blobs.get(recorded.content.digest)
 
-        target = Path(path)
         exists = target.is_file()
         data = target.read_bytes() if exists else b""
         self._session._append(
@@ -64,12 +93,12 @@ class Fs:
         return data
 
     def exists(self, path: str | Path) -> bool:
-        key = self._session._fs_key(path)
+        key, target = self._locate(path)
         recorded = self._session._replay_fs("exists", key)
         if recorded is not None:
             return recorded.exists
 
-        exists = Path(path).exists()
+        exists = target.exists()
         self._session._append(
             FsReadEvent(
                 path=key, kind="exists", exists=exists, **self._session._scope_fields()
@@ -78,7 +107,7 @@ class Fs:
         return exists
 
     def listdir(self, path: str | Path) -> list[str]:
-        key = self._session._fs_key(path)
+        key, target = self._locate(path)
         recorded = self._session._replay_fs("listing", key)
         if recorded is not None:
             if not recorded.exists or recorded.content is None:
@@ -86,7 +115,6 @@ class Fs:
             blob = self._session._store.blobs.get(recorded.content.digest)
             return list(json.loads(blob.decode("utf-8")))
 
-        target = Path(path)
         exists = target.is_dir()
         # Directory order is filesystem-dependent and differs between machines,
         # so the listing is sorted before it is recorded and callers get a stable
@@ -113,7 +141,7 @@ class Fs:
         self.write_bytes(path, data.encode("utf-8"))
 
     def write_bytes(self, path: str | Path, data: bytes) -> None:
-        key = self._session._fs_key(path)
+        key, target = self._locate(path)
         recorded = self._session._replay_fs("write", key)
         if recorded is not None:
             digest = sha256_hex(self._session._redactor.blob(data))
@@ -125,7 +153,6 @@ class Fs:
                 )
             return
 
-        target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
         self._session._append(

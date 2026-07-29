@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -150,6 +151,43 @@ def test_a_read_inside_a_tool_is_attributed_to_that_tool(tmp_path: Path, repo: P
     db.close()
     assert read.tool_call_id == "t0"
     assert read.parent_call_id == completion.call_id
+
+
+def test_a_root_records_paths_relative_to_it(tmp_path: Path, repo: Path) -> None:
+    run_id = _record(
+        tmp_path / "store", repo, lambda s: s.fs.rooted(repo).read_text("src/window.py")
+    )
+    db = Store(tmp_path / "store")
+    (event,) = [e.event for e in db.events(run_id) if e.event.type == "fs_read"]
+    db.close()
+    assert event.path == "src/window.py"
+
+
+def test_two_working_copies_of_one_repo_record_the_same_paths(tmp_path: Path, repo: Path) -> None:
+    def paths_for(copy: Path) -> list[str]:
+        shutil.copytree(repo, copy)
+        run_id = _record(
+            tmp_path / "store", copy, lambda s: s.fs.rooted(copy).read_text("src/window.py")
+        )
+        db = Store(tmp_path / "store")
+        found = [e.event.path for e in db.events(run_id) if e.event.type == "fs_read"]
+        db.close()
+        return found
+
+    assert paths_for(tmp_path / "run-a") == paths_for(tmp_path / "run-b") == ["src/window.py"]
+
+
+def test_reading_outside_the_root_is_refused(tmp_path: Path, repo: Path) -> None:
+    outside = tmp_path / "secrets.txt"
+    outside.write_text("not the agent's business")
+
+    with locus.record("fs", store=tmp_path / "store") as rec:
+        rooted = rec.fs.rooted(repo)
+        with pytest.raises(ValueError, match="outside the root"):
+            rooted.read_text("../secrets.txt")
+        with pytest.raises(ValueError, match="outside the root"):
+            rooted.read_text(outside)
+        rec.outcome(status="ok")
 
 
 def test_the_home_directory_is_not_in_a_recorded_path(tmp_path: Path) -> None:
