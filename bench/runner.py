@@ -1,0 +1,257 @@
+"""Running the corpus: one task attempt at a time, recorded and labelled.
+
+Each attempt gets a private copy of the repository with the bug already in it, so
+runs cannot contaminate each other, and the copy is thrown away once the outcome
+is recorded — the log holds everything the run consumed.
+"""
+
+from __future__ import annotations
+
+import difflib
+import json
+import shutil
+import tempfile
+import time
+from dataclasses import dataclass, replace
+from pathlib import Path
+
+import locus
+from locus import Store, Usage
+
+from . import agent, repos
+from .backend import DEFAULT_MODEL, PROVIDER, LocalModel
+from .repos import CORPUS_ROOT, BY_NAME, SuiteReport, working_copy
+from .tasks import Task, apply_mutation, load, relative_source_files
+
+STORE = CORPUS_ROOT / "store"
+LEDGER = CORPUS_ROOT / "runs.jsonl"
+
+
+@dataclass(frozen=True)
+class Attempt:
+    task_id: str
+    run_index: int
+    run_id: str
+    coverage: bool
+    resolve: bool
+    steps: int
+    edits: int
+    parse_failures: int
+    seconds: float
+    summary: str
+
+    @property
+    def key(self) -> str:
+        return f"{self.task_id}#{self.run_index}"
+
+
+def prepare(task: Task, destination: Path) -> Path:
+    """A working copy with the injected bug in place."""
+    repo = BY_NAME[task.repo]
+    root = working_copy(repo, destination)
+    target = root / task.ground_truth_file
+    target.write_text(
+        apply_mutation(target.read_text(encoding="utf-8"), task.mutation), encoding="utf-8"
+    )
+    return root
+
+
+def patch_of(task: Task, root: Path) -> str:
+    """A unified diff from the broken state to whatever the agent left behind."""
+    repo = BY_NAME[task.repo]
+    chunks: list[str] = []
+    for relative in relative_source_files(root, repo.source_dirs):
+        current = (root / relative).read_text(encoding="utf-8", errors="replace")
+        original = (repo.path / relative).read_text(encoding="utf-8", errors="replace")
+        if relative == task.ground_truth_file:
+            original = apply_mutation(original, task.mutation)
+        if current == original:
+            continue
+        chunks.extend(
+            difflib.unified_diff(
+                original.splitlines(keepends=True),
+                current.splitlines(keepends=True),
+                fromfile=f"a/{relative}",
+                tofile=f"b/{relative}",
+            )
+        )
+    return "".join(chunks)
+
+
+def grade(task: Task, root: Path, report: SuiteReport) -> tuple[bool, bool, str]:
+    """Coverage and resolve for one finished attempt.
+
+    Coverage is the primary label: did the run leave behind a well-formed,
+    applicable patch — source that still parses, actually differs from the broken
+    state, and touches library code rather than tests. Resolve is the stricter
+    question of whether that patch made the suite green again. Both are recorded
+    because a weak model produces patches far more often than it produces fixes,
+    so resolve alone would give a corpus with almost no positive examples.
+    """
+    patch = patch_of(task, root)
+    if not patch.strip():
+        return (False, False, patch)
+    for relative in {
+        line[6:].strip() for line in patch.splitlines() if line.startswith("+++ b/")
+    }:
+        if "test" in Path(relative).name:
+            return (False, False, patch)
+        try:
+            compile((root / relative).read_text(encoding="utf-8"), relative, "exec")
+        except SyntaxError:
+            return (False, False, patch)
+    return (True, report.green, patch)
+
+
+def attempt(
+    task: Task,
+    run_index: int,
+    model: LocalModel,
+    store: Path = STORE,
+    max_steps: int = 18,
+) -> Attempt:
+    repo = BY_NAME[task.repo]
+    scratch = Path(tempfile.mkdtemp(prefix=f"bench-{task.task_id}-"))
+    root = prepare(task, scratch / "repo")
+    started = time.time()
+
+    def run_suite() -> tuple[str, bool]:
+        report = repos.run_tests(repo, root, timeout=max(60.0, repo.baseline_seconds * 20))
+        return (report.output or report.summary, report.green)
+
+    try:
+        with locus.record(
+            f"{task.task_id}#{run_index}",
+            store=store,
+            task_id=task.task_id,
+            block_network=False,
+        ) as session:
+            tools = agent.Tools(session, root, repo.source_dirs, run_suite)
+            backend = replace(model, seed=model.seed + run_index * 1013, calls=0)
+            handle = session.model(
+                provider=PROVIDER, model_id=backend.model_id, stream_fn=backend.stream
+            )
+            trace = agent.run(session, handle, task.issue, tools, max_steps=max_steps)
+            final = repos.run_tests(repo, root, timeout=max(60.0, repo.baseline_seconds * 20))
+            coverage, resolve, patch = grade(task, root, final)
+            session.outcome(
+                status="ok",
+                usage=trace.usage,
+                coverage=coverage,
+                resolve=resolve,
+                patch=patch or None,
+                test_summary=final.summary,
+            )
+            run_id = session.run_id
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+    return Attempt(
+        task_id=task.task_id,
+        run_index=run_index,
+        run_id=run_id,
+        coverage=coverage,
+        resolve=resolve,
+        steps=trace.steps,
+        edits=trace.edits,
+        parse_failures=trace.parse_failures,
+        seconds=round(time.time() - started, 1),
+        summary=final.summary,
+    )
+
+
+def done(ledger: Path = LEDGER) -> set[str]:
+    if not ledger.exists():
+        return set()
+    return {
+        json.loads(line)["key"]
+        for line in ledger.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    }
+
+
+def record_attempt(result: Attempt, ledger: Path = LEDGER) -> None:
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    row = {"key": result.key, **result.__dict__}
+    with ledger.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, sort_keys=True) + "\n")
+        fh.flush()
+
+
+def batch(
+    runs: int = 5,
+    limit: int | None = None,
+    max_steps: int = 18,
+    model_id: str = DEFAULT_MODEL,
+    temperature: float = 0.7,
+    store: Path = STORE,
+    ledger: Path = LEDGER,
+) -> None:
+    """Run every task `runs` times, skipping whatever the ledger already holds.
+
+    Appending each attempt as it finishes is what makes this restartable: the job
+    takes hours, and losing it to a crash at attempt 280 would mean starting over.
+    """
+    tasks = load()[:limit]
+    model = LocalModel(model_id=model_id, temperature=temperature)
+    model.warm()
+    finished = done(ledger)
+    planned = [(t, i) for t in tasks for i in range(runs)]
+    remaining = [(t, i) for t, i in planned if f"{t.task_id}#{i}" not in finished]
+    print(
+        f"{len(tasks)} tasks x {runs} runs = {len(planned)} attempts, "
+        f"{len(finished)} already done, {len(remaining)} to go",
+        flush=True,
+    )
+
+    for position, (task, index) in enumerate(remaining, start=1):
+        result = attempt(task, index, model, store=store, max_steps=max_steps)
+        record_attempt(result, ledger)
+        print(
+            f"[{position}/{len(remaining)}] {result.key:<34} "
+            f"coverage={int(result.coverage)} resolve={int(result.resolve)} "
+            f"steps={result.steps:<3} edits={result.edits} {result.seconds}s",
+            flush=True,
+        )
+
+
+def status(ledger: Path = LEDGER) -> str:
+    if not ledger.exists():
+        return f"no attempts yet at {ledger}"
+    rows = [
+        json.loads(line)
+        for line in ledger.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if not rows:
+        return f"no attempts yet at {ledger}"
+
+    by_task: dict[str, list[dict]] = {}
+    for row in rows:
+        by_task.setdefault(row["task_id"], []).append(row)
+
+    coverage = sum(r["coverage"] for r in rows)
+    resolve = sum(r["resolve"] for r in rows)
+    mixed = [t for t, rs in by_task.items() if 0 < sum(r["coverage"] for r in rs) < len(rs)]
+    mixed_resolve = [
+        t for t, rs in by_task.items() if 0 < sum(r["resolve"] for r in rs) < len(rs)
+    ]
+    seconds = sum(r["seconds"] for r in rows)
+    return "\n".join(
+        [
+            f"attempts           {len(rows)} over {len(by_task)} tasks",
+            f"coverage rate      {coverage / len(rows):.1%}  ({coverage}/{len(rows)})",
+            f"resolve rate       {resolve / len(rows):.1%}  ({resolve}/{len(rows)})",
+            f"mixed on coverage  {len(mixed)} tasks",
+            f"mixed on resolve   {len(mixed_resolve)} tasks",
+            f"wall clock         {seconds / 3600:.2f} h  ({seconds / len(rows):.0f}s per run)",
+        ]
+    )
+
+
+def store_summary(store: Path = STORE) -> str:
+    db = Store(store)
+    runs = db.runs()
+    tasks = db.tasks()
+    db.close()
+    return f"{len(runs)} runs over {len(tasks)} tasks in {store}"
