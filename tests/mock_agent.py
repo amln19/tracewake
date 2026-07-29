@@ -93,7 +93,7 @@ TOOL_OUTPUTS: dict[str, ToolOutcome] = {
 }
 
 # Reversed relative to batch order, so a batch always completes in an order that
-# differs from its batch_index. Without §3.3's intra-batch index the recorded
+# differs from its batch_index. Without the intra-batch index the recorded
 # sequence numbers would come out in this order instead.
 _TOOL_DELAY_MS = {"read_file": 30, "grep": 20, "list_dir": 5, "apply_patch": 20, "run_tests": 5}
 
