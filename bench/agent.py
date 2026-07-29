@@ -84,9 +84,10 @@ Available actions:
       Show every source line containing TEXT. Search for the name of the \
 function or class the failing tests exercise, not for the name of the test.
 
-  {"action": "edit_file", "path": "PATH", "old": "OLD", "new": "NEW"}
-      Replace an exact snippet. OLD must appear exactly once in the file and be \
-copied character for character from what you read, without the line numbers.
+  {"action": "edit_file", "path": "PATH", "old": "OLD", "new": "NEW", "at": N}
+      Replace a snippet. OLD must be copied character for character from what you
+      read, without the line numbers. "at" is optional and takes a line number;
+      use it when the same snippet appears more than once.
 
   {"action": "run_tests"}
       Run the suite and see what passes.
@@ -117,7 +118,10 @@ WINDOW_LINES = 120
 SEARCH_CONTEXT = 2
 
 
-MAX_CONSECUTIVE_STALLS = 3
+# Raised from three once file reads were windowed: with the bug actually
+# visible, a model that fumbles a turn often recovers on the next one, and a
+# stalled turn is cheap now that it carries no file contents.
+MAX_CONSECUTIVE_STALLS = 5
 
 
 @dataclass
@@ -136,6 +140,32 @@ class Trace:
     elapsed: float = 0.0
     usage: Usage = field(default_factory=Usage)
     actions: list[str] = field(default_factory=list)
+
+
+def _line_number(value: Any) -> int | None:
+    """A line number the model may have sent as an int or as a string."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int | float):
+        return int(value)
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value)
+    return None
+
+
+def _replace_at(text: str, old: str, new: str, line: int) -> str | None:
+    """Replace the occurrence of `old` that starts on `line`, leaving others alone."""
+    lines = text.splitlines(keepends=True)
+    offset = sum(len(x) for x in lines[: line - 1])
+    if text[offset : offset + len(old)] == old:
+        return text[:offset] + new + text[offset + len(old) :]
+    # The model copied from a line-numbered view, so leading whitespace is the
+    # usual mismatch; try the snippet anchored anywhere on the named line.
+    end = offset + len(lines[line - 1]) if line <= len(lines) else len(text)
+    found = text.find(old, offset, max(end, offset + len(old)))
+    if found == -1:
+        return None
+    return text[:found] + new + text[found + len(old) :]
 
 
 def _number(lines: list[str], first: int) -> str:
@@ -169,16 +199,15 @@ class Tools:
             case "list_files":
                 return ToolOutcome(content="\n".join(self.source_files()))
             case "read_file":
-                around = args.get("around")
-                return self._read(
-                    str(args.get("path", "")),
-                    int(around) if isinstance(around, int | float | str) and str(around).strip().lstrip("-").isdigit() else None,
-                )
+                return self._read(str(args.get("path", "")), _line_number(args.get("around")))
             case "search":
                 return self._search(str(args.get("query", "")))
             case "edit_file":
                 return self._edit(
-                    str(args.get("path", "")), str(args.get("old", "")), str(args.get("new", ""))
+                    str(args.get("path", "")),
+                    str(args.get("old", "")),
+                    str(args.get("new", "")),
+                    _line_number(args.get("at")),
                 )
             case "run_tests":
                 output, green = self._run_tests()
@@ -260,7 +289,7 @@ class Tools:
             content="\n\n".join(blocks) if blocks else f"no matches for {query!r}"
         )
 
-    def _edit(self, path: str, old: str, new: str) -> ToolOutcome:
+    def _edit(self, path: str, old: str, new: str, at: int | None = None) -> ToolOutcome:
         if not path or not old:
             return ToolOutcome(
                 content="edit_file needs a path and an exact 'old' snippet",
@@ -279,8 +308,7 @@ class Tools:
             return ToolOutcome(
                 content=f"cannot read {path}: {exc}", status="error", error="unreadable"
             )
-        occurrences = text.count(old)
-        if occurrences == 0:
+        if text.count(old) == 0:
             return ToolOutcome(
                 content=(
                     f"that snippet does not appear in {path}. Copy it exactly as the file "
@@ -289,17 +317,37 @@ class Tools:
                 status="error",
                 error="no match",
             )
-        if occurrences > 1:
+
+        # Which occurrence, by the line each starts on. A snippet that appears
+        # twice is not a dead end: the agent already knows the line it means,
+        # because the test failure and the file window both gave it one.
+        hits = [n for n, line in enumerate(text.splitlines(), start=1) if old.split("\n")[0] in line]
+        if at is not None and len(hits) > 1:
+            nearest = min(hits, key=lambda n: abs(n - at))
+            hits = [nearest]
+        if len(hits) > 1:
             return ToolOutcome(
                 content=(
-                    f"that snippet appears {occurrences} times in {path}. Include enough "
-                    f"surrounding lines to make it unique."
+                    f"that snippet appears {len(hits)} times in {path}, starting at lines "
+                    f"{', '.join(str(n) for n in hits[:8])}. Add \"at\": <line number> to say "
+                    f"which one you mean, or include more surrounding lines to make it unique."
                 ),
                 status="error",
                 error="ambiguous match",
             )
-        self._fs.write_text(path, text.replace(old, new, 1))
-        return ToolOutcome(content=f"replaced 1 occurrence in {path}")
+
+        updated = _replace_at(text, old, new, hits[0])
+        if updated is None:
+            return ToolOutcome(
+                content=(
+                    f"the snippet does not start at line {hits[0]} of {path} as written. Read "
+                    f"the file around that line and copy it exactly."
+                ),
+                status="error",
+                error="no match",
+            )
+        self._fs.write_text(path, updated)
+        return ToolOutcome(content=f"replaced 1 occurrence in {path} at line {hits[0]}")
 
 
 def parse_action(text: str) -> dict[str, Any] | None:

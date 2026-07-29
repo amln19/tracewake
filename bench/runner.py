@@ -281,12 +281,36 @@ def status(ledger: Path = LEDGER) -> str:
         f"wall clock         {seconds / 3600:.2f} h  ({seconds / len(rows):.0f}s per run)",
     ]
     lines.append("")
+    lines.append(_by_operator(rows))
+    lines.append("")
     lines.append(_trajectories(rows))
     for label in ("coverage", "resolve"):
         lines.append("")
         lines.append(f"successes per task, {label} (only tasks with every run in):")
         lines.append(_histogram(by_task, label))
     return "\n".join(lines)
+
+
+def _by_operator(rows: list[dict]) -> str:
+    """Outcome rate per mutation operator.
+
+    The four operators are not one difficulty. Restoring a deleted guard means
+    inventing the condition that used to be there, while the other three are a
+    token flipped back — so a corpus that averages well can still be two
+    populations, and the average would never say so.
+    """
+    groups: dict[str, list[dict]] = {}
+    for row in rows:
+        groups.setdefault(row["task_id"].split("-")[1], []).append(row)
+    out = ["coverage by operator:"]
+    for operator in sorted(groups):
+        got = groups[operator]
+        hits = sum(r["coverage"] for r in got)
+        solved = sum(r["resolve"] for r in got)
+        out.append(
+            f"  {operator:<15} {hits}/{len(got)} coverage, {solved}/{len(got)} resolve"
+        )
+    return "\n".join(out)
 
 
 def _trajectories(rows: list[dict]) -> str:

@@ -441,3 +441,76 @@ def test_search_shows_the_code_around_a_hit(tmp_path: Path, repo: Path) -> None:
     # The line that follows the definition is the one carrying the bug.
     assert "return xs[i : i + n + 1]" in body
     assert "pkg/window.py:1" in body
+
+
+def test_an_ambiguous_edit_names_the_lines_it_could_mean(tmp_path: Path, repo: Path) -> None:
+    """"Appears twice" is a dead end; the lines are what make it actionable."""
+    (repo / "pkg" / "dup.py").write_text("a = 1\nb = 2\na = 1\n", encoding="utf-8")
+    _, run_id, _ = drive(
+        tmp_path / "store",
+        repo,
+        [
+            block('{"action": "edit_file", "path": "pkg/dup.py", "old": "a = 1", "new": "a = 9"}'),
+            block('{"action": "submit"}'),
+        ],
+    )
+    store = Store(tmp_path / "store")
+    body = store.blobs.get(
+        next(
+            e.event.result.digest for e in store.events(run_id)
+            if e.event.type == "tool_call" and e.event.name == "edit_file"
+        )
+    ).decode()
+    store.close()
+    assert "lines 1, 3" in body
+    assert '"at"' in body
+
+
+def test_a_line_anchor_picks_which_occurrence_to_edit(tmp_path: Path, repo: Path) -> None:
+    (repo / "pkg" / "dup.py").write_text("a = 1\nb = 2\na = 1\n", encoding="utf-8")
+    trace, _, _ = drive(
+        tmp_path / "store",
+        repo,
+        [
+            block(
+                '{"action": "edit_file", "path": "pkg/dup.py", "old": "a = 1", '
+                '"new": "a = 9", "at": 3}'
+            ),
+            block('{"action": "submit"}'),
+        ],
+    )
+    assert trace.edits == 1
+    assert (repo / "pkg" / "dup.py").read_text() == "a = 1\nb = 2\na = 9\n"
+
+
+def test_a_line_anchor_sent_as_a_string_still_works(tmp_path: Path, repo: Path) -> None:
+    """Small models quote their numbers about half the time."""
+    (repo / "pkg" / "dup.py").write_text("a = 1\nb = 2\na = 1\n", encoding="utf-8")
+    trace, _, _ = drive(
+        tmp_path / "store",
+        repo,
+        [
+            block(
+                '{"action": "edit_file", "path": "pkg/dup.py", "old": "a = 1", '
+                '"new": "a = 9", "at": "3"}'
+            ),
+            block('{"action": "submit"}'),
+        ],
+    )
+    assert trace.edits == 1
+    assert (repo / "pkg" / "dup.py").read_text() == "a = 1\nb = 2\na = 9\n"
+
+
+def test_an_unambiguous_edit_still_needs_no_anchor(tmp_path: Path, repo: Path) -> None:
+    trace, _, _ = drive(
+        tmp_path / "store",
+        repo,
+        [
+            block(
+                '{"action": "edit_file", "path": "pkg/window.py", '
+                '"old": "i + n + 1", "new": "i + n"}'
+            ),
+            block('{"action": "submit"}'),
+        ],
+    )
+    assert trace.edits == 1
