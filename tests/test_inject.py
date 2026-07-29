@@ -145,3 +145,27 @@ def test_a_green_summary_parses_as_green() -> None:
     assert report.green
     assert report.passed == 82
     assert report.failing_tests == ()
+
+
+def test_a_source_dir_that_does_not_exist_is_an_error_not_an_empty_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A repo that silently contributes nothing looks like one whose mutations all failed."""
+    from bench import repos as repos_module
+
+    (tmp_path / "thing" / "pkg").mkdir(parents=True)
+    (tmp_path / "thing" / "pkg" / "a.py").write_text("x = 1\n")
+    monkeypatch.setattr(repos_module, "CLONE_ROOT", tmp_path)
+
+    assert repos_module.sources(Repo("thing", "", "", ("pkg",)))
+    with pytest.raises(FileNotFoundError, match="layout has changed"):
+        repos_module.sources(Repo("thing", "", "", ("pkg.py",)))
+
+
+def test_every_pinned_repo_names_source_that_exists() -> None:
+    from bench import repos as repos_module
+
+    if not repos_module.CLONE_ROOT.exists():
+        pytest.skip("corpus repositories are not cloned in this environment")
+    for repo in repos_module.REPOS:
+        assert repos_module.sources(repo), f"{repo.name} contributes no source files"

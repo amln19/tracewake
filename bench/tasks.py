@@ -22,7 +22,15 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
 
-from .repos import CORPUS_ROOT, REPOS, Repo, SuiteReport, run_tests, working_copy
+from .repos import (
+    CORPUS_ROOT,
+    REPOS,
+    Repo,
+    SuiteReport,
+    run_tests,
+    sources,
+    working_copy,
+)
 
 MANIFEST = CORPUS_ROOT / "tasks.json"
 
@@ -112,21 +120,6 @@ def relative_source_files(root: Path, source_dirs: tuple[str, ...]) -> list[str]
                 str(p.relative_to(root))
                 for p in sorted(target.rglob("*.py"))
                 if "__pycache__" not in p.parts
-            )
-    return found
-
-
-def source_files(repo: Repo) -> list[Path]:
-    found: list[Path] = []
-    for entry in repo.source_dirs:
-        target = repo.path / entry
-        if target.is_file():
-            found.append(target)
-        elif target.is_dir():
-            found.extend(
-                p
-                for p in sorted(target.rglob("*.py"))
-                if "test" not in p.name and "__pycache__" not in p.parts
             )
     return found
 
@@ -492,7 +485,7 @@ def _build_repo(
     repo: Repo, baseline: SuiteReport, per_repo: int, rng: random.Random, scratch: Path
 ) -> list[Task]:
     pool: list[tuple[Path, Mutation, str]] = []
-    for path in source_files(repo):
+    for path in sources(repo):
         source = path.read_text(encoding="utf-8")
         for mutation, mutated in candidates(path, source):
             pool.append((path, mutation, mutated))

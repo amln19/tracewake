@@ -114,7 +114,7 @@ REPOS: tuple[Repo, ...] = (
         name="parse",
         url="https://github.com/r1chardj0n3s/parse.git",
         commit="fc3875c33f4ae5f5703c3f17e8226cca0dea6eeb",
-        source_dirs=("parse.py",),
+        source_dirs=("parse",),
         baseline_seconds=0.1,
     ),
     Repo(
@@ -128,7 +128,7 @@ REPOS: tuple[Repo, ...] = (
         name="schema",
         url="https://github.com/keleshev/schema.git",
         commit="310a1239b62f500284ce3bd91b7dabf70467f23e",
-        source_dirs=("schema.py",),
+        source_dirs=("schema",),
         baseline_seconds=0.1,
     ),
     Repo(
@@ -150,7 +150,8 @@ REPOS: tuple[Repo, ...] = (
         name="sortedcontainers",
         url="https://github.com/grantjenks/python-sortedcontainers.git",
         commit="3ac358631f58c1347f1d6d2d92784117db0f38ed",
-        source_dirs=("sortedcontainers",),
+        source_dirs=("src/sortedcontainers",),
+        import_paths=("src", "."),
         baseline_seconds=2.1,
     ),
     Repo(
@@ -334,15 +335,49 @@ def _count(summary: str, word: str) -> int:
     return 0
 
 
+def sources(repo: Repo) -> list[Path]:
+    """The files a bug may be injected into.
+
+    Checked as part of verification rather than left to the injector: a
+    `source_dirs` entry that names a path the project no longer has yields no
+    mutations at all, and a repository that silently contributes nothing looks
+    exactly like one whose mutations were all rejected on merit.
+    """
+    found: list[Path] = []
+    for entry in repo.source_dirs:
+        target = repo.path / entry
+        if target.is_file():
+            found.append(target)
+        elif target.is_dir():
+            found.extend(
+                p
+                for p in sorted(target.rglob("*.py"))
+                if "test" not in p.name and "__pycache__" not in p.parts
+            )
+        else:
+            raise FileNotFoundError(
+                f"{repo.name} lists {entry!r} as source, but {target} does not exist. The "
+                f"project's layout has changed since the manifest was written; correct "
+                f"source_dirs for {repo.name}."
+            )
+    return found
+
+
 def main(argv: list[str]) -> int:
     setup(force="--force" in argv)
     failures = 0
     for repo in REPOS:
+        try:
+            files = sources(repo)
+        except FileNotFoundError as exc:
+            failures += 1
+            print(f"{repo.name:<18} {'NO SOURCE':<9} {exc}")
+            continue
         report = run_tests(repo, repo.path)
         state = "ok" if report.green else "BROKEN"
         if not report.green:
             failures += 1
-        print(f"{repo.name:<18} {state:<7} {report.summary}")
+        print(f"{repo.name:<18} {state:<9} {len(files):>3} files  {report.summary}")
     if failures:
         print(
             f"\n{failures} repositories do not pass on an untouched checkout. A task built "
