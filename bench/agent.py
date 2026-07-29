@@ -110,9 +110,16 @@ MAX_FILE_CHARS = 12_000
 MAX_TOOL_CHARS = 6_000
 
 
+MAX_CONSECUTIVE_STALLS = 3
+
+
 @dataclass
 class Trace:
-    steps: int = 0
+    # Turns the model was called; actions it actually got to take. They come
+    # apart when a reply carries no usable action, and the gap is the signal.
+    turns: int = 0
+    actions_taken: int = 0
+    stalled: int = 0
     edits: int = 0
     test_runs: int = 0
     parse_failures: int = 0
@@ -293,8 +300,16 @@ def run(
     dispatcher = session.tools(tools.dispatch)
     started = session.clock.monotonic()
 
-    for step in range(max_steps):
-        trace.steps = step + 1
+    # Two separate budgets. `max_steps` counts actions the agent actually took,
+    # because a turn that produced no action gave it nothing to reason from and
+    # charging it would let a stuck model spend the whole run saying nothing.
+    # `turns` bounds total cost regardless, and a run that stalls repeatedly ends
+    # early rather than grinding out a full budget of refusals.
+    while trace.actions_taken < max_steps and trace.turns < max_steps * 2:
+        if trace.stalled >= MAX_CONSECUTIVE_STALLS:
+            trace.stop_reason = "stuck"
+            break
+        trace.turns += 1
         with model.stream(
             messages=messages, tools=TOOL_NAMES, temperature=temperature
         ) as stream:
@@ -312,6 +327,7 @@ def run(
         action = parse_action(response.text)
         if action is None:
             trace.parse_failures += 1
+            trace.stalled += 1
             messages.append(
                 Message(
                     role="user",
@@ -332,25 +348,32 @@ def run(
             trace.stop_reason = "submitted"
             break
 
-        # A small model that gets nothing useful from an action will take the
-        # identical action again, and again, until the budget is gone. Refusing
-        # the repeat costs nothing and is the difference between a run that
-        # explores and a run that spins.
+        # A small model that gets nothing from an action will take the identical
+        # action again. Executing it a second time wastes the budget; refusing it
+        # and charging a step wastes the budget faster, because the model tends to
+        # repeat the refused action rather than pick a new one. So the repeat is
+        # refused, charged nothing, and counted towards ending a run that is stuck.
         signature = f"{name}:{json.dumps(action, sort_keys=True)}"
         if signature in taken:
             trace.repeats += 1
+            trace.stalled += 1
             messages.append(
                 Message(
                     role="user",
                     content=(
-                        f"You already ran that exact action at step {taken[signature]} and it "
-                        f"did not get you what you needed. Take a different action. If you "
-                        f"have not run the tests yet, run them."
+                        f"You already ran exactly that at step {taken[signature]}, and its "
+                        f"output is above. Repeating it will return the same thing. Choose a "
+                        f"different action: read a file you have not read, or edit the line "
+                        f"you think is wrong."
                     ),
                     provenance=ERROR_FEEDBACK,
                 )
             )
             continue
+
+        trace.stalled = 0
+        step = trace.actions_taken
+        trace.actions_taken += 1
         taken[signature] = step + 1
 
         request = ToolCallRequest(

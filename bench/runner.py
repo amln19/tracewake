@@ -38,9 +38,15 @@ class Attempt:
     run_id: str
     coverage: bool
     resolve: bool
-    steps: int
+    # Turns and actions come apart when the model replies without a usable
+    # action. A run with many turns and few actions is stuck, not hard, and
+    # nothing else in the record distinguishes the two.
+    turns: int
+    actions: int
     edits: int
+    repeats: int
     parse_failures: int
+    stop_reason: str
     seconds: float
     summary: str
 
@@ -163,9 +169,12 @@ def attempt(
         run_id=run_id,
         coverage=coverage,
         resolve=resolve,
-        steps=trace.steps,
+        turns=trace.turns,
+        actions=trace.actions_taken,
         edits=trace.edits,
+        repeats=trace.repeats,
         parse_failures=trace.parse_failures,
+        stop_reason=trace.stop_reason,
         seconds=round(time.time() - started, 1),
         summary=final.summary,
     )
@@ -234,7 +243,9 @@ def batch(
         print(
             f"[{label}{position}/{len(remaining)}] {result.key:<34} "
             f"coverage={int(result.coverage)} resolve={int(result.resolve)} "
-            f"steps={result.steps:<3} edits={result.edits} {result.seconds}s",
+            f"turns={result.turns:<3} actions={result.actions:<3} "
+            f"edits={result.edits} repeats={result.repeats:<3} "
+            f"{result.stop_reason:<12} {result.seconds}s",
             flush=True,
         )
 

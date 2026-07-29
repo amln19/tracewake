@@ -30,7 +30,9 @@ def scripted(replies: list[str]):
     def stream(
         model_id: str, messages: list[Message], params: DecodeParams
     ) -> Generator[StreamChunk, None, ModelResponse]:
-        text = replies[len(sent)]
+        # Holds the last reply once the script runs out, so a test can assert
+        # where the loop stops without having to predict the turn count.
+        text = replies[min(len(sent), len(replies) - 1)]
         sent.append(1)
         for index, piece in enumerate([text[i : i + 9] for i in range(0, len(text), 9)]):
             yield StreamChunk(index=index, text_delta=piece)
@@ -45,7 +47,13 @@ def block(payload: str) -> str:
     return f"Looking at it now.\n\n```json\n{payload}\n```"
 
 
-def drive(store: Path, repo: Path, replies: list[str], green: bool = True) -> tuple:
+def drive(
+    store: Path,
+    repo: Path,
+    replies: list[str],
+    green: bool = True,
+    max_steps: int | None = None,
+) -> tuple:
     calls: list[int] = []
 
     def run_tests() -> tuple[str, bool]:
@@ -55,7 +63,13 @@ def drive(store: Path, repo: Path, replies: list[str], green: bool = True) -> tu
     with locus.record("agent", store=store) as session:
         tools = agent.Tools(session, repo, ("pkg",), run_tests)
         model = session.model(provider="test", model_id="test-1", stream_fn=scripted(replies))
-        trace = agent.run(session, model, "it is broken", tools, max_steps=len(replies))
+        trace = agent.run(
+            session,
+            model,
+            "it is broken",
+            tools,
+            max_steps=len(replies) if max_steps is None else max_steps,
+        )
         session.outcome(status="ok")
         return trace, session.run_id, len(calls)
 
@@ -126,12 +140,17 @@ def test_a_reply_without_an_action_is_fed_back_rather_than_raising(
     assert trace.actions == ["submit"]
 
 
-def test_running_out_of_steps_is_recorded_not_raised(tmp_path: Path, repo: Path) -> None:
+def test_running_out_of_actions_is_recorded_not_raised(tmp_path: Path, repo: Path) -> None:
+    for n in range(3):
+        (repo / "pkg" / f"n{n}.py").write_text(f"x = {n}\n", encoding="utf-8")
     trace, _, _ = drive(
-        tmp_path / "store", repo, [block('{"action": "list_files"}')] * 3
+        tmp_path / "store",
+        repo,
+        [block('{"action": "read_file", "path": "pkg/n%d.py"}' % n) for n in range(3)],
+        max_steps=3,
     )
     assert trace.stop_reason == "step_budget"
-    assert trace.steps == 3
+    assert trace.actions_taken == 3
     assert not trace.submitted
 
 
@@ -265,6 +284,7 @@ def test_an_identical_repeated_action_is_refused(tmp_path: Path, repo: Path) -> 
 
     assert trace.repeats == 2
     assert trace.actions == ["read_file", "read_file", "read_file", "submit"]
+    assert trace.actions_taken == 1, "a refused repeat must not spend the action budget"
 
     store = Store(tmp_path / "store")
     reads = [
@@ -307,3 +327,50 @@ def test_the_remaining_budget_is_shown_near_the_end(tmp_path: Path, repo: Path) 
     assert "step left]" in text or "steps left]" in text
     early = "".join(m.content for m in calls[1].messages)
     assert "steps left]" not in early, "the budget notice should not crowd every turn"
+
+
+def test_a_stuck_agent_ends_early_instead_of_grinding_out_the_budget(
+    tmp_path: Path, repo: Path
+) -> None:
+    """Refusing a repeat and charging a step is worse than not refusing at all.
+
+    A model that repeats a refused action will keep repeating it, so charging
+    the step spends the whole run on refusals and the agent never edits.
+    """
+    same = block('{"action": "read_file", "path": "pkg/window.py"}')
+    trace, _, _ = drive(tmp_path / "store", repo, [same] * 20, max_steps=12)
+
+    assert trace.stop_reason == "stuck"
+    assert trace.actions_taken == 1
+    assert trace.turns <= agent.MAX_CONSECUTIVE_STALLS + 1, (
+        f"a stuck run cost {trace.turns} model calls; it should stop within "
+        f"{agent.MAX_CONSECUTIVE_STALLS + 1}"
+    )
+
+
+def test_recovering_from_a_stall_restores_the_full_budget(
+    tmp_path: Path, repo: Path
+) -> None:
+    """Four stalls in total, never three in a row: a model that comes back lives."""
+    (repo / "pkg" / "third.py").write_text("z = 3\n", encoding="utf-8")
+    same = block('{"action": "read_file", "path": "pkg/window.py"}')
+    other = block('{"action": "run_tests"}')
+    third = block('{"action": "read_file", "path": "pkg/third.py"}')
+    trace, _, _ = drive(
+        tmp_path / "store",
+        repo,
+        [same, same, same, other, same, same, third, block('{"action": "submit"}')],
+        max_steps=12,
+    )
+
+    assert trace.stop_reason == "submitted"
+    assert trace.actions_taken == 3
+    assert trace.repeats == 4
+
+
+def test_turns_are_bounded_even_when_nothing_ever_parses(
+    tmp_path: Path, repo: Path
+) -> None:
+    trace, _, _ = drive(tmp_path / "store", repo, ["no action here"] * 30, max_steps=12)
+    assert trace.stop_reason == "stuck"
+    assert trace.turns <= agent.MAX_CONSECUTIVE_STALLS + 1
