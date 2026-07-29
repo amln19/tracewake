@@ -107,6 +107,7 @@ def test_every_context_block_carries_a_provenance_tag(tmp_path: Path, repo: Path
     assert {
         agent.SYSTEM_PROMPT,
         agent.TASK_ISSUE,
+        agent.REPO_MAP,
         agent.FILE_READ,
         agent.TEST_OUTPUT,
         agent.ERROR_FEEDBACK,
@@ -232,3 +233,24 @@ def test_the_run_replays_from_the_log_without_the_model(tmp_path: Path, repo: Pa
 
     assert replayed.actions == recorded.actions
     assert replayed.usage == recorded.usage
+
+
+def test_the_agent_is_told_which_files_exist_before_its_first_move(
+    tmp_path: Path, repo: Path
+) -> None:
+    """Without the listing a small model invents paths out of its own instructions."""
+    _, run_id, _ = drive(tmp_path / "store", repo, [block('{"action": "submit"}')])
+
+    store = Store(tmp_path / "store")
+    first = next(
+        e.event for e in store.events(run_id) if isinstance(e.event, ModelCallEvent)
+    )
+    store.close()
+
+    listing = [m for m in first.messages if m.provenance == agent.REPO_MAP]
+    assert len(listing) == 1
+    assert "pkg/window.py" in listing[0].content
+
+    # Nothing in the prompt may look like a path the agent could copy instead.
+    schema = "".join(m.content for m in first.messages if m.provenance == agent.TOOL_SCHEMA)
+    assert ".py" not in schema

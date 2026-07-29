@@ -37,6 +37,7 @@ TOOL_OUTPUT = "tool_output"
 FILE_READ = "file_read"
 TEST_OUTPUT = "test_output"
 ERROR_FEEDBACK = "error_feedback"
+REPO_MAP = "repo_map"
 
 PROVENANCE = (
     SYSTEM_PROMPT,
@@ -47,6 +48,7 @@ PROVENANCE = (
     FILE_READ,
     TEST_OUTPUT,
     ERROR_FEEDBACK,
+    REPO_MAP,
 )
 
 ROLE = """\
@@ -68,34 +70,33 @@ TOOL_HELP = """\
 Reply with a short line of reasoning, then exactly one action in a fenced json \
 block. Nothing after the block.
 
+Every "path" must be copied exactly from the file list you were given. Paths \
+that appear in this help are shapes, not real files.
+
 Available actions:
 
-  {"action": "list_files"}
-      List the library source files.
+  {"action": "read_file", "path": "PATH"}
+      Read a file. Output is line-numbered; the numbers are not part of the file.
 
-  {"action": "read_file", "path": "pkg/thing.py"}
-      Read a file. Output is line-numbered.
+  {"action": "search", "query": "TEXT"}
+      Show every source line containing TEXT. Search for the name of the \
+function or class the failing tests exercise, not for the name of the test.
 
-  {"action": "search", "query": "def slugify"}
-      Find which source lines contain a string.
-
-  {"action": "edit_file", "path": "pkg/thing.py", "old": "...", "new": "..."}
-      Replace an exact snippet. "old" must appear exactly once in the file, \
+  {"action": "edit_file", "path": "PATH", "old": "OLD", "new": "NEW"}
+      Replace an exact snippet. OLD must appear exactly once in the file and be \
 copied character for character from what you read, without the line numbers.
 
   {"action": "run_tests"}
       Run the suite and see what passes.
 
+  {"action": "list_files"}
+      Show the source file list again.
+
   {"action": "submit"}
       Stop, once the tests pass.
 
-Example of a well-formed turn:
-
-The bound looks wrong, so I will read the file before changing anything.
-
-```json
-{"action": "read_file", "path": "pkg/thing.py"}
-```"""
+A good run looks like: search for the function the failing test exercises, read \
+the file it is in, change the one wrong line, run the tests, submit."""
 
 ACTION_BLOCK = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 BARE_OBJECT = re.compile(r"(\{[^{}]*\"action\"[^{}]*\})", re.DOTALL)
@@ -267,9 +268,18 @@ def run(
     max_steps: int = 18,
     temperature: float = 0.7,
 ) -> Trace:
+    # The file list is given up front rather than left to a first `list_files`
+    # step: without it a small model invents paths out of the examples in its own
+    # instructions and spends most of its budget guessing.
+    listing = "\n".join(tools.source_files())
     messages = [
         Message(role="system", content=ROLE, provenance=SYSTEM_PROMPT),
         Message(role="system", content=TOOL_HELP, provenance=TOOL_SCHEMA),
+        Message(
+            role="user",
+            content=f"The library source files are:\n\n{listing}",
+            provenance=REPO_MAP,
+        ),
         Message(role="user", content=issue, provenance=TASK_ISSUE),
     ]
     trace = Trace()
