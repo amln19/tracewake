@@ -15,6 +15,7 @@ import typer
 
 from .cassette import export_cassette, import_cassette, read_header
 from .config import RECORD_MODES, RecordMode
+from .patches import LocusError
 from .store import Store
 
 app = typer.Typer(
@@ -183,4 +184,11 @@ def ls(store: StoreOption = Path(".locus")) -> None:
 
 
 def main() -> None:
-    sys.exit(app())
+    # A traceback is not a user interface. Locus raises these to say what failed
+    # and what to do about it, so the CLI prints the message and nothing else.
+    try:
+        app()
+    except (KeyError, ValueError, LocusError) as exc:
+        message = exc.args[0] if exc.args else str(exc)
+        typer.echo(f"locus: {message}", err=True)
+        sys.exit(1)

@@ -460,7 +460,7 @@ class Session:
         if self.can_replay:
             found, value = self._pop_env(source, key)
             if found:
-                return value
+                return self._redactor.restore_path(value) if source == "env" else value
         if not self.can_record:
             self._miss(
                 f"run {self.run_id} has no unconsumed {source!r} value"

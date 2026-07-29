@@ -75,6 +75,21 @@ class Redactor:
                 value = value.replace(raw, placeholder)
         return value
 
+    def restore_path(self, value: Any) -> Any:
+        """Put the local home directory back into a value replay hands the agent.
+
+        An environment variable is an input the agent acts on, so replaying
+        `HOME` as the literal placeholder would hand it a path that cannot be
+        opened. Recorded message and tool content is an observation rather than
+        an input and is reproduced exactly as stored.
+        """
+        if not self.enabled or not isinstance(value, str):
+            return value
+        for raw, placeholder in self._paths:
+            if placeholder in value:
+                value = value.replace(placeholder, raw)
+        return value
+
     def blob(self, data: bytes) -> bytes:
         if not self.enabled:
             return data

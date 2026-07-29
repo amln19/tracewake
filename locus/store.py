@@ -206,7 +206,21 @@ class Store:
         ).fetchone()
         if row is not None:
             return self._header(row)
-        return self.latest_named(run_or_name)
+        named = self.latest_named(run_or_name)
+        if named is not None:
+            return named
+        # Whatever `locus ls` prints has to be valid input to `locus replay`,
+        # and it prints an abbreviated id.
+        rows = self._db.execute(
+            "SELECT * FROM runs WHERE run_id LIKE ? || '%'", (run_or_name,)
+        ).fetchall()
+        if len(rows) > 1:
+            ids = ", ".join(r["run_id"][:12] for r in rows)
+            raise KeyError(
+                f"{run_or_name!r} matches more than one run in {self.root}: {ids}. "
+                f"Use more characters of the run id."
+            )
+        return self._header(rows[0]) if rows else None
 
     def resolve(self, run_or_name: str) -> RunHeader:
         header = self.find(run_or_name)

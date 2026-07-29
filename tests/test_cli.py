@@ -89,6 +89,40 @@ def test_an_unknown_run_lists_what_exists(tmp_path: Path) -> None:
     assert "demo" in result.stderr + result.stdout
 
 
+def test_an_error_is_a_message_not_a_traceback(tmp_path: Path) -> None:
+    _record(tmp_path, "demo")
+    result = _locus("export", "nope", "-o", str(tmp_path / "c"), "--store", str(tmp_path))
+    assert result.stderr.startswith("locus: no run or cassette named 'nope'")
+    assert "Traceback" not in result.stderr
+    assert "KeyError" not in result.stderr
+
+
+def test_the_id_that_ls_prints_is_accepted_back(tmp_path: Path) -> None:
+    script = tmp_path / "agent.py"
+    script.write_text(SCRIPT)
+    store = tmp_path / "store"
+    _locus("record", "--store", str(store), "--name", "wrapped", "--", sys.executable, str(script))
+
+    listed = _locus("ls", "--store", str(store)).stdout.split()[0]
+    result = _locus("replay", listed, "--store", str(store))
+    assert result.returncode == 0, result.stderr
+    assert "from the script" in result.stdout
+
+
+def test_an_ambiguous_run_id_prefix_says_so(tmp_path: Path) -> None:
+    db = Store(tmp_path)
+    for suffix in ("aa", "bb"):
+        db.create_run(
+            locus.RunHeader(
+                run_id=f"beef{suffix}", name=f"run-{suffix}", started_at=1.0, status="ok"
+            )
+        )
+    db.close()
+    result = _locus("export", "beef", "-o", str(tmp_path / "c"), "--store", str(tmp_path))
+    assert result.returncode != 0
+    assert "matches more than one run" in result.stderr
+
+
 def test_the_wrapper_records_a_script_that_opens_its_own_session(tmp_path: Path) -> None:
     script = tmp_path / "agent.py"
     script.write_text(SCRIPT)

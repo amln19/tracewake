@@ -151,6 +151,28 @@ def test_an_unredacted_cassette_still_replays(
         assert rep.report.matched == 1
 
 
+def test_a_home_path_is_scrubbed_in_the_log_but_usable_on_replay(tmp_path: Path) -> None:
+    """An environment variable is an input the agent acts on, so replaying HOME
+    as the placeholder would hand it a path that cannot be opened."""
+    import os
+
+    store = tmp_path / "store"
+    with locus.record("home", store=store) as rec:
+        assert os.environ["HOME"] == str(Path.home())
+        rec.outcome(status="ok")
+        run_id = rec.run_id
+
+    db = Store(store)
+    (event,) = [e.event for e in db.events(run_id) if e.event.type == "environment"]
+    db.close()
+    assert event.value == "<HOME>"
+    assert str(Path.home()) not in _store_bytes(store).decode("utf-8", "replace")
+
+    with locus.replay(run_id, store=store) as rep:
+        assert os.environ["HOME"] == str(Path.home())
+        rep.outcome(status="ok")
+
+
 def test_configure_sets_the_process_default(tmp_path: Path) -> None:
     original = locus.current_config()
     try:
