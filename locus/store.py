@@ -29,10 +29,12 @@ CREATE TABLE IF NOT EXISTS runs (
     schema_version INTEGER NOT NULL,
     models_json    TEXT NOT NULL DEFAULT '[]',
     command_json   TEXT,
-    redacted       INTEGER NOT NULL DEFAULT 1
+    redacted       INTEGER NOT NULL DEFAULT 1,
+    task_id        TEXT
 );
 
 CREATE INDEX IF NOT EXISTS runs_by_name ON runs(name, started_at DESC);
+CREATE INDEX IF NOT EXISTS runs_by_task ON runs(task_id, started_at);
 
 CREATE TABLE IF NOT EXISTS events (
     run_id         TEXT NOT NULL REFERENCES runs(run_id),
@@ -123,8 +125,8 @@ class Store:
         with self._lock, self._db:
             self._db.execute(
                 "INSERT INTO runs (run_id, name, started_at, finished_at, status, "
-                "schema_version, models_json, command_json, redacted) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "schema_version, models_json, command_json, redacted, task_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     header.run_id,
                     header.name,
@@ -135,6 +137,7 @@ class Store:
                     json.dumps([m.model_dump(mode="json") for m in header.models]),
                     json.dumps(header.command) if header.command is not None else None,
                     int(header.redacted),
+                    header.task_id,
                 ),
             )
 
@@ -237,9 +240,20 @@ class Store:
             f"Known runs: {'; '.join(known) if known else 'none'}."
         )
 
-    def runs(self) -> list[RunHeader]:
-        rows = self._db.execute("SELECT * FROM runs ORDER BY started_at DESC").fetchall()
+    def runs(self, task_id: str | None = None) -> list[RunHeader]:
+        if task_id is None:
+            rows = self._db.execute("SELECT * FROM runs ORDER BY started_at DESC").fetchall()
+            return [self._header(r) for r in rows]
+        rows = self._db.execute(
+            "SELECT * FROM runs WHERE task_id = ? ORDER BY started_at", (task_id,)
+        ).fetchall()
         return [self._header(r) for r in rows]
+
+    def tasks(self) -> list[str]:
+        rows = self._db.execute(
+            "SELECT DISTINCT task_id FROM runs WHERE task_id IS NOT NULL ORDER BY task_id"
+        ).fetchall()
+        return [r[0] for r in rows]
 
     def append(self, run_id: str, event: AnyEvent) -> int:
         canonical = event.canonical_bytes().decode("utf-8")

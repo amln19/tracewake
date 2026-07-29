@@ -436,6 +436,10 @@ class Session:
         status: Literal["ok", "error"],
         error: str | None = None,
         usage: Usage | None = None,
+        coverage: bool | None = None,
+        resolve: bool | None = None,
+        patch: str | None = None,
+        test_summary: str | None = None,
     ) -> None:
         if self._outcome is not None:
             if status != self._outcome.status:
@@ -451,6 +455,10 @@ class Session:
                 status=status,
                 error=error,
                 usage=usage or Usage(),
+                coverage=coverage,
+                resolve=resolve,
+                patch=self._put_blob(patch.encode("utf-8")) if patch is not None else None,
+                test_summary=test_summary,
                 parent_call_id=self._current_call_id,
                 meta=EventMeta(recorded_at=real_time()),
             )

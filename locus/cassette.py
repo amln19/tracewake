@@ -43,6 +43,7 @@ class CassetteHeader(BaseModel):
     models: list[ModelIdentity]
     command: list[str] | None = None
     redacted: bool = True
+    task_id: str | None = None
     event_count: int
     digest: str
 
@@ -82,6 +83,7 @@ def export_cassette(store: Store, run_or_name: str, dest: str | Path) -> Path:
         models=header.models,
         command=header.command,
         redacted=header.redacted,
+        task_id=header.task_id,
         event_count=len(events),
         digest=run_digest(events),
     )
@@ -159,6 +161,7 @@ def import_cassette(source: str | Path, store: Store) -> RunHeader:
         models=cassette.models,
         command=cassette.command,
         redacted=cassette.redacted,
+        task_id=cassette.task_id,
     )
     store.create_run(header)
     events = _events(root / CASSETTE_FILE if path.is_dir() else path)

@@ -14,7 +14,7 @@ from pydantic import (
     model_validator,
 )
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def canonical_json(value: Any) -> str:
@@ -223,6 +223,15 @@ class OutcomeEvent(Event):
     status: Literal["ok", "error"]
     error: str | None = None
     usage: Usage = Field(default_factory=Usage)
+    # Whether the run produced a well-formed, applicable patch, and whether that
+    # patch made the tests pass. Two labels rather than one because their base
+    # rates differ sharply: a model that cannot fix the bug usually still emits a
+    # patch, so `resolve` collapses toward a constant label on a weak model while
+    # `coverage` stays balanced enough to learn from.
+    coverage: bool | None = None
+    resolve: bool | None = None
+    patch: BlobRef | None = None
+    test_summary: str | None = None
 
 
 AnyEvent = Annotated[
@@ -249,6 +258,9 @@ class RunHeader(BaseModel):
     # scrubs differently than the recording did would miss every call. How the
     # cassette was written governs how it is matched.
     redacted: bool = True
+    # Repeated runs of one task are the unit everything downstream compares, so
+    # grouping them has to survive without loading each run's events.
+    task_id: str | None = None
 
 
 class StoredEvent(BaseModel):

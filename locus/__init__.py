@@ -138,6 +138,7 @@ def open_session(
     mode: RecordMode = "once",
     config: Config | None = None,
     command: list[str] | None = None,
+    task_id: str | None = None,
     **overrides: Any,
 ) -> Iterator[Session]:
     if mode not in RECORD_MODES:
@@ -159,6 +160,7 @@ def open_session(
                 status="running",
                 command=command,
                 redacted=cfg.redact,
+                task_id=task_id,
             )
             db.create_run(header)
             replay_events = None
@@ -203,7 +205,12 @@ def open_session(
 
 @contextmanager
 def _entered(
-    run_or_name: str, mode: RecordMode, store: str | Path, config: Config | None, overrides: Any
+    run_or_name: str,
+    mode: RecordMode,
+    store: str | Path,
+    config: Config | None,
+    task_id: str | None,
+    overrides: Any,
 ) -> Iterator[Session]:
     ambient = current()
     if ambient is not None:
@@ -211,7 +218,9 @@ def _entered(
         # opens its own session joins that one instead of starting a second.
         yield ambient
         return
-    with open_session(run_or_name, store=store, mode=mode, config=config, **overrides) as s:
+    with open_session(
+        run_or_name, store=store, mode=mode, config=config, task_id=task_id, **overrides
+    ) as s:
         yield s
 
 
@@ -222,9 +231,10 @@ def record(
     store: str | Path = ".locus",
     mode: RecordMode = "all",
     config: Config | None = None,
+    task_id: str | None = None,
     **overrides: Any,
 ) -> Iterator[Session]:
-    with _entered(name, mode, store, config, overrides) as s:
+    with _entered(name, mode, store, config, task_id, overrides) as s:
         yield s
 
 
@@ -237,7 +247,7 @@ def replay(
     config: Config | None = None,
     **overrides: Any,
 ) -> Iterator[Session]:
-    with _entered(run_or_name, mode, store, config, overrides) as s:
+    with _entered(run_or_name, mode, store, config, None, overrides) as s:
         yield s
 
 
@@ -248,7 +258,8 @@ def session(
     store: str | Path = ".locus",
     mode: RecordMode = "once",
     config: Config | None = None,
+    task_id: str | None = None,
     **overrides: Any,
 ) -> Iterator[Session]:
-    with _entered(name, mode, store, config, overrides) as s:
+    with _entered(name, mode, store, config, task_id, overrides) as s:
         yield s

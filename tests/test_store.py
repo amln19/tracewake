@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import locus
 from locus import EnvironmentEvent, EventMeta, RunHeader, Store
 
 
@@ -75,6 +76,57 @@ def test_events_round_trip_through_canonical_and_meta_columns(tmp_path: Path) ->
     assert stored.event.value == 1753718400.123456
     assert b"recorded_at" not in stored.event.canonical_bytes()
     store.close()
+
+
+def test_runs_group_by_task_in_start_order(tmp_path: Path) -> None:
+    store = Store(tmp_path)
+    for index, (run_id, task_id) in enumerate(
+        [("a", "t1"), ("b", "t2"), ("c", "t1"), ("d", None)]
+    ):
+        store.create_run(
+            RunHeader(
+                run_id=run_id,
+                name=run_id,
+                started_at=1000.0 + index,
+                status="ok",
+                task_id=task_id,
+            )
+        )
+
+    assert [h.run_id for h in store.runs("t1")] == ["a", "c"]
+    assert store.tasks() == ["t1", "t2"]
+    assert len(store.runs()) == 4
+    store.close()
+
+
+def test_outcome_labels_survive_the_store_round_trip(tmp_path: Path) -> None:
+    with locus.record("labelled", store=tmp_path, task_id="slugify-op-swap-1") as rec:
+        rec.outcome(
+            status="ok",
+            coverage=True,
+            resolve=False,
+            patch="--- a/x.py\n+++ b/x.py\n",
+            test_summary="1 failed, 40 passed",
+        )
+        run_id = rec.run_id
+
+    store = Store(tmp_path)
+    assert store.run(run_id).task_id == "slugify-op-swap-1"
+    (outcome,) = [e.event for e in store.events(run_id) if e.event.type == "outcome"]
+    assert (outcome.coverage, outcome.resolve) == (True, False)
+    assert outcome.test_summary == "1 failed, 40 passed"
+    assert store.blobs.get(outcome.patch.digest).decode() == "--- a/x.py\n+++ b/x.py\n"
+    store.close()
+
+
+def test_a_store_written_in_an_older_format_says_so(tmp_path: Path) -> None:
+    store = Store(tmp_path)
+    store._db.execute("PRAGMA user_version = 2")
+    store._db.commit()
+    store.close()
+
+    with pytest.raises(ValueError, match="format 2"):
+        Store(tmp_path)
 
 
 def test_unknown_run_lists_the_runs_that_exist(tmp_path: Path) -> None:

@@ -56,6 +56,24 @@ def test_a_cassette_round_trips_without_changing_the_run(tmp_path: Path) -> None
     into.close()
 
 
+def test_a_cassette_carries_the_task_it_belongs_to(tmp_path: Path) -> None:
+    source, target = tmp_path / "a", tmp_path / "b"
+    with locus.record("trip", store=source, task_id="toolz-guard-2") as rec:
+        rec.outcome(status="ok", coverage=True, resolve=False)
+        run_id = rec.run_id
+
+    db = Store(source)
+    export_cassette(db, run_id, tmp_path / "cassette")
+    db.close()
+    assert read_header(tmp_path / "cassette").task_id == "toolz-guard-2"
+
+    into = Store(target)
+    assert import_cassette(tmp_path / "cassette", into).task_id == "toolz-guard-2"
+    (outcome,) = [e.event for e in into.events(run_id) if e.event.type == "outcome"]
+    assert (outcome.coverage, outcome.resolve) == (True, False)
+    into.close()
+
+
 def test_an_imported_cassette_replays(tmp_path: Path) -> None:
     source, target = tmp_path / "a", tmp_path / "b"
     run_id = _record(source)
