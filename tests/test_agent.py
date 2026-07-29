@@ -254,3 +254,56 @@ def test_the_agent_is_told_which_files_exist_before_its_first_move(
     # Nothing in the prompt may look like a path the agent could copy instead.
     schema = "".join(m.content for m in first.messages if m.provenance == agent.TOOL_SCHEMA)
     assert ".py" not in schema
+
+
+def test_an_identical_repeated_action_is_refused(tmp_path: Path, repo: Path) -> None:
+    """A small model that learns nothing from an action will take it again forever."""
+    read = block('{"action": "read_file", "path": "pkg/window.py"}')
+    trace, run_id, _ = drive(
+        tmp_path / "store", repo, [read, read, read, block('{"action": "submit"}')]
+    )
+
+    assert trace.repeats == 2
+    assert trace.actions == ["read_file", "read_file", "read_file", "submit"]
+
+    store = Store(tmp_path / "store")
+    reads = [
+        e for e in store.events(run_id)
+        if e.event.type == "tool_call" and e.event.name == "read_file"
+    ]
+    store.close()
+    assert len(reads) == 1, "a refused repeat still reached the tool"
+
+
+def test_the_same_tool_with_different_arguments_is_not_a_repeat(
+    tmp_path: Path, repo: Path
+) -> None:
+    (repo / "pkg" / "other.py").write_text("y = 2\n", encoding="utf-8")
+    trace, _, _ = drive(
+        tmp_path / "store",
+        repo,
+        [
+            block('{"action": "read_file", "path": "pkg/window.py"}'),
+            block('{"action": "read_file", "path": "pkg/other.py"}'),
+            block('{"action": "submit"}'),
+        ],
+    )
+    assert trace.repeats == 0
+
+
+def test_the_remaining_budget_is_shown_near_the_end(tmp_path: Path, repo: Path) -> None:
+    for n in range(8):
+        (repo / "pkg" / f"m{n}.py").write_text(f"x = {n}\n", encoding="utf-8")
+    replies = [
+        block('{"action": "read_file", "path": "pkg/m%d.py"}' % n) for n in range(8)
+    ]
+    _, run_id, _ = drive(tmp_path / "store", repo, replies)
+
+    store = Store(tmp_path / "store")
+    calls = [e.event for e in store.events(run_id) if isinstance(e.event, ModelCallEvent)]
+    store.close()
+
+    text = "".join(m.content for m in calls[-1].messages)
+    assert "step left]" in text or "steps left]" in text
+    early = "".join(m.content for m in calls[1].messages)
+    assert "steps left]" not in early, "the budget notice should not crowd every turn"

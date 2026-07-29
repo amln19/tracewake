@@ -95,8 +95,13 @@ copied character for character from what you read, without the line numbers.
   {"action": "submit"}
       Stop, once the tests pass.
 
-A good run looks like: search for the function the failing test exercises, read \
-the file it is in, change the one wrong line, run the tests, submit."""
+Start by running the tests. The failure output names the line that blew up and \
+shows the values involved, which is far more use than guessing from the report. \
+Then read that file, change the one wrong line, run the tests again, and submit.
+
+Never repeat an action you have already taken — if a search or a read did not \
+tell you what you needed, the answer is a different action, not the same one \
+again."""
 
 ACTION_BLOCK = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 BARE_OBJECT = re.compile(r"(\{[^{}]*\"action\"[^{}]*\})", re.DOTALL)
@@ -111,6 +116,7 @@ class Trace:
     edits: int = 0
     test_runs: int = 0
     parse_failures: int = 0
+    repeats: int = 0
     submitted: bool = False
     stop_reason: str = "step_budget"
     elapsed: float = 0.0
@@ -283,6 +289,7 @@ def run(
         Message(role="user", content=issue, provenance=TASK_ISSUE),
     ]
     trace = Trace()
+    taken: dict[str, int] = {}
     dispatcher = session.tools(tools.dispatch)
     started = session.clock.monotonic()
 
@@ -325,6 +332,27 @@ def run(
             trace.stop_reason = "submitted"
             break
 
+        # A small model that gets nothing useful from an action will take the
+        # identical action again, and again, until the budget is gone. Refusing
+        # the repeat costs nothing and is the difference between a run that
+        # explores and a run that spins.
+        signature = f"{name}:{json.dumps(action, sort_keys=True)}"
+        if signature in taken:
+            trace.repeats += 1
+            messages.append(
+                Message(
+                    role="user",
+                    content=(
+                        f"You already ran that exact action at step {taken[signature]} and it "
+                        f"did not get you what you needed. Take a different action. If you "
+                        f"have not run the tests yet, run them."
+                    ),
+                    provenance=ERROR_FEEDBACK,
+                )
+            )
+            continue
+        taken[signature] = step + 1
+
         request = ToolCallRequest(
             id=f"step{step}-{name}", name=name, args=action, batch_index=0
         )
@@ -334,10 +362,12 @@ def run(
         if name == "run_tests":
             trace.test_runs += 1
 
+        left = max_steps - step - 1
+        budget = f"\n\n[{left} step{'' if left == 1 else 's'} left]" if left <= 4 else ""
         messages.append(
             Message(
                 role="user",
-                content=outcome.content or "(no output)",
+                content=(outcome.content or "(no output)") + budget,
                 tool_call_id=request.id,
                 provenance=PROVENANCE_FOR.get(name, TOOL_OUTPUT),
             )
