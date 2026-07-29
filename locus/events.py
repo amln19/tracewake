@@ -14,7 +14,7 @@ from pydantic import (
     model_validator,
 )
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def canonical_json(value: Any) -> str:
@@ -63,6 +63,10 @@ class EventMeta(BaseModel):
 class Event(BaseModel):
     type: str
     parent_call_id: str | None = None
+    # Set on anything produced while a tool call was on the stack. Parallel
+    # batches complete in nondeterministic order, so an event that only knew its
+    # parent model call could not be placed within the batch deterministically.
+    tool_call_id: str | None = None
     meta: EventMeta
 
     def canonical_bytes(self) -> bytes:
@@ -92,6 +96,12 @@ class DecodeParams(BaseModel):
     max_tokens: int | None = None
     stop: list[str] | None = None
     seed: int | None = None
+
+
+class ModelIdentity(BaseModel):
+    provider: str
+    model_id: str
+    model_version: str | None = None
 
 
 class ToolCallRequest(BaseModel):
@@ -149,7 +159,11 @@ class ModelCallEvent(Event):
     call_id: str
     provider: str
     model_id: str
+    model_version: str | None = None
     params: DecodeParams
+    # Names only. The schemas are large, repeated on every call, and nothing
+    # matches on them.
+    tools: list[str] | None = None
     messages: list[Message]
     messages_hash: str
     response: ModelResponse
@@ -185,9 +199,23 @@ class ToolCallEvent(Event):
 
 class EnvironmentEvent(Event):
     type: Literal["environment"] = "environment"
-    source: Literal["clock", "monotonic", "random", "uuid", "env"]
+    source: Literal["clock", "monotonic", "perf_counter", "random", "uuid", "env"]
     key: str | None = None
     value: CanonicalValue
+
+
+class FsReadEvent(Event):
+    type: Literal["fs_read"] = "fs_read"
+    path: str
+    kind: Literal["content", "listing", "exists"]
+    exists: bool
+    content: BlobRef | None = None
+
+
+class FsWriteEvent(Event):
+    type: Literal["fs_write"] = "fs_write"
+    path: str
+    content: BlobRef
 
 
 class OutcomeEvent(Event):
@@ -198,7 +226,7 @@ class OutcomeEvent(Event):
 
 
 AnyEvent = Annotated[
-    ModelCallEvent | ToolCallEvent | EnvironmentEvent | OutcomeEvent,
+    ModelCallEvent | ToolCallEvent | EnvironmentEvent | FsReadEvent | FsWriteEvent | OutcomeEvent,
     Field(discriminator="type"),
 ]
 
@@ -212,6 +240,15 @@ class RunHeader(BaseModel):
     finished_at: float | None = None
     status: Literal["running", "ok", "error"]
     schema_version: int = SCHEMA_VERSION
+    # Model weights change under a stable model id, so a replay months later may
+    # be replaying against a model that no longer exists. Recording what was
+    # actually called is what lets replay say so instead of silently passing.
+    models: list[ModelIdentity] = Field(default_factory=list)
+    command: list[str] | None = None
+    # Redaction rewrites message content before it is hashed, so a replay that
+    # scrubs differently than the recording did would miss every call. How the
+    # cassette was written governs how it is matched.
+    redacted: bool = True
 
 
 class StoredEvent(BaseModel):
@@ -224,23 +261,32 @@ def canonical_order(events: list[StoredEvent]) -> list[StoredEvent]:
     """Order a run's events deterministically.
 
     Not `seq` order. Sequence numbers are assigned at insert time, so a parallel
-    tool batch numbers its calls by completion, which is
-    nondeterministic. Group children under their parent model call and order
-    them by `batch_index` instead. Events that are neither a model call nor a
-    child of one still fall back to `seq`, which is only deterministic if
-    nothing concurrent produced them.
+    tool batch numbers its calls by completion, which is nondeterministic. Group
+    children under their parent model call and order them by `batch_index`
+    instead. Whatever a tool call produced while it ran sorts under that tool's
+    batch position and ahead of the tool call itself, which is only appended once
+    the tool returns. Events that are neither a model call nor a child of one
+    fall back to `seq`, which is only deterministic if nothing concurrent
+    produced them.
     """
     seq_of_call = {
         e.event.call_id: e.seq for e in events if isinstance(e.event, ModelCallEvent)
     }
+    batch_of_tool = {
+        e.event.tool_call_id: e.event.batch_index
+        for e in events
+        if isinstance(e.event, ToolCallEvent)
+    }
 
-    def key(e: StoredEvent) -> tuple[int, int, int, int]:
+    def key(e: StoredEvent) -> tuple[int, int, int, int, int]:
         ev = e.event
         if isinstance(ev, ModelCallEvent):
-            return (e.seq, 0, 0, 0)
+            return (e.seq, 0, 0, 0, 0)
         group = seq_of_call.get(ev.parent_call_id, e.seq) if ev.parent_call_id else e.seq
-        batch = ev.batch_index if isinstance(ev, ToolCallEvent) else 0
-        return (group, 1, batch, e.seq)
+        if isinstance(ev, ToolCallEvent):
+            return (group, 1, ev.batch_index, 1, e.seq)
+        batch = batch_of_tool.get(ev.tool_call_id, -1) if ev.tool_call_id else -1
+        return (group, 1, batch, 0, e.seq)
 
     return sorted(events, key=key)
 

@@ -12,6 +12,7 @@ from .events import (
     AnyEvent,
     BlobRef,
     ModelCallEvent,
+    ModelIdentity,
     RunHeader,
     StoredEvent,
     ToolCallEvent,
@@ -25,8 +26,13 @@ CREATE TABLE IF NOT EXISTS runs (
     started_at     REAL NOT NULL,
     finished_at    REAL,
     status         TEXT NOT NULL,
-    schema_version INTEGER NOT NULL
+    schema_version INTEGER NOT NULL,
+    models_json    TEXT NOT NULL DEFAULT '[]',
+    command_json   TEXT,
+    redacted       INTEGER NOT NULL DEFAULT 1
 );
+
+CREATE INDEX IF NOT EXISTS runs_by_name ON runs(name, started_at DESC);
 
 CREATE TABLE IF NOT EXISTS events (
     run_id         TEXT NOT NULL REFERENCES runs(run_id),
@@ -71,6 +77,9 @@ class BlobStore:
             )
         return path.read_bytes()
 
+    def has(self, digest: str) -> bool:
+        return self._path(digest).exists()
+
     def _path(self, digest: str) -> Path:
         return self.root / digest[:2] / digest[2:4] / digest
 
@@ -87,8 +96,25 @@ class Store:
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA synchronous=NORMAL")
         self._db.execute("PRAGMA foreign_keys=ON")
-        self._db.executescript(SCHEMA_SQL)
+        self._open_schema()
         self._lock = threading.Lock()
+
+    def _open_schema(self) -> None:
+        existing = self._db.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'runs'"
+        ).fetchone()
+        (version,) = self._db.execute("PRAGMA user_version").fetchone()
+        if existing is None:
+            self._db.executescript(SCHEMA_SQL)
+            self._db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            return
+        if version != SCHEMA_VERSION:
+            raise ValueError(
+                f"the store at {self.root} was written in format {version or 1}, but this "
+                f"locus reads format {SCHEMA_VERSION}. Export anything you need from it "
+                f"with the older version, or point --store at a new directory."
+            )
+        self._db.executescript(SCHEMA_SQL)
 
     def close(self) -> None:
         self._db.close()
@@ -97,7 +123,8 @@ class Store:
         with self._lock, self._db:
             self._db.execute(
                 "INSERT INTO runs (run_id, name, started_at, finished_at, status, "
-                "schema_version) VALUES (?, ?, ?, ?, ?, ?)",
+                "schema_version, models_json, command_json, redacted) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     header.run_id,
                     header.name,
@@ -105,15 +132,51 @@ class Store:
                     header.finished_at,
                     header.status,
                     header.schema_version,
+                    json.dumps([m.model_dump(mode="json") for m in header.models]),
+                    json.dumps(header.command) if header.command is not None else None,
+                    int(header.redacted),
                 ),
             )
 
-    def finish_run(self, run_id: str, status: str, finished_at: float) -> None:
+    def finish_run(
+        self,
+        run_id: str,
+        status: str,
+        finished_at: float,
+        models: list[ModelIdentity] | None = None,
+    ) -> None:
         with self._lock, self._db:
-            self._db.execute(
-                "UPDATE runs SET status = ?, finished_at = ? WHERE run_id = ?",
-                (status, finished_at, run_id),
+            if models is not None:
+                self._db.execute(
+                    "UPDATE runs SET status = ?, finished_at = ?, models_json = ? "
+                    "WHERE run_id = ?",
+                    (
+                        status,
+                        finished_at,
+                        json.dumps([m.model_dump(mode="json") for m in models]),
+                        run_id,
+                    ),
+                )
+            else:
+                self._db.execute(
+                    "UPDATE runs SET status = ?, finished_at = ? WHERE run_id = ?",
+                    (status, finished_at, run_id),
+                )
+
+    def _header(self, row: sqlite3.Row) -> RunHeader:
+        data = dict(row)
+        data["models"] = json.loads(data.pop("models_json"))
+        command = data.pop("command_json")
+        data["command"] = json.loads(command) if command is not None else None
+        data["redacted"] = bool(data["redacted"])
+        header = RunHeader(**data)
+        if header.schema_version != SCHEMA_VERSION:
+            raise ValueError(
+                f"run {header.run_id} was written with schema version "
+                f"{header.schema_version}, but this locus reads version {SCHEMA_VERSION}. "
+                f"Re-record the run."
             )
+        return header
 
     def run(self, run_id: str) -> RunHeader:
         row = self._db.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
@@ -122,13 +185,47 @@ class Store:
             raise KeyError(
                 f"no run {run_id!r} in {self.root}. Known runs: {known or 'none'}."
             )
-        header = RunHeader(**dict(row))
-        if header.schema_version != SCHEMA_VERSION:
-            raise ValueError(
-                f"run {run_id} was written with schema version {header.schema_version}, "
-                f"but this locus reads version {SCHEMA_VERSION}. Re-record the run."
-            )
-        return header
+        return self._header(row)
+
+    def latest_named(self, name: str) -> RunHeader | None:
+        """The cassette a name refers to.
+
+        A name identifies a cassette; re-recording under the same name adds a run
+        rather than replacing one, so the newest wins and the superseded
+        recordings stay addressable by id for comparison later.
+        """
+        row = self._db.execute(
+            "SELECT * FROM runs WHERE name = ? ORDER BY started_at DESC, run_id DESC LIMIT 1",
+            (name,),
+        ).fetchone()
+        return self._header(row) if row is not None else None
+
+    def find(self, run_or_name: str) -> RunHeader | None:
+        row = self._db.execute(
+            "SELECT * FROM runs WHERE run_id = ?", (run_or_name,)
+        ).fetchone()
+        if row is not None:
+            return self._header(row)
+        return self.latest_named(run_or_name)
+
+    def resolve(self, run_or_name: str) -> RunHeader:
+        header = self.find(run_or_name)
+        if header is not None:
+            return header
+        known = [
+            f"{r['run_id'][:8]} {r['name']}"
+            for r in self._db.execute(
+                "SELECT run_id, name FROM runs ORDER BY started_at DESC LIMIT 10"
+            ).fetchall()
+        ]
+        raise KeyError(
+            f"no run or cassette named {run_or_name!r} in {self.root}. "
+            f"Known runs: {'; '.join(known) if known else 'none'}."
+        )
+
+    def runs(self) -> list[RunHeader]:
+        rows = self._db.execute("SELECT * FROM runs ORDER BY started_at DESC").fetchall()
+        return [self._header(r) for r in rows]
 
     def append(self, run_id: str, event: AnyEvent) -> int:
         canonical = event.canonical_bytes().decode("utf-8")
@@ -136,7 +233,6 @@ class Store:
         call_id = event.call_id if isinstance(event, ModelCallEvent) else None
         model_id = event.model_id if isinstance(event, ModelCallEvent) else None
         messages_hash = event.messages_hash if isinstance(event, ModelCallEvent) else None
-        tool_call_id = event.tool_call_id if isinstance(event, ToolCallEvent) else None
         batch_index = event.batch_index if isinstance(event, ToolCallEvent) else None
         with self._lock, self._db:
             (seq,) = self._db.execute(
@@ -152,7 +248,7 @@ class Store:
                     event.type,
                     call_id,
                     event.parent_call_id,
-                    tool_call_id,
+                    event.tool_call_id,
                     batch_index,
                     model_id,
                     messages_hash,
