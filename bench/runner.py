@@ -301,7 +301,8 @@ def _by_operator(rows: list[dict]) -> str:
     """
     groups: dict[str, list[dict]] = {}
     for row in rows:
-        groups.setdefault(row["task_id"].split("-")[1], []).append(row)
+        parts = row["task_id"].split("-")
+        groups.setdefault(parts[1] if len(parts) > 2 else "unknown", []).append(row)
     out = ["coverage by operator:"]
     for operator in sorted(groups):
         got = groups[operator]
