@@ -74,6 +74,28 @@ def test_a_mutation_reapplies_at_the_offsets_it_recorded() -> None:
     assert apply_mutation(source, mutation) == mutated
 
 
+def test_every_mutation_of_every_operator_reapplies_from_its_record() -> None:
+    """A task is rebuilt from offsets at run time, hours after it was found.
+
+    A mutation whose recorded span and recorded text describe different regions
+    injects cleanly and then fails to rebuild, which strands the task.
+    """
+    source = Path("bench/tasks.py").read_text(encoding="utf-8")
+    produced = candidates(Path("tasks.py"), source)
+    by_operator: dict[str, int] = {}
+    for mutation, mutated in produced:
+        assert apply_mutation(source, mutation) == mutated, (
+            f"{mutation.operator} at line {mutation.line} does not rebuild from its record"
+        )
+        by_operator[mutation.operator] = by_operator.get(mutation.operator, 0) + 1
+    assert set(by_operator) == {
+        "operator_swap",
+        "off_by_one",
+        "argument_swap",
+        "deleted_guard",
+    }, f"only exercised {sorted(by_operator)}"
+
+
 def test_reapplying_to_changed_source_refuses_rather_than_corrupting() -> None:
     source = "def f(a, b):\n    return a < b\n"
     (mutation, _), = _mutations(source, "operator_swap")

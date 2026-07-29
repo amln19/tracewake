@@ -144,20 +144,53 @@ def _at(node: ast.AST, source: str) -> str:
     return source[begin:end]
 
 
-def _mutation(
-    operator: Operator, path: Path, node: ast.AST, before: str, after: str, description: str
+def _offsets(source: str) -> list[int]:
+    starts = [0]
+    for line in source.splitlines(keepends=True):
+        starts.append(starts[-1] + len(line))
+    return starts
+
+
+def _between(start: ast.AST, end: ast.AST, source: str) -> str:
+    starts = _offsets(source)
+    begin = starts[start.lineno - 1] + start.col_offset
+    finish = starts[end.end_lineno - 1] + end.end_col_offset
+    return source[begin:finish]
+
+
+def _splice_between(source: str, start: ast.AST, end: ast.AST, replacement: str) -> str:
+    starts = _offsets(source)
+    begin = starts[start.lineno - 1] + start.col_offset
+    finish = starts[end.end_lineno - 1] + end.end_col_offset
+    return source[:begin] + replacement + source[finish:]
+
+
+def _mutation_at(
+    operator: Operator,
+    path: Path,
+    start: ast.AST,
+    end: ast.AST,
+    before: str,
+    after: str,
+    description: str,
 ) -> Mutation:
     return Mutation(
         operator=operator,
         file=path.name,
-        line=node.lineno,
-        column=node.col_offset,
-        end_line=node.end_lineno,
-        end_column=node.end_col_offset,
+        line=start.lineno,
+        column=start.col_offset,
+        end_line=end.end_lineno,
+        end_column=end.end_col_offset,
         before=before,
         after=after,
         description=description,
     )
+
+
+def _mutation(
+    operator: Operator, path: Path, node: ast.AST, before: str, after: str, description: str
+) -> Mutation:
+    return _mutation_at(operator, path, node, node, before, after, description)
 
 
 def candidates(path: Path, source: str) -> list[tuple[Mutation, str]]:
@@ -310,20 +343,26 @@ def _argument_swap(path: Path, source: str, node: ast.AST) -> list[tuple[Mutatio
     a, b = _at(first, source), _at(second, source)
     if a == b or "\n" in a or "\n" in b or len(a) > 40 or len(b) > 40:
         return []
-    # Splice the later argument first so the earlier one's offsets still hold.
-    mutated = _splice(source, second, a)
-    mutated = _splice(mutated, first, b)
+    # The recorded span runs from the first argument to the second, not over the
+    # whole call: a mutation is re-applied later by checking that its `before`
+    # text is still at its offsets, so the two have to describe the same region.
+    span = _between(first, second, source)
+    separator = span[len(a) : len(span) - len(b)]
+    if separator.strip() != ",":
+        return []
+    replacement = b + separator + a
     return [
         (
-            _mutation(
+            _mutation_at(
                 "argument_swap",
                 path,
-                node,
-                f"{a}, {b}",
-                f"{b}, {a}",
+                first,
+                second,
+                span,
+                replacement,
                 "the first two arguments to this call were swapped",
             ),
-            mutated,
+            _splice_between(source, first, second, replacement),
         )
     ]
 
