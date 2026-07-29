@@ -253,3 +253,32 @@ def test_the_histogram_separates_a_plateau_from_two_spikes(tmp_path: Path) -> No
     assert "usable pairs: 4 of 4" in runner.status(plateau)
     assert "usable pairs: 0 of 4" in runner.status(bimodal)
     assert "<- no pair" in runner.status(bimodal)
+
+
+def test_status_reports_how_long_trajectories_are(tmp_path: Path) -> None:
+    """Aligning six-action traces cannot show an affine-gap advantage."""
+    ledger = tmp_path / "runs.jsonl"
+    for index, actions in enumerate((3, 6, 6, 14)):
+        runner.record_attempt(
+            Attempt(
+                task_id="t",
+                run_index=index,
+                run_id=f"r{index}",
+                coverage=True,
+                resolve=False,
+                turns=actions + 4,
+                actions=actions,
+                edits=1,
+                repeats=4,
+                parse_failures=0,
+                stop_reason="stuck" if actions < 10 else "submitted",
+                seconds=100.0,
+                summary="",
+            ),
+            ledger,
+        )
+    summary = runner.status(ledger)
+    assert "median 6" in summary
+    assert "range 3-14" in summary
+    assert "ended stuck          3/4" in summary
+    assert "spinning" in summary

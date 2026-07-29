@@ -280,11 +280,41 @@ def status(ledger: Path = LEDGER) -> str:
         f"mixed on resolve   {len(mixed_resolve)} tasks",
         f"wall clock         {seconds / 3600:.2f} h  ({seconds / len(rows):.0f}s per run)",
     ]
+    lines.append("")
+    lines.append(_trajectories(rows))
     for label in ("coverage", "resolve"):
         lines.append("")
         lines.append(f"successes per task, {label} (only tasks with every run in):")
         lines.append(_histogram(by_task, label))
     return "\n".join(lines)
+
+
+def _trajectories(rows: list[dict]) -> str:
+    """How long the recorded trajectories are, and how much of that was spinning.
+
+    Reported next to the outcome rates because it gates just as much: aligning two
+    six-action traces is a problem an affine-gap algorithm cannot show any
+    advantage on, and a predictor cannot read the first twenty steps of a run that
+    only took six.
+    """
+    actions = sorted(r["actions"] for r in rows)
+    if not actions:
+        return "no trajectories yet"
+    middle = actions[len(actions) // 2]
+    spins = sum(r["repeats"] for r in rows)
+    turns = sum(r["turns"] for r in rows)
+    stuck = sum(1 for r in rows if r["stop_reason"] == "stuck")
+    buckets = Counter(min(r["actions"] // 4 * 4, 20) for r in rows)
+    out = [
+        f"actions per run     median {middle}, range {actions[0]}-{actions[-1]}",
+        f"turns spent spinning {spins}/{turns} ({spins / turns:.0%})",
+        f"ended stuck          {stuck}/{len(rows)}",
+        "action-count spread:",
+    ]
+    for low in sorted(buckets):
+        label = f"{low}-{low + 3}" if low < 20 else "20+"
+        out.append(f"  {label:>6} actions  {'#' * buckets[low]:<20} {buckets[low]}")
+    return "\n".join(out)
 
 
 def _histogram(by_task: dict[str, list[dict]], label: str, runs: int = 5) -> str:
