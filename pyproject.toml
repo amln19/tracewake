@@ -15,6 +15,9 @@ locus = "locus.cli:main"
 locus = "locus.pytest_plugin"
 
 [dependency-groups]
+corpus = [
+    "mlx-lm>=0.28",
+]
 dev = ["pytest>=8.4"]
 
 [build-system]
