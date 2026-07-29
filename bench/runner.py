@@ -131,7 +131,14 @@ def attempt(
             handle = session.model(
                 provider=PROVIDER, model_id=backend.model_id, stream_fn=backend.stream
             )
-            trace = agent.run(session, handle, task.issue, tools, max_steps=max_steps)
+            trace = agent.run(
+                session,
+                handle,
+                task.issue,
+                tools,
+                max_steps=max_steps,
+                temperature=model.temperature,
+            )
             final = repos.run_tests(repo, root, timeout=max(60.0, repo.baseline_seconds * 20))
             coverage, resolve, patch = grade(task, root, final)
             session.outcome(

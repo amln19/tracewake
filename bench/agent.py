@@ -259,7 +259,14 @@ PROVENANCE_FOR = {
 TOOL_NAMES = ["list_files", "read_file", "search", "edit_file", "run_tests", "submit"]
 
 
-def run(session: Session, model: Any, issue: str, tools: Tools, max_steps: int = 18) -> Trace:
+def run(
+    session: Session,
+    model: Any,
+    issue: str,
+    tools: Tools,
+    max_steps: int = 18,
+    temperature: float = 0.7,
+) -> Trace:
     messages = [
         Message(role="system", content=ROLE, provenance=SYSTEM_PROMPT),
         Message(role="system", content=TOOL_HELP, provenance=TOOL_SCHEMA),
@@ -271,7 +278,9 @@ def run(session: Session, model: Any, issue: str, tools: Tools, max_steps: int =
 
     for step in range(max_steps):
         trace.steps = step + 1
-        with model.stream(messages=messages, tools=TOOL_NAMES, temperature=0.7) as stream:
+        with model.stream(
+            messages=messages, tools=TOOL_NAMES, temperature=temperature
+        ) as stream:
             for _ in stream:
                 pass
         response, call_id = stream.response, stream.call_id
