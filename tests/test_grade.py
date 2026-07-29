@@ -153,3 +153,33 @@ def test_status_reports_the_rate_and_which_tasks_came_out_mixed(tmp_path: Path) 
     summary = runner.status(ledger)
     assert "mixed on coverage  1 tasks" in summary
     assert "83.3%" in summary
+
+
+def test_shards_partition_the_work_without_overlap(tmp_path: Path, monkeypatch) -> None:
+    from bench import tasks as tasks_module
+
+    made = [
+        Task(
+            task_id=f"t{n}",
+            repo="thing",
+            operator="off_by_one",
+            ground_truth_file="pkg/window.py",
+            ground_truth_line=2,
+            mutation=Mutation("off_by_one", "window.py", 2, 0, 2, 1, "a", "b", ""),
+            issue="",
+            broken_tests=(),
+            baseline_summary="",
+            broken_summary="",
+        )
+        for n in range(7)
+    ]
+    monkeypatch.setattr(runner, "load", lambda: made)
+
+    planned = [(t, i) for t in made for i in range(3)]
+    shards = 3
+    covered = [
+        {f"{t.task_id}#{i}" for p, (t, i) in enumerate(planned) if p % shards == s}
+        for s in range(shards)
+    ]
+    assert set.union(*covered) == {f"{t.task_id}#{i}" for t, i in planned}
+    assert sum(len(c) for c in covered) == len(planned), "a shard claimed work twice"

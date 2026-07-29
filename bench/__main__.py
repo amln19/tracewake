@@ -24,6 +24,8 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--limit", type=int, default=None, help="Use only the first N tasks.")
     run.add_argument("--max-steps", type=int, default=18)
     run.add_argument("--temperature", type=float, default=0.7)
+    run.add_argument("--shard", type=int, default=0, help="Which shard this worker runs.")
+    run.add_argument("--shards", type=int, default=1, help="How many workers share the job.")
 
     sub.add_parser("status", help="Outcome rates and how many tasks came out mixed.")
     sub.add_parser("verify", help="Check every pinned repo is green on an untouched checkout.")
@@ -51,6 +53,8 @@ def main(argv: list[str] | None = None) -> int:
                 limit=args.limit,
                 max_steps=args.max_steps,
                 temperature=args.temperature,
+                shard=args.shard,
+                shards=args.shards,
             )
         case "status":
             print(runner.status())

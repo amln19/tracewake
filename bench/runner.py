@@ -186,21 +186,29 @@ def batch(
     temperature: float = 0.7,
     store: Path = STORE,
     ledger: Path = LEDGER,
+    shard: int = 0,
+    shards: int = 1,
 ) -> None:
     """Run every task `runs` times, skipping whatever the ledger already holds.
 
     Appending each attempt as it finishes is what makes this restartable: the job
-    takes hours, and losing it to a crash at attempt 280 would mean starting over.
+    runs for hours, and losing it to a crash near the end would mean starting
+    over. `shard` splits the work across concurrent workers; they share the store
+    and the ledger, both of which take concurrent appends, and the ledger check
+    makes an overlap harmless rather than a duplicate.
     """
     tasks = load()[:limit]
     model = LocalModel(model_id=model_id, temperature=temperature)
     model.warm()
     finished = done(ledger)
     planned = [(t, i) for t in tasks for i in range(runs)]
-    remaining = [(t, i) for t, i in planned if f"{t.task_id}#{i}" not in finished]
+    mine = [pair for position, pair in enumerate(planned) if position % shards == shard]
+    remaining = [(t, i) for t, i in mine if f"{t.task_id}#{i}" not in finished]
+    label = f"shard {shard + 1}/{shards} " if shards > 1 else ""
     print(
-        f"{len(tasks)} tasks x {runs} runs = {len(planned)} attempts, "
-        f"{len(finished)} already done, {len(remaining)} to go",
+        f"{label}{len(tasks)} tasks x {runs} runs = {len(planned)} attempts, "
+        f"{len(mine)} in this shard, {len(finished)} already done, "
+        f"{len(remaining)} to go",
         flush=True,
     )
 
@@ -208,7 +216,7 @@ def batch(
         result = attempt(task, index, model, store=store, max_steps=max_steps)
         record_attempt(result, ledger)
         print(
-            f"[{position}/{len(remaining)}] {result.key:<34} "
+            f"[{label}{position}/{len(remaining)}] {result.key:<34} "
             f"coverage={int(result.coverage)} resolve={int(result.resolve)} "
             f"steps={result.steps:<3} edits={result.edits} {result.seconds}s",
             flush=True,
