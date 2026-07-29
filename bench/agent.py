@@ -481,6 +481,10 @@ def run(
         outcome = dispatcher.call(call_id, request)
         if name == "edit_file" and outcome.status == "ok":
             trace.edits += 1
+            # An edit changes what every earlier read and test run would return,
+            # so none of them are repeats any more. Without this the agent is
+            # refused permission to check its own work and spirals.
+            taken = {signature: step + 1}
         if name == "run_tests":
             trace.test_runs += 1
 

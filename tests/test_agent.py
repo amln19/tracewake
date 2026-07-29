@@ -514,3 +514,25 @@ def test_an_unambiguous_edit_still_needs_no_anchor(tmp_path: Path, repo: Path) -
         ],
     )
     assert trace.edits == 1
+
+
+def test_an_edit_makes_earlier_reads_and_tests_repeatable_again(
+    tmp_path: Path, repo: Path
+) -> None:
+    """An edit changes what a read returns, so checking your work is not a repeat."""
+    read = block('{"action": "read_file", "path": "pkg/window.py"}')
+    test = block('{"action": "run_tests"}')
+    edit = block(
+        '{"action": "edit_file", "path": "pkg/window.py", "old": "i + n + 1", "new": "i + n"}'
+    )
+    trace, run_id, test_calls = drive(
+        tmp_path / "store",
+        repo,
+        [read, test, edit, read, test, block('{"action": "submit"}')],
+    )
+
+    assert trace.repeats == 0, "the agent was refused permission to check its own edit"
+    # Five tool actions; submit ends the run rather than spending budget.
+    assert trace.actions_taken == 5
+    assert trace.actions[-1] == "submit"
+    assert test_calls == 2, "the second test run never reached the runner"
