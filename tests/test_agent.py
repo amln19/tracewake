@@ -374,3 +374,70 @@ def test_turns_are_bounded_even_when_nothing_ever_parses(
     trace, _, _ = drive(tmp_path / "store", repo, ["no action here"] * 30, max_steps=12)
     assert trace.stop_reason == "stuck"
     assert trace.turns <= agent.MAX_CONSECUTIVE_STALLS + 1
+
+
+def test_a_large_file_is_windowed_rather_than_gutted(tmp_path: Path, repo: Path) -> None:
+    """Clipping the middle hands the agent a file that provably lacks its bug."""
+    lines = [f"line_{n} = {n}" for n in range(1, 1201)]
+    lines[599] = "BUG_IS_HERE = True"
+    (repo / "pkg" / "big.py").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    trace, run_id, _ = drive(
+        tmp_path / "store",
+        repo,
+        [
+            block('{"action": "read_file", "path": "pkg/big.py", "around": 600}'),
+            block('{"action": "submit"}'),
+        ],
+    )
+
+    store = Store(tmp_path / "store")
+    read = next(
+        e.event for e in store.events(run_id)
+        if e.event.type == "tool_call" and e.event.name == "read_file"
+    )
+    body = store.blobs.get(read.result.digest).decode()
+    store.close()
+
+    assert "BUG_IS_HERE" in body, "the agent could not see the line it was pointed at"
+    assert "1200 lines" in body
+    assert "line_1 = 1\n" not in body, "a window should not also carry the whole file"
+
+
+def test_a_whole_file_read_of_a_big_file_says_how_to_move_the_window(
+    tmp_path: Path, repo: Path
+) -> None:
+    (repo / "pkg" / "big.py").write_text(
+        "\n".join(f"x{n} = {n}" for n in range(4000)), encoding="utf-8"
+    )
+    _, run_id, _ = drive(
+        tmp_path / "store",
+        repo,
+        [block('{"action": "read_file", "path": "pkg/big.py"}'), block('{"action": "submit"}')],
+    )
+    store = Store(tmp_path / "store")
+    read = next(
+        e.event for e in store.events(run_id)
+        if e.event.type == "tool_call" and e.event.name == "read_file"
+    )
+    body = store.blobs.get(read.result.digest).decode()
+    store.close()
+    assert '"around"' in body, "a truncated read must tell the agent how to see the rest"
+
+
+def test_search_shows_the_code_around_a_hit(tmp_path: Path, repo: Path) -> None:
+    _, run_id, _ = drive(
+        tmp_path / "store",
+        repo,
+        [block('{"action": "search", "query": "slice_window"}'), block('{"action": "submit"}')],
+    )
+    store = Store(tmp_path / "store")
+    hit = next(
+        e.event for e in store.events(run_id)
+        if e.event.type == "tool_call" and e.event.name == "search"
+    )
+    body = store.blobs.get(hit.result.digest).decode()
+    store.close()
+    # The line that follows the definition is the one carrying the bug.
+    assert "return xs[i : i + n + 1]" in body
+    assert "pkg/window.py:1" in body

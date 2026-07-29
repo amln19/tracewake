@@ -75,8 +75,10 @@ that appear in this help are shapes, not real files.
 
 Available actions:
 
-  {"action": "read_file", "path": "PATH"}
-      Read a file. Output is line-numbered; the numbers are not part of the file.
+  {"action": "read_file", "path": "PATH", "around": N}
+      Read a file, line-numbered; the numbers are not part of the file. "around"
+      is optional and takes a line number: a large file is shown as a window
+      centred on that line, so use it to jump to the line a test failure named.
 
   {"action": "search", "query": "TEXT"}
       Show every source line containing TEXT. Search for the name of the \
@@ -95,9 +97,10 @@ copied character for character from what you read, without the line numbers.
   {"action": "submit"}
       Stop, once the tests pass.
 
-Start by running the tests. The failure output names the line that blew up and \
-shows the values involved, which is far more use than guessing from the report. \
-Then read that file, change the one wrong line, run the tests again, and submit.
+Start by running the tests. The failure output names the file and line that blew \
+up and shows the values involved, which is far more use than guessing from the \
+report. Then read that file around that line, change the one wrong line, run the \
+tests again, and submit.
 
 Never repeat an action you have already taken — if a search or a read did not \
 tell you what you needed, the answer is a different action, not the same one \
@@ -108,6 +111,10 @@ BARE_OBJECT = re.compile(r"(\{[^{}]*\"action\"[^{}]*\})", re.DOTALL)
 
 MAX_FILE_CHARS = 12_000
 MAX_TOOL_CHARS = 6_000
+# Lines shown per windowed read, and lines of context around a search hit. Both
+# exist so the agent can locate code without pulling a whole module into context.
+WINDOW_LINES = 120
+SEARCH_CONTEXT = 2
 
 
 MAX_CONSECUTIVE_STALLS = 3
@@ -129,6 +136,10 @@ class Trace:
     elapsed: float = 0.0
     usage: Usage = field(default_factory=Usage)
     actions: list[str] = field(default_factory=list)
+
+
+def _number(lines: list[str], first: int) -> str:
+    return "\n".join(f"{n:>5}  {line}" for n, line in enumerate(lines, start=first))
 
 
 def _clip(text: str, limit: int) -> str:
@@ -158,7 +169,11 @@ class Tools:
             case "list_files":
                 return ToolOutcome(content="\n".join(self.source_files()))
             case "read_file":
-                return self._read(str(args.get("path", "")))
+                around = args.get("around")
+                return self._read(
+                    str(args.get("path", "")),
+                    int(around) if isinstance(around, int | float | str) and str(around).strip().lstrip("-").isdigit() else None,
+                )
             case "search":
                 return self._search(str(args.get("query", "")))
             case "edit_file":
@@ -179,7 +194,16 @@ class Tools:
                     error="unknown action",
                 )
 
-    def _read(self, path: str) -> ToolOutcome:
+    def _read(self, path: str, around: int | None = None) -> ToolOutcome:
+        """Read a file, or a window of it.
+
+        A whole-file read of a large module cannot be shown in full, and clipping
+        the middle out of it is worse than useless: the line that needs fixing is
+        usually in the middle, so the agent is handed a file that provably does
+        not contain its bug and re-reads it looking for what was never there.
+        Large files are therefore windowed, and the agent is told how to move the
+        window rather than left to guess.
+        """
         if not path:
             return ToolOutcome(content="read_file needs a path", status="error", error="no path")
         try:
@@ -188,26 +212,53 @@ class Tools:
             return ToolOutcome(
                 content=f"cannot read {path}: {exc}", status="error", error="unreadable"
             )
-        numbered = "\n".join(
-            f"{n:>5}  {line}" for n, line in enumerate(text.splitlines(), start=1)
+
+        lines = text.splitlines()
+        if around is None and len(text) <= MAX_FILE_CHARS:
+            return ToolOutcome(content=_number(lines, 1))
+
+        centre = around if around is not None else WINDOW_LINES // 2
+        first = max(1, centre - WINDOW_LINES // 2)
+        last = min(len(lines), first + WINDOW_LINES - 1)
+        first = max(1, last - WINDOW_LINES + 1)
+        header = (
+            f"{path} has {len(lines)} lines; showing {first}-{last}. "
+            f'Use {{"action": "read_file", "path": "{path}", "around": N}} to see '
+            f"another part, where N is a line number.\n\n"
         )
-        return ToolOutcome(content=_clip(numbered, MAX_FILE_CHARS))
+        return ToolOutcome(content=header + _number(lines[first - 1 : last], first))
 
     def _search(self, query: str) -> ToolOutcome:
+        """Every source line containing `query`, with the lines around it.
+
+        Context is included because a bare file:line list sends the agent off to
+        read the whole module, which is the expensive move this tool exists to
+        avoid.
+        """
         if not query:
             return ToolOutcome(content="search needs a query", status="error", error="no query")
-        hits: list[str] = []
+        blocks: list[str] = []
+        found = 0
         for relative in self.source_files():
             try:
-                text = self._fs.read_text(relative)
+                lines = self._fs.read_text(relative).splitlines()
             except (FileNotFoundError, ValueError):
                 continue
-            for number, line in enumerate(text.splitlines(), start=1):
-                if query in line:
-                    hits.append(f"{relative}:{number}: {line.strip()}")
-                    if len(hits) >= 40:
-                        return ToolOutcome(content="\n".join(hits) + "\n... more matches")
-        return ToolOutcome(content="\n".join(hits) if hits else f"no matches for {query!r}")
+            for number, line in enumerate(lines, start=1):
+                if query not in line:
+                    continue
+                found += 1
+                if found > 20:
+                    blocks.append("... more matches; narrow the query")
+                    return ToolOutcome(content="\n\n".join(blocks))
+                first = max(1, number - SEARCH_CONTEXT)
+                last = min(len(lines), number + SEARCH_CONTEXT)
+                blocks.append(
+                    f"{relative}:{number}\n" + _number(lines[first - 1 : last], first)
+                )
+        return ToolOutcome(
+            content="\n\n".join(blocks) if blocks else f"no matches for {query!r}"
+        )
 
     def _edit(self, path: str, old: str, new: str) -> ToolOutcome:
         if not path or not old:
