@@ -1,0 +1,85 @@
+from __future__ import annotations
+
+import time
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+import pytest
+
+from locus import EnvironmentEvent, EventMeta, RunHeader, Store
+
+
+def _run(store: Store, run_id: str = "r1") -> str:
+    store.create_run(
+        RunHeader(run_id=run_id, name="t", started_at=time.time(), status="running")
+    )
+    return run_id
+
+
+def test_database_is_in_wal_mode(tmp_path: Path) -> None:
+    store = Store(tmp_path)
+    (mode,) = store._db.execute("PRAGMA journal_mode").fetchone()
+    assert mode == "wal"
+    store.close()
+
+
+def test_blobs_are_content_addressed_and_deduplicated(tmp_path: Path) -> None:
+    store = Store(tmp_path)
+    a = store.blobs.put(b"same contents")
+    b = store.blobs.put(b"same contents")
+    c = store.blobs.put(b"different")
+
+    assert a == b
+    assert a.digest != c.digest
+    assert a.size == len(b"same contents")
+    assert store.blobs.get(a.digest) == b"same contents"
+    assert len(list((tmp_path / "blobs").rglob("*"))) == len({a.digest, c.digest}) * 3
+    store.close()
+
+
+def test_missing_blob_says_what_to_do(tmp_path: Path) -> None:
+    store = Store(tmp_path)
+    with pytest.raises(KeyError, match="copied together"):
+        store.blobs.get("0" * 64)
+    store.close()
+
+
+def test_sequence_numbers_are_dense_under_concurrent_appends(tmp_path: Path) -> None:
+    store = Store(tmp_path)
+    run_id = _run(store)
+
+    def append(i: int) -> int:
+        return store.append(
+            run_id,
+            EnvironmentEvent(source="clock", value=float(i), meta=EventMeta(recorded_at=0.0)),
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        seqs = sorted(pool.map(append, range(200)))
+
+    assert seqs == list(range(200))
+    assert [e.seq for e in store.events(run_id)] == list(range(200))
+    store.close()
+
+
+def test_events_round_trip_through_canonical_and_meta_columns(tmp_path: Path) -> None:
+    store = Store(tmp_path)
+    run_id = _run(store)
+    original = EnvironmentEvent(
+        source="clock", value=1753718400.123456, meta=EventMeta(recorded_at=1.5, duration_ms=2.5)
+    )
+    store.append(run_id, original)
+
+    (stored,) = store.events(run_id)
+    assert stored.event == original
+    assert stored.event.value == 1753718400.123456
+    assert b"recorded_at" not in stored.event.canonical_bytes()
+    store.close()
+
+
+def test_unknown_run_lists_the_runs_that_exist(tmp_path: Path) -> None:
+    store = Store(tmp_path)
+    _run(store, "known")
+    with pytest.raises(KeyError, match="known"):
+        store.run("unknown")
+    store.close()
