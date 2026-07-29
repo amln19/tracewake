@@ -4,8 +4,9 @@ Find where two coding agent runs diverged. Record an agent run once, replay it
 offline for free, then diff a good run against a bad one to get the exact step
 where they stopped agreeing.
 
-Right now locus does the first two. Record and replay work; trajectory alignment —
-the part that answers "where did these two runs stop agreeing" — is next.
+Right now locus does the first two. Record and replay work, and there is a task
+suite that generates runs to work on; trajectory alignment — the part that answers
+"where did these two runs stop agreeing" — is next.
 
 ```python
 import locus
@@ -141,6 +142,54 @@ Replay requires `PYTHONHASHSEED=0`: set iteration order otherwise varies between
 runs and breaks determinism in agent code you don't control. The CLI sets it for
 you. Everywhere else locus raises and tells you the command to run, since the
 interpreter fixes the flag at startup and nothing can change it afterward.
+
+## The task suite
+
+`bench/` generates the runs the analysis is built on. It clones sixteen small,
+pinned, permissively licensed Python libraries, injects a single mechanical bug
+into one of them — a swapped comparison, a shifted bound, two arguments
+exchanged, a deleted guard clause — and asks a minimal ReAct agent to fix it
+from a generated bug report.
+
+```
+python -m bench setup          # clone the pinned repos, build their test env
+python -m bench build-tasks    # inject bugs, validate them, write the manifest
+python -m bench run            # record the agent against every task
+python -m bench status         # outcome rates and how many tasks came out mixed
+```
+
+The agent runs against a local model in process, so a full corpus costs nothing
+and touches no network. It reaches the model, its tools, the filesystem and the
+clock only through a recording session, which is what makes every run replayable
+afterwards.
+
+Two things make the suite worth more than a pile of transcripts.
+
+**Injected bugs come with ground truth.** A mutation only becomes a task if the
+library's test suite is green before it and red after it, and if it breaks a
+bounded number of tests — a mutation nothing notices is not a bug, and one that
+breaks everything is a broken checkout. Because the bug was injected, the file
+and line the fix belongs in are known facts rather than guesses, which is the
+partial ground truth divergence localization needs.
+
+**Bug reports never name the location.** Issue text is generated from the
+observed test failures and describes only the symptom. About a third of the
+issues in the public SWE-bench set contain their own solution, which makes any
+later claim about which context actually mattered unfalsifiable; the agent has to
+find the file by looking.
+
+Outcomes are recorded twice. *Coverage* asks whether the run left a well-formed,
+applicable patch — source that still parses, differs from the broken state, and
+is not a test file. *Resolve* asks whether that patch made the suite green.
+Coverage is the primary label because a small model produces patches far more
+often than it produces fixes, so resolve alone gives almost no positive examples
+to learn from.
+
+Every context block the agent sends is labelled with where it came from — system
+prompt, tool schema, the bug report, a file it read, test output, the repository
+map, feedback on its own malformed output. The labels are free to capture while
+the run happens and impossible to reconstruct afterwards, once a file's contents
+and a tool's output are both just text in a transcript.
 
 ## Prior art
 
