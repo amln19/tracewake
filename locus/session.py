@@ -554,6 +554,16 @@ class Session:
         return self._store.blobs.put(self._redactor.blob(data))
 
     def _append(self, event: AnyEvent) -> int | None:
+        # A replay reads its own run, so an append during one would rewrite the
+        # recording being measured against. Every path that reaches here is meant
+        # to have checked already; this is the backstop, because the failure is
+        # silent corruption of a cassette rather than a visible error.
+        if not self.can_record:
+            raise ReplayMiss(
+                f"a {event.type!r} event was recorded while replaying run {self.run_id}, "
+                f"which is read-only. Record mode {self.mode!r} cannot write. Use "
+                f"'new_episodes' to capture what a divergent replay does."
+            )
         redacted = self._redactor.event(event)
         if redacted is None:
             return None

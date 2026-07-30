@@ -82,6 +82,31 @@ def test_a_replayed_run_is_unchanged_by_the_replay(recorded):
     assert run_digest(after) == run_digest(before)
 
 
+def test_the_append_boundary_refuses_a_write_during_replay(recorded):
+    """The backstop, reached only if some path forgets to check for itself.
+
+    Every caller is meant to raise before appending. This is what keeps a future
+    one from corrupting a cassette silently instead of failing.
+    """
+    store, _ = recorded
+    db = Store(store)
+    run_id = db.find("probe").run_id
+    before = run_digest(db.events(run_id))
+    db.close()
+
+    with locus.replay("probe", store=store) as session:
+        with pytest.raises(locus.ReplayMiss, match="read-only"):
+            session._append(
+                locus.EnvironmentEvent(
+                    source="clock", value=1.0, meta=locus.EventMeta(recorded_at=0.0)
+                )
+            )
+
+    db = Store(store)
+    assert run_digest(db.events(run_id)) == before
+    db.close()
+
+
 def test_a_divergent_replay_can_still_be_captured_as_a_new_episode(recorded):
     store, work = recorded
     with locus.session("probe", store=store, mode="new_episodes", block_network=False) as session:
