@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import backend, fidelity, repos, runner, tasks
+from . import backend, fidelity, label, repos, runner, tasks
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -36,6 +36,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("verify", help="Check every pinned repo is green on an untouched checkout.")
     sub.add_parser(
         "divergence", help="How far two runs of the same task agree before they part."
+    )
+    sub.add_parser(
+        "export-labels",
+        help="Write blinded divergence-labeling packets for the evaluation set.",
     )
 
     args = parser.parse_args(argv)
@@ -70,6 +74,10 @@ def main(argv: list[str] | None = None) -> int:
             print(runner.store_summary())
         case "divergence":
             print(fidelity.report())
+        case "export-labels":
+            dest = label.export_packets()
+            n = len(list((dest / "packets").glob("*.md")))
+            print(f"{n} blinded packets written under {dest}")
     return 0
 
 
