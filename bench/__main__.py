@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import backend, repos, runner, tasks
+from . import backend, fidelity, repos, runner, tasks
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -34,6 +34,9 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("status", help="Outcome rates and how many tasks came out mixed.")
     sub.add_parser("verify", help="Check every pinned repo is green on an untouched checkout.")
+    sub.add_parser(
+        "divergence", help="How far two runs of the same task agree before they part."
+    )
 
     args = parser.parse_args(argv)
 
@@ -65,6 +68,8 @@ def main(argv: list[str] | None = None) -> int:
         case "status":
             print(runner.status())
             print(runner.store_summary())
+        case "divergence":
+            print(fidelity.report())
     return 0
 
 
