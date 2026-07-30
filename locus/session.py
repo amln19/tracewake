@@ -508,19 +508,26 @@ class Session:
         if not self.can_replay:
             return None
         entries = self._fs.get((kind, path))
-        if not entries:
-            return None
         index = self._fs_cursor.get((kind, path), 0)
-        if index >= len(entries):
-            if not self.can_record:
+        if entries and index < len(entries):
+            self._fs_cursor[(kind, path)] = index + 1
+            return entries[index]
+        # Both ways of running out are divergence, and a replay that cannot record
+        # has to say so rather than fall through: falling through would read the
+        # live filesystem and hand the agent content the cassette never held.
+        if not self.can_record:
+            if not entries:
                 self._miss(
-                    f"the replayed agent accessed {path} more times than the recorded run "
-                    f"did ({len(entries)} recorded {kind} accesses). The replayed agent "
-                    f"diverged."
+                    f"the replayed agent accessed {path!r} ({kind}), which the recorded run "
+                    f"never accessed. The replayed agent diverged. Record with mode "
+                    f"'new_episodes' to capture where it goes instead."
                 )
-            return None
-        self._fs_cursor[(kind, path)] = index + 1
-        return entries[index]
+            self._miss(
+                f"the replayed agent accessed {path!r} more times than the recorded run "
+                f"did ({len(entries)} recorded {kind} accesses). The replayed agent "
+                f"diverged."
+            )
+        return None
 
     def _fs_key(self, path: str | Path) -> str:
         return self._redactor.text(str(path))
