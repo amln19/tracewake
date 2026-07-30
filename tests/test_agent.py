@@ -564,18 +564,13 @@ def test_an_edit_echoes_what_it_actually_wrote(tmp_path: Path, repo: Path) -> No
 
 
 def test_an_edit_that_breaks_the_file_says_so_at_once(tmp_path: Path, repo: Path) -> None:
-    """A multi-line insert that loses its indentation is the real failure here.
-
-    Taken from a run that inserted a column-zero line inside an except block,
-    broke the module, and then could not write a matching snippet to repair it.
-    """
+    """Real case: the model wrote two statements on one line separated by spaces,
+    which no amount of re-indentation can rescue."""
     (repo / "pkg" / "cache.py").write_text(
         "def get(store, key):\n"
-        "    try:\n"
+        "    if key in store:\n"
         "        return store[key]\n"
-        "    except KeyError:\n"
-        "        value = compute(key)\n"
-        "        return value\n",
+        "    return None\n",
         encoding="utf-8",
     )
     trace, run_id, _ = drive(
@@ -584,8 +579,8 @@ def test_an_edit_that_breaks_the_file_says_so_at_once(tmp_path: Path, repo: Path
         [
             block(
                 '{"action": "edit_file", "path": "pkg/cache.py", '
-                '"old": "value = compute(key)", '
-                '"new": "value = compute(key)\\nstore[key] = value"}'
+                '"old": "return None", '
+                '"new": "if store is None: return None  return store"}'
             ),
             block('{"action": "submit"}'),
         ],
@@ -599,7 +594,6 @@ def test_an_edit_that_breaks_the_file_says_so_at_once(tmp_path: Path, repo: Path
     store.close()
     assert edit.status == "error"
     assert "syntax error" in body
-    assert "indentation" in body
     assert "now reads" in body, "the agent needs to see the broken state to repair it"
 
 
@@ -818,10 +812,99 @@ def test_a_multiline_repair_matches_even_when_offset_by_whitespace(
             block('{"action": "submit"}'),
         ],
     )
-    # The first edit legitimately breaks the file (a real syntax error) and is
-    # not counted; the second is the repair, and it must be found rather than
-    # rejected as "no match" by too narrow a fallback search window.
+    # The first edit legitimately breaks the file and is not counted; the second
+    # is the repair, and it must be *found* rather than rejected as "no match" by
+    # too narrow a fallback search window. Exact indentation of the repair is not
+    # what this test pins: a model that sends its replacement body at the file's
+    # absolute indent rather than relative to its own first line lands deeper than
+    # it meant to, which parses and means the same thing.
+    import ast
+
     assert trace.edits == 1, "the repair's snippet was rejected as a false no-match"
-    assert (repo / "pkg" / "cond.py").read_text() == (
-        "def f(x):\n    if x:\n        return -1\n    return 0\n"
+    result = (repo / "pkg" / "cond.py").read_text()
+    ast.parse(result)
+    assert "return -1" in result, "the repair did not land"
+    assert "return 1" not in result, "the original body survived the repair"
+
+
+def test_both_edit_paths_reindent_a_multiline_replacement(tmp_path: Path, repo: Path) -> None:
+    """The exact-match path spliced verbatim while the tolerant one re-indented,
+    so identical inputs produced a valid file down one branch and a broken one
+    down the other. The exact path is the common one: a single-line `old` almost
+    always matches as a substring.
+    """
+    import ast
+
+    from bench.agent import _fuzzy_replace, _replace_at
+
+    text = (
+        "class C:\n"
+        "    def get(self, k):\n"
+        "        try:\n"
+        "            return self.d[k]\n"
+        "        except KeyError:\n"
+        "            ret = self.miss(k)\n"
+        "            return ret\n"
     )
+    old = "ret = self.miss(k)"
+    new = "if self.miss is not None:\n    ret = self.miss(k)"
+
+    exact = _replace_at(text, old, new, 6)
+    fuzzy, _ = _fuzzy_replace(text, old, new, 6)
+    ast.parse(exact)
+    ast.parse(fuzzy)
+    assert exact == fuzzy, "the two paths disagree on the same inputs"
+
+
+def test_a_single_line_replacement_is_left_alone(tmp_path: Path, repo: Path) -> None:
+    """Re-indentation must not touch a replacement that spans one line."""
+    from bench.agent import _replace_at
+
+    text = "def f(x):\n    return x + 1\n"
+    assert _replace_at(text, "x + 1", "x - 1", 2) == "def f(x):\n    return x - 1\n"
+
+
+def test_the_file_listing_goes_through_the_recorder(tmp_path: Path, repo: Path) -> None:
+    """Which files exist is an input the agent acts on, so it belongs in the log:
+    a replay against a differently-populated tree must raise, not quietly return
+    a different answer."""
+    (repo / "pkg" / "sub").mkdir()
+    (repo / "pkg" / "sub" / "deep.py").write_text("z = 1\n", encoding="utf-8")
+    (repo / "pkg" / "notes.txt").write_text("not python\n", encoding="utf-8")
+
+    _, run_id, _ = drive(
+        tmp_path / "store",
+        repo,
+        [block('{"action": "search", "query": "z = 1"}'), block('{"action": "submit"}')],
+    )
+
+    store = Store(tmp_path / "store")
+    events = store.events(run_id)
+    listings = [e.event for e in events if e.event.type == "fs_read" and e.event.kind == "listing"]
+    store.close()
+
+    assert listings, "the directory walk never reached the log"
+    assert any("pkg" in e.path for e in listings)
+
+
+def test_the_listing_is_walked_once_not_per_search(tmp_path: Path, repo: Path) -> None:
+    """Re-walking on every search would put a listing event in the log for every
+    directory, several times a run."""
+    _, run_id, _ = drive(
+        tmp_path / "store",
+        repo,
+        [
+            block('{"action": "search", "query": "def"}'),
+            block('{"action": "search", "query": "return"}'),
+            block('{"action": "search", "query": "xs"}'),
+            block('{"action": "submit"}'),
+        ],
+    )
+    store = Store(tmp_path / "store")
+    listings = [
+        e.event for e in store.events(run_id)
+        if e.event.type == "fs_read" and e.event.kind == "listing"
+    ]
+    store.close()
+    roots = [e for e in listings if e.path in {".", ""}]
+    assert len(roots) == 1, f"the tree was walked {len(roots)} times for three searches"

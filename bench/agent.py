@@ -165,12 +165,42 @@ def _line_number(value: Any) -> int | None:
     return None
 
 
+def _reindent(new: str, indent: str, lead: bool = True) -> str:
+    """Put `new` at `indent`, keeping the relative shape of its own lines.
+
+    A model writes a replacement block the way it reads — the first line flush
+    left and the body relative to it — because it copied the original out of a
+    line-numbered view that stripped the file's own indentation. Splicing that in
+    verbatim drops a dedented line into an indented block and breaks the file.
+
+    `lead` says whether the first line needs the prefix. Replacing whole lines it
+    does; splicing into the middle of a line it does not, because the file's own
+    indentation is already to the left of the splice point.
+    """
+    if "\n" not in new:
+        return new
+    lines = new.splitlines()
+    body = [x for x in lines if x.strip()]
+    common = min((len(x) - len(x.lstrip()) for x in body), default=0)
+    out = [indent + x[common:] if x.strip() else "" for x in lines]
+    if not lead:
+        out[0] = lines[0][common:]
+    return "\n".join(out)
+
+
 def _replace_at(text: str, old: str, new: str, line: int) -> str | None:
     """Replace the occurrence of `old` that starts on `line`, leaving others alone."""
     lines = text.splitlines(keepends=True)
     offset = sum(len(x) for x in lines[: line - 1])
+    anchor = lines[line - 1] if line <= len(lines) else ""
+    indent = anchor[: len(anchor) - len(anchor.lstrip())]
+    # Re-indented on both paths. `_fuzzy_replace` already did this; doing it here
+    # too is what keeps an exact match and a whitespace-tolerant one from
+    # producing different files from the same inputs — and the exact path is the
+    # common one, since a single-line `old` almost always matches as a substring.
+    shaped = _reindent(new, indent, lead=False)
     if text[offset : offset + len(old)] == old:
-        return text[:offset] + new + text[offset + len(old) :]
+        return text[:offset] + shaped + text[offset + len(old) :]
     # The model copied from a line-numbered view, so leading whitespace is the
     # usual mismatch; try the snippet anchored near the named line. The window
     # has to cover every line `old` spans, not just the first one — sizing it to
@@ -181,7 +211,7 @@ def _replace_at(text: str, old: str, new: str, line: int) -> str | None:
     found = text.find(old, offset, max(end, offset + len(old)))
     if found == -1:
         return None
-    return text[:found] + new + text[found + len(old) :]
+    return text[:found] + shaped + text[found + len(old) :]
 
 
 def _context(history: list[Message], observations: list[tuple[str, int]]) -> list[Message]:
@@ -227,10 +257,7 @@ def _fuzzy_replace(
     start = found[0]
     anchor = lines[start - 1]
     indent = anchor[: len(anchor) - len(anchor.lstrip())]
-    replacement = new.splitlines() or [""]
-    body = [line for line in replacement if line.strip()]
-    common = min((len(x) - len(x.lstrip()) for x in body), default=0)
-    rebuilt = [indent + line[common:] if line.strip() else "" for line in replacement]
+    rebuilt = _reindent(new, indent).splitlines() or [""]
     out = lines[: start - 1] + rebuilt + lines[start - 1 + len(wanted) :]
     return ("\n".join(out) + ("\n" if text.endswith("\n") else ""), found)
 
@@ -256,6 +283,7 @@ class Tools:
         self._root = root
         self._source_dirs = source_dirs
         self._run_tests = run_tests
+        self._files: list[str] | None = None
         self.last_tests_green = False
 
     def source_files(self) -> list[str]:
@@ -270,12 +298,39 @@ class Tools:
         `read_file` can already open a test file to see why it fails, so `search`
         seeing the same files removes an inconsistency rather than widening what
         the agent may act on — editing a test file is still refused separately.
+
+        Walked through `session.fs` rather than `rglob` so the listing reaches the
+        log: which files exist is an input the agent acts on, and a replay against
+        a differently-populated tree would otherwise return a different answer
+        silently instead of raising. Walked once and cached, because no tool
+        creates or removes a file and re-walking on every search would put a
+        listing event in the log for every directory, several times a run.
         """
-        return sorted(
-            str(p.relative_to(self._root))
-            for p in self._root.rglob("*.py")
-            if "__pycache__" not in p.parts
-        )
+        if self._files is None:
+            self._files = self._walk()
+        return self._files
+
+    def _walk(self) -> list[str]:
+        found: list[str] = []
+        pending = [""]
+        while pending:
+            current = pending.pop()
+            try:
+                names = self._fs.listdir(current or ".")
+            except (FileNotFoundError, ValueError):
+                continue
+            for name in names:
+                if name in {"__pycache__", ".git"}:
+                    continue
+                relative = f"{current}/{name}" if current else name
+                if name.endswith(".py"):
+                    found.append(relative)
+                elif "." not in name:
+                    # No suffix, so a directory is worth trying. Anything else is
+                    # a file, and probing it would put a failed listing in the log
+                    # for every README and LICENSE in the tree.
+                    pending.append(relative)
+        return sorted(found)
 
     def dispatch(self, name: str, args: dict[str, Any]) -> ToolOutcome:
         match name:
