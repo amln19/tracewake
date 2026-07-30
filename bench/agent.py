@@ -172,8 +172,12 @@ def _replace_at(text: str, old: str, new: str, line: int) -> str | None:
     if text[offset : offset + len(old)] == old:
         return text[:offset] + new + text[offset + len(old) :]
     # The model copied from a line-numbered view, so leading whitespace is the
-    # usual mismatch; try the snippet anchored anywhere on the named line.
-    end = offset + len(lines[line - 1]) if line <= len(lines) else len(text)
+    # usual mismatch; try the snippet anchored near the named line. The window
+    # has to cover every line `old` spans, not just the first one — sizing it to
+    # one line left the tail of a multi-line match outside the search window
+    # whenever the match itself started a few characters short of `offset`.
+    span = old.count("\n") + 2
+    end = sum(len(x) for x in lines[: min(len(lines), line - 1 + span)])
     found = text.find(old, offset, max(end, offset + len(old)))
     if found == -1:
         return None

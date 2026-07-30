@@ -790,3 +790,38 @@ def test_retrying_a_stale_snippet_shows_the_current_file_not_just_an_error(
     store.close()
     assert "currently reads" in body
     assert "def slice_window" in body
+
+
+def test_a_multiline_repair_matches_even_when_offset_by_whitespace(
+    tmp_path: Path, repo: Path
+) -> None:
+    """Reproduces a real 14B trap: the first edit breaks the file, and the
+    repair's snippet — correct but re-typed without the file's original
+    indentation — was rejected as 'no match' because the fallback search window
+    was sized for one line while the snippet spanned two.
+    """
+    (repo / "pkg" / "cond.py").write_text(
+        "def f(x):\n    if x:\n        return 1\n    return 0\n", encoding="utf-8"
+    )
+    trace, run_id, _ = drive(
+        tmp_path / "store",
+        repo,
+        [
+            block(
+                '{"action": "edit_file", "path": "pkg/cond.py", '
+                '"old": "if x:\\n        return 1", "new": "if x:\\nreturn 1"}'
+            ),
+            block(
+                '{"action": "edit_file", "path": "pkg/cond.py", '
+                '"old": "if x:\\nreturn 1", "new": "if x:\\n        return -1"}'
+            ),
+            block('{"action": "submit"}'),
+        ],
+    )
+    # The first edit legitimately breaks the file (a real syntax error) and is
+    # not counted; the second is the repair, and it must be found rather than
+    # rejected as "no match" by too narrow a fallback search window.
+    assert trace.edits == 1, "the repair's snippet was rejected as a false no-match"
+    assert (repo / "pkg" / "cond.py").read_text() == (
+        "def f(x):\n    if x:\n        return -1\n    return 0\n"
+    )
