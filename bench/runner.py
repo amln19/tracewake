@@ -234,12 +234,15 @@ def batch(
     model = LocalModel(model_id=model_id, temperature=temperature)
     model.warm()
     finished = done(ledger)
-    planned = [(t, i) for t in tasks for i in range(runs)]
-    # Shuffled, with a fixed seed, so that any prefix of the job is a sample
-    # across every repository rather than everything the first one has to offer.
-    # A run this long gets read before it finishes, and in task order the first
-    # hour says nothing about the corpus.
-    random.Random(ORDER_SEED).shuffle(planned)
+    # Tasks are shuffled with a fixed seed, but a task's runs stay together. Both
+    # halves matter for a job that gets read long before it ends: shuffling makes
+    # any prefix a sample across all sixteen repositories, and keeping runs
+    # together means tasks *complete* as the job goes, so the successes-per-task
+    # histogram — the thing the gate turns on — has data early instead of only at
+    # the very end.
+    order = list(tasks)
+    random.Random(ORDER_SEED).shuffle(order)
+    planned = [(t, i) for t in order for i in range(runs)]
     mine = [pair for position, pair in enumerate(planned) if position % shards == shard]
     remaining = [(t, i) for t, i in mine if f"{t.task_id}#{i}" not in finished]
     label = f"shard {shard + 1}/{shards} " if shards > 1 else ""

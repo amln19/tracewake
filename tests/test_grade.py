@@ -302,3 +302,34 @@ def test_grading_survives_a_file_the_working_copy_lost(tmp_path: Path, task: Tas
 
     coverage, resolve, patch = runner.grade(task, root, RED)
     assert "window.py" in patch, "a removed file should still show as a change"
+
+
+def test_tasks_complete_as_the_job_runs_rather_than_all_at_the_end(monkeypatch) -> None:
+    """The gate turns on completed tasks, so a prefix must contain some."""
+    import random as random_module
+
+    made = [
+        Task(
+            task_id=f"{repo}-off_by_one-{n}",
+            repo=repo,
+            operator="off_by_one",
+            ground_truth_file="pkg/w.py",
+            ground_truth_line=2,
+            mutation=Mutation("off_by_one", "w.py", 2, 0, 2, 1, "a", "b", ""),
+            issue="",
+            broken_tests=(),
+            baseline_summary="",
+            broken_summary="",
+        )
+        for repo in ("aaa", "bbb", "ccc", "ddd", "eee", "fff", "ggg", "hhh")
+        for n in range(4)
+    ]
+    order = list(made)
+    random_module.Random(runner.ORDER_SEED).shuffle(order)
+    planned = [(t, i) for t in order for i in range(5)]
+
+    prefix = planned[:50]
+    complete = [t for t in {p[0].task_id for p in prefix}
+                if sum(1 for q in prefix if q[0].task_id == t) == 5]
+    assert len(complete) >= 9, f"only {len(complete)} tasks finished in the first 50 attempts"
+    assert len({p[0].repo for p in prefix}) >= 5, "a prefix should still span repositories"
