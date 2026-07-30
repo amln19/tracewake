@@ -16,6 +16,10 @@ from locus import DecodeParams, Message, ModelResponse, StreamChunk, Usage
 
 PROVIDER = "mlx"
 DEFAULT_MODEL = "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit"
+# A larger option for the same task. Coverage saturates on the 7B while resolve
+# stays near zero — the agent reliably produces a patch and rarely a correct one,
+# which is the gap capability closes rather than harness work.
+LARGER_MODEL = "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit"
 
 # Long enough for a reasoning paragraph plus one action block. A small model that
 # is allowed to ramble spends its budget narrating instead of acting.

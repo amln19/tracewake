@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import repos, runner, tasks
+from . import backend, repos, runner, tasks
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -24,6 +24,11 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--limit", type=int, default=None, help="Use only the first N tasks.")
     run.add_argument("--max-steps", type=int, default=18)
     run.add_argument("--temperature", type=float, default=0.7)
+    run.add_argument(
+        "--model",
+        default=backend.DEFAULT_MODEL,
+        help=f"Model id. Larger option: {backend.LARGER_MODEL}",
+    )
     run.add_argument("--shard", type=int, default=0, help="Which shard this worker runs.")
     run.add_argument("--shards", type=int, default=1, help="How many workers share the job.")
 
@@ -53,6 +58,7 @@ def main(argv: list[str] | None = None) -> int:
                 limit=args.limit,
                 max_steps=args.max_steps,
                 temperature=args.temperature,
+                model_id=args.model,
                 shard=args.shard,
                 shards=args.shards,
             )
