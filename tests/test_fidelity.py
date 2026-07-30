@@ -12,9 +12,11 @@ from bench.fidelity import (
     compare,
     comparisons,
     fresh_seed,
+    name_key,
     recorded_seed,
     report,
     steps,
+    target_key,
 )
 from locus import (
     BlobRef,
@@ -92,7 +94,7 @@ def test_identical_runs_never_part():
     left = right = [Step("read_file", "h1"), Step("edit_file", "h2")]
     result = compare("t", "a", "b", left, right)
     assert result.divergence is None
-    assert result.strict == (True, True)
+    assert result.agree == (True, True)
     assert result.survived == 2
     assert result.holds_to(2)
 
@@ -102,7 +104,7 @@ def test_parting_is_the_first_differing_step():
     right = [Step("read_file", "h1"), Step("search", "h9"), Step("run_tests", "h3")]
     result = compare("t", "a", "b", left, right)
     assert result.divergence == 1
-    assert result.strict == (True, False, True)
+    assert result.agree == (True, False, True)
     assert result.holds_to(1)
     assert not result.holds_to(2)
 
@@ -113,7 +115,7 @@ def test_the_same_tool_with_different_arguments_is_a_parting():
     result = compare("t", "a", "b", left, right)
     assert result.divergence == 0
     assert result.names == (True,)
-    assert result.strict == (False,)
+    assert result.agree == (False,)
 
 
 def test_one_run_stopping_early_is_a_parting():
@@ -155,6 +157,61 @@ def test_a_run_that_submits_parts_from_one_that_does_not():
     assert result.divergence == 1
 
 
+def test_a_wider_comparison_sees_agreement_a_strict_one_misses():
+    # Same file, different window: strict equality calls this a parting, and a
+    # comparison of what the action was aimed at does not.
+    left = [Step("read_file", "h1", "core.py"), Step("edit_file", "h2", "core.py")]
+    right = [Step("read_file", "h9", "core.py"), Step("edit_file", "h2", "core.py")]
+    assert compare("t", "a", "b", left, right).divergence == 0
+    wide = compare("t", "a", "b", left, right, key=target_key)
+    assert wide.divergence is None
+    assert compare("t", "a", "b", left, right, key=name_key).divergence is None
+
+
+def test_realignment_is_agreement_after_the_first_parting():
+    parts_and_returns = compare(
+        "t",
+        "a",
+        "b",
+        [Step("read_file", "h1"), Step("search", "h2"), Step("run_tests", "h3")],
+        [Step("read_file", "h1"), Step("edit_file", "h9"), Step("run_tests", "h3")],
+    )
+    assert parts_and_returns.divergence == 1
+    assert parts_and_returns.realigns
+
+    never_returns = compare(
+        "t",
+        "a",
+        "b",
+        [Step("read_file", "h1"), Step("search", "h2")],
+        [Step("read_file", "h1"), Step("edit_file", "h9")],
+    )
+    assert never_returns.divergence == 1
+    assert not never_returns.realigns
+
+
+def test_a_pair_is_mixed_when_its_runs_disagree_on_coverage():
+    steps_ = [Step("read_file", "h1")]
+    assert compare("t", "a", "b", steps_, steps_, coverage=(True, False)).mixed
+    assert not compare("t", "a", "b", steps_, steps_, coverage=(True, True)).mixed
+
+
+def test_length_ratio_uses_the_shorter_run():
+    long_run = [Step("read_file", f"h{i}") for i in range(16)]
+    short_run = [Step("read_file", "h0"), Step("search", "h1")]
+    assert compare("t", "a", "b", long_run, short_run).length_ratio == 8.0
+    assert compare("t", "a", "b", short_run, short_run).length_ratio == 1.0
+
+
+def test_the_target_is_read_off_whichever_argument_names_it():
+    read = sequence(("read_file", {"path": "core.py", "around": 12}))
+    assert steps(read)[0].target == "core.py"
+    searched = sequence(("search", {"query": "def parse"}))
+    assert steps(searched)[0].target == "def parse"
+    tested = sequence(("run_tests", {}))
+    assert steps(tested)[0].target == ""
+
+
 def test_chance_agreement_reflects_the_marginal_distribution():
     even = {"r": [Step("a", ""), Step("b", "")]}
     assert chance_agreement(even) == pytest.approx(0.5)
@@ -188,14 +245,20 @@ def test_the_report_pairs_every_run_of_a_task(tmp_path):
     rows = []
     plans = [
         [("read_file", {"path": "a.py"}), ("edit_file", {"path": "a.py"})],
-        [("read_file", {"path": "a.py"}), ("search", {"q": "x"})],
-        [("search", {"q": "y"})],
+        [("read_file", {"path": "a.py"}), ("search", {"query": "x"})],
+        [("search", {"query": "y"})],
     ]
     for index, actions in enumerate(plans):
         run_id = recorded_run(store, f"t#{index}", "toolz-off_by_one-1", actions)
         rows.append(
-            {"task_id": "toolz-off_by_one-1", "run_index": index, "run_id": run_id,
-             "stop_reason": "stuck"}
+            {
+                "task_id": "toolz-off_by_one-1",
+                "run_index": index,
+                "run_id": run_id,
+                "stop_reason": "stuck",
+                "coverage": index == 0,
+                "resolve": False,
+            }
         )
     ledger.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
 
@@ -203,6 +266,8 @@ def test_the_report_pairs_every_run_of_a_task(tmp_path):
     assert len(found) == 3
     assert {c.divergence for c in found} == {0, 1}
     assert sorted(len(v) for v in extracted.values()) == [1, 2, 2]
+    # Run 0 is the only one with coverage, so it pairs mixed with each other run.
+    assert sum(1 for c in found if c.mixed) == 2
 
     text = report(store, ledger, tmp_path / "pairs.jsonl")
     assert "3 over 1 tasks" in text
@@ -217,6 +282,27 @@ def test_the_report_pairs_every_run_of_a_task(tmp_path):
 def test_a_missing_ledger_says_what_is_missing(tmp_path):
     with pytest.raises(FileNotFoundError, match="no attempt ledger"):
         comparisons(tmp_path / "store", tmp_path / "absent.jsonl")
+
+
+def test_a_ledger_without_outcomes_is_refused(tmp_path):
+    # Defaulting a missing coverage flag would mark every pair same-outcome and
+    # report a clean result for the comparison the phase turns on.
+    store = tmp_path / "store"
+    ledger = tmp_path / "runs.jsonl"
+    rows = [
+        {
+            "task_id": "toolz-off_by_one-1",
+            "run_index": index,
+            "run_id": recorded_run(
+                store, f"t#{index}", "toolz-off_by_one-1", [("read_file", {"path": "a.py"})]
+            ),
+            "stop_reason": "stuck",
+        }
+        for index in range(2)
+    ]
+    ledger.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    with pytest.raises(KeyError, match="coverage"):
+        comparisons(store, ledger)
 
 
 def test_model_calls_are_not_steps():

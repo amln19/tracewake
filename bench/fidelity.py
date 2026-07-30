@@ -20,7 +20,7 @@ import json
 import math
 import statistics
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from itertools import combinations
 from pathlib import Path
@@ -68,6 +68,39 @@ def assert_fresh(seed: int, task_id: str, recorded: Iterable[int]) -> None:
 class Step:
     name: str
     args_hash: str
+    # What the action was aimed at, with the rest of the arguments dropped: the
+    # file for a read or an edit, the pattern for a search. Two runs reading the
+    # same file at different offsets, or editing the same file with different
+    # text, agree at this granularity and not at the strict one — which is the
+    # difference between comparing steps by equality and scoring them by
+    # similarity.
+    target: str = ""
+
+
+def strict_key(step: Step) -> tuple[str, str]:
+    return (step.name, step.args_hash)
+
+
+def target_key(step: Step) -> tuple[str, str]:
+    return (step.name, step.target)
+
+
+def name_key(step: Step) -> tuple[str, str]:
+    return (step.name, "")
+
+
+GRANULARITIES = (
+    ("name and all args", strict_key),
+    ("name and target", target_key),
+    ("name only", name_key),
+)
+
+
+def target_of(args: dict) -> str:
+    for field in ("path", "query"):
+        if field in args:
+            return str(args[field])
+    return ""
 
 
 # A submitted run ends by claiming it is done, which never reaches the tool
@@ -95,7 +128,13 @@ def steps(events: Sequence[StoredEvent], stop_reason: str | None = None) -> list
                 f"names step {index}. Step order can no longer be read off insertion order; "
                 f"fix the extraction before trusting any comparison."
             )
-        out.append(Step(name=event.name, args_hash=event.args_hash))
+        out.append(
+            Step(
+                name=event.name,
+                args_hash=event.args_hash,
+                target=target_of(event.args),
+            )
+        )
     if stop_reason == "submitted":
         out.append(SUBMIT)
     return out
@@ -108,20 +147,46 @@ class Comparison:
     b: str
     length_a: int
     length_b: int
-    strict: tuple[bool, ...]
+    # Agreement at whatever granularity this comparison was built with, position
+    # by position. `names` is always the loosest reading, for the gap between them.
+    agree: tuple[bool, ...]
     names: tuple[bool, ...]
     divergence: int | None
+    coverage: tuple[bool, bool] = (False, False)
+    resolve: tuple[bool, bool] = (False, False)
 
     @property
     def compared(self) -> int:
-        return len(self.strict)
+        return len(self.agree)
 
     @property
     def survived(self) -> int:
         return self.compared if self.divergence is None else self.divergence
 
+    @property
+    def mixed(self) -> bool:
+        return self.coverage[0] != self.coverage[1]
+
+    @property
+    def length_ratio(self) -> float:
+        shorter = min(self.length_a, self.length_b)
+        return max(self.length_a, self.length_b) / shorter if shorter else float("inf")
+
     def holds_to(self, k: int) -> bool:
         return self.divergence is None or self.divergence >= k
+
+    @property
+    def realigns(self) -> bool:
+        """Whether the runs ever agree again after their first difference.
+
+        When they do not, the last position after which two runs never re-align
+        *is* the position where they first differ, so a backward divergence
+        definition and a forward one pick the same step and cannot be told apart
+        by any evaluation.
+        """
+        if self.divergence is None or self.divergence >= self.compared:
+            return False
+        return any(self.agree[self.divergence + 1 :])
 
     def row(self) -> dict[str, object]:
         return {
@@ -131,17 +196,29 @@ class Comparison:
             "length_a": self.length_a,
             "length_b": self.length_b,
             "compared": self.compared,
-            "strict_matches": sum(self.strict),
+            "strict_matches": sum(self.agree),
             "name_matches": sum(self.names),
             "divergence": self.divergence,
+            "mixed": self.mixed,
+            "length_ratio": round(self.length_ratio, 2),
+            "realigns": self.realigns,
         }
 
 
-def compare(task_id: str, a: str, b: str, left: list[Step], right: list[Step]) -> Comparison:
+def compare(
+    task_id: str,
+    a: str,
+    b: str,
+    left: list[Step],
+    right: list[Step],
+    coverage: tuple[bool, bool] = (False, False),
+    resolve: tuple[bool, bool] = (False, False),
+    key: Callable[[Step], tuple[str, str]] = strict_key,
+) -> Comparison:
     n = min(len(left), len(right))
-    strict = tuple(left[i] == right[i] for i in range(n))
+    agree = tuple(key(left[i]) == key(right[i]) for i in range(n))
     names = tuple(left[i].name == right[i].name for i in range(n))
-    divergence = next((i for i, ok in enumerate(strict) if not ok), None)
+    divergence = next((i for i, ok in enumerate(agree) if not ok), None)
     # Agreeing on every step both runs took, where one then took more, is still a
     # parting: the shorter run stopped where the longer one carried on.
     if divergence is None and len(left) != len(right):
@@ -152,9 +229,11 @@ def compare(task_id: str, a: str, b: str, left: list[Step], right: list[Step]) -
         b=b,
         length_a=len(left),
         length_b=len(right),
-        strict=strict,
+        agree=agree,
         names=names,
         divergence=divergence,
+        coverage=coverage,
+        resolve=resolve,
     )
 
 
@@ -209,18 +288,28 @@ def ledger_rows(ledger: Path = LEDGER) -> list[dict]:
     ]
 
 
-def comparisons(
+def extract(
     store: Path = STORE, ledger: Path = LEDGER
-) -> tuple[list[Comparison], dict[str, list[Step]]]:
+) -> tuple[list[dict], dict[str, list[Step]]]:
     rows = ledger_rows(ledger)
     db = Store(store)
     try:
+        # Every field is required rather than defaulted. A ledger missing
+        # `coverage` would silently make every pair same-outcome and report a
+        # clean result for the comparison that matters most.
         extracted = {
-            row["run_id"]: steps(db.events(row["run_id"]), row.get("stop_reason")) for row in rows
+            row["run_id"]: steps(db.events(row["run_id"]), row["stop_reason"]) for row in rows
         }
     finally:
         db.close()
+    return (rows, extracted)
 
+
+def pair_up(
+    rows: Sequence[dict],
+    extracted: dict[str, list[Step]],
+    key: Callable[[Step], tuple[str, str]] = strict_key,
+) -> list[Comparison]:
     by_task: dict[str, list[dict]] = {}
     for row in rows:
         by_task.setdefault(row["task_id"], []).append(row)
@@ -236,19 +325,33 @@ def comparisons(
                     right["run_id"],
                     extracted[left["run_id"]],
                     extracted[right["run_id"]],
+                    coverage=(bool(left["coverage"]), bool(right["coverage"])),
+                    resolve=(bool(left["resolve"]), bool(right["resolve"])),
+                    key=key,
                 )
             )
-    return (out, extracted)
+    return out
 
 
-def chance_agreement(extracted: dict[str, list[Step]]) -> float:
-    """What two unrelated runs would agree on by picking from six tool names.
+def comparisons(
+    store: Path = STORE, ledger: Path = LEDGER
+) -> tuple[list[Comparison], dict[str, list[Step]]]:
+    rows, extracted = extract(store, ledger)
+    return (pair_up(rows, extracted), extracted)
 
-    Without this, a tool-name agreement rate cannot be read at all: the agent
-    reads far more often than it does anything else, so two runs sharing a name
-    is mostly evidence about the marginal distribution.
+
+def chance_agreement(
+    extracted: dict[str, list[Step]],
+    key: Callable[[Step], tuple[str, str]] = name_key,
+) -> float:
+    """What two unrelated runs would agree on by coincidence at this width.
+
+    Without this, an agreement rate cannot be read at all: the agent reads far
+    more often than it does anything else, so two runs sharing a tool name is
+    mostly evidence about the marginal distribution. It matters most for the
+    widest comparison and least for the narrowest.
     """
-    counts = Counter(step.name for run in extracted.values() for step in run)
+    counts = Counter(key(step) for run in extracted.values() for step in run)
     total = sum(counts.values())
     if not total:
         return 0.0
@@ -256,12 +359,12 @@ def chance_agreement(extracted: dict[str, list[Step]]) -> float:
 
 
 def _rate_lines(found: list[Comparison], label: str, strict: bool) -> list[str]:
-    hits = sum(sum(c.strict if strict else c.names) for c in found)
+    hits = sum(sum(c.agree if strict else c.names) for c in found)
     total = sum(c.compared for c in found)
     by_task: dict[str, list[float]] = {}
     for c in found:
         if c.compared:
-            matches = sum(c.strict if strict else c.names)
+            matches = sum(c.agree if strict else c.names)
             by_task.setdefault(c.task_id, []).append(matches / c.compared)
     per_task = [statistics.fmean(v) for v in by_task.values()]
     mean, lo, hi = clustered(per_task)
@@ -276,20 +379,66 @@ def _rate_lines(found: list[Comparison], label: str, strict: bool) -> list[str]:
     ]
 
 
+def survival_at(found: Sequence[Comparison], k: int) -> tuple[int, int]:
+    eligible = [c for c in found if c.compared >= k]
+    return (sum(1 for c in eligible if c.holds_to(k)), len(eligible))
+
+
 def _survival_lines(found: list[Comparison]) -> list[str]:
     out = ["step-by-step survival, P(the two runs agree on every step through k):"]
     out.append("      k   pairs with k steps   still agreeing        S(k)          95% CI")
     longest = max((c.compared for c in found), default=0)
     for k in range(1, longest + 1):
-        eligible = [c for c in found if c.compared >= k]
+        alive, eligible = survival_at(found, k)
         if not eligible:
             continue
-        alive = sum(1 for c in eligible if c.holds_to(k))
-        lo, hi = wilson(alive, len(eligible))
-        bar = "#" * round(alive / len(eligible) * 20)
+        lo, hi = wilson(alive, eligible)
+        bar = "#" * round(alive / eligible * 20)
         out.append(
-            f"  {k:>5}   {len(eligible):>18}   {alive:>14}   {bar:<20} "
-            f"{alive / len(eligible):>6.1%}  [{lo:.0%}, {hi:.0%}]"
+            f"  {k:>5}   {eligible:>18}   {alive:>14}   {bar:<20} "
+            f"{alive / eligible:>6.1%}  [{lo:.0%}, {hi:.0%}]"
+        )
+    return out
+
+
+def _survival_table(groups: dict[str, list[Comparison]], depth: int = 8) -> list[str]:
+    names = list(groups)
+    header = "      k  " + "".join(f"{name:>22}" for name in names)
+    out = [header, "         " + "".join(f"{'n     S(k)':>22}" for _ in names)]
+    for k in range(1, depth + 1):
+        cells = []
+        for name in names:
+            alive, eligible = survival_at(groups[name], k)
+            cells.append(f"{eligible:>3}  {alive / eligible:>7.1%}" if eligible else f"{'-':>12}")
+        out.append(f"  {k:>5}  " + "".join(f"{cell:>22}" for cell in cells))
+    return out
+
+
+def _definition_lines(groups: dict[str, list[Comparison]]) -> list[str]:
+    """Whether a backward divergence definition can differ from a forward one.
+
+    The project's divergence point is the last position after which two runs never
+    re-align. When a pair never re-aligns at all, that position is the one where
+    they first differed — the same answer the simplest baseline gives. If that is
+    most pairs, an aligner and the baseline are scored on the same targets and
+    neither can beat the other by much.
+    """
+    out = [
+        "pairs that ever agree again after first differing",
+        "(where they never do, the backward divergence definition and the",
+        " first-difference baseline pick the same step):",
+    ]
+    for name, group in groups.items():
+        parted = [c for c in group if c.divergence is not None]
+        if not parted:
+            out.append(f"  {name:<22} no pair parted")
+            continue
+        again = sum(1 for c in parted if c.realigns)
+        lo, hi = wilson(again, len(parted))
+        out.append(
+            f"  {name:<22} {again}/{len(parted)} ({again / len(parted):>5.1%}) "
+            f"[{lo:.0%}, {hi:.0%}]  so the two definitions coincide on "
+            f"{(len(parted) - again) / len(parted):.0%}"
         )
     return out
 
@@ -318,7 +467,7 @@ def _recovery_lines(found: list[Comparison], chance: float) -> list[str]:
     for c in found:
         if c.divergence is None or c.divergence >= c.compared:
             continue
-        tail = c.strict[c.divergence + 1 :]
+        tail = c.agree[c.divergence + 1 :]
         names = c.names[c.divergence + 1 :]
         strict_hits += sum(tail)
         strict_total += len(tail)
@@ -348,7 +497,7 @@ def _stratum_lines(found: list[Comparison], label: str, key) -> list[str]:
     out = [f"strict agreement by {label}:"]
     for name in sorted(groups):
         group = groups[name]
-        hits = sum(sum(c.strict) for c in group)
+        hits = sum(sum(c.agree) for c in group)
         total = sum(c.compared for c in group)
         diverged = [c.survived for c in group if c.divergence is not None]
         median = f"{statistics.median(diverged):.0f}" if diverged else "-"
@@ -359,8 +508,45 @@ def _stratum_lines(found: list[Comparison], label: str, key) -> list[str]:
     return out
 
 
+def _granularity_lines(rows: Sequence[dict], extracted: dict[str, list[Step]]) -> list[str]:
+    """The same pairs compared by equality at three widths.
+
+    The distance function alignment will use scores argument *similarity* rather
+    than testing equality, so strict agreement is the most pessimistic reading
+    available. Widening the unit is the cheapest way to find out whether there is
+    any shared prefix for an aligner to work with, or whether the runs part on
+    which file to touch and not merely on how to touch it.
+    """
+    out = [
+        "coverage-mixed pairs compared at three widths (S(k), pairs still agreeing):",
+        "      k  " + "".join(f"{label:>22}" for label, _ in GRANULARITIES),
+    ]
+    graded = {
+        label: [c for c in pair_up(rows, extracted, key) if c.mixed]
+        for label, key in GRANULARITIES
+    }
+    for k in range(1, 7):
+        cells = []
+        for label, _ in GRANULARITIES:
+            alive, eligible = survival_at(graded[label], k)
+            cells.append(f"{eligible:>3}  {alive / eligible:>7.1%}" if eligible else f"{'-':>12}")
+        out.append(f"  {k:>5}  " + "".join(f"{cell:>22}" for cell in cells))
+    out.append("")
+    for label, key in GRANULARITIES:
+        group = graded[label]
+        parted = [c for c in group if c.divergence is not None]
+        again = sum(1 for c in parted if c.realigns)
+        out.append(
+            f"  {label:<20} {again}/{len(parted)} pairs agree again after first differing "
+            f"({again / len(parted):>5.1%}), coincidence rate "
+            f"{chance_agreement(extracted, key):.1%}"
+        )
+    return out
+
+
 def report(store: Path = STORE, ledger: Path = LEDGER, out: Path = PAIRS) -> str:
-    found, extracted = comparisons(store, ledger)
+    rows, extracted = extract(store, ledger)
+    found = pair_up(rows, extracted)
     if not found:
         return f"no comparable pairs in {ledger}"
     chance = chance_agreement(extracted)
@@ -405,5 +591,28 @@ def report(store: Path = STORE, ledger: Path = LEDGER, out: Path = PAIRS) -> str
     lines.append("")
     lines += _stratum_lines(found, "operator", lambda c: operator_of(c.task_id))
     lines.append("")
+
+    # The pairs alignment will actually be evaluated on are not arbitrary repeats:
+    # one run produced a patch and the other did not. If they part as early as any
+    # other pair, the divergence to be localized is at step two and there is
+    # nothing for an aligner to find that a first-difference check would miss.
+    groups = {
+        "all pairs": found,
+        "coverage-mixed": [c for c in found if c.mixed],
+        "same outcome": [c for c in found if not c.mixed],
+        "mixed, under 4:1": [c for c in found if c.mixed and c.length_ratio <= 4],
+    }
+    lines.append("survival by pair type — the alignment pairs against everything else:")
+    lines += _survival_table(groups)
+    lines.append("")
+    lines += _definition_lines(groups)
+    lines.append("")
+    lines += _granularity_lines(rows, extracted)
+    lines.append("")
+    mixed_tasks = {c.task_id for c in groups["coverage-mixed"]}
+    lines.append(
+        f"coverage-mixed pairs: {len(groups['coverage-mixed'])} over {len(mixed_tasks)} tasks; "
+        f"{len(groups['mixed, under 4:1'])} of them inside the 4:1 length cap"
+    )
     lines.append(f"per-pair detail written to {out}")
     return "\n".join(lines)
