@@ -66,13 +66,26 @@ def prepare(task: Task, destination: Path) -> Path:
     return root
 
 
+def _text(path: Path) -> str:
+    """File contents, or empty for a file that is not there.
+
+    A file can be missing from either side: the working copy may hold something
+    the pinned checkout does not, and grading must not die on it — this runs at
+    the end of every attempt in a job that takes hours.
+    """
+    if not path.is_file():
+        return ""
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
 def patch_of(task: Task, root: Path) -> str:
     """A unified diff from the broken state to whatever the agent left behind."""
     repo = BY_NAME[task.repo]
     chunks: list[str] = []
-    for relative in relative_source_files(root, repo.source_dirs):
-        current = (root / relative).read_text(encoding="utf-8", errors="replace")
-        original = (repo.path / relative).read_text(encoding="utf-8", errors="replace")
+    seen = relative_source_files(root, repo.source_dirs)
+    for relative in dict.fromkeys(seen + relative_source_files(repo.path, repo.source_dirs)):
+        current = _text(root / relative)
+        original = _text(repo.path / relative)
         if relative == task.ground_truth_file:
             original = apply_mutation(original, task.mutation)
         if current == original:
@@ -107,7 +120,7 @@ def grade(task: Task, root: Path, report: SuiteReport) -> tuple[bool, bool, str]
         if "test" in Path(relative).name:
             return (False, False, patch)
         try:
-            compile((root / relative).read_text(encoding="utf-8"), relative, "exec")
+            compile(_text(root / relative), relative, "exec")
         except SyntaxError:
             return (False, False, patch)
     return (True, report.green, patch)

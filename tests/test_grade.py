@@ -282,3 +282,23 @@ def test_status_reports_how_long_trajectories_are(tmp_path: Path) -> None:
     assert "range 3-14" in summary
     assert "ended stuck          3/4" in summary
     assert "spinning" in summary
+
+
+def test_grading_survives_a_file_the_pinned_checkout_does_not_have(
+    tmp_path: Path, task: Task
+) -> None:
+    """This runs at the end of every attempt in a job that takes hours."""
+    root = runner.prepare(task, tmp_path / "work")
+    (root / "pkg" / "invented.py").write_text("x = 1\n")
+
+    coverage, resolve, patch = runner.grade(task, root, RED)
+    assert coverage is True
+    assert "invented.py" in patch
+
+
+def test_grading_survives_a_file_the_working_copy_lost(tmp_path: Path, task: Task) -> None:
+    root = runner.prepare(task, tmp_path / "work")
+    (root / "pkg" / "window.py").unlink()
+
+    coverage, resolve, patch = runner.grade(task, root, RED)
+    assert "window.py" in patch, "a removed file should still show as a change"
