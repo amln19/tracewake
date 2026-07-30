@@ -193,6 +193,44 @@ def _context(history: list[Message], observations: list[tuple[str, int]]) -> lis
     ]
 
 
+def _fuzzy_replace(
+    text: str, old: str, new: str, at: int | None
+) -> tuple[str | None, list[int]]:
+    """Replace `old` matching on content, ignoring the indentation it was sent with.
+
+    A model reading a line-numbered view copies the code and drops the file's
+    leading whitespace along with the number prefix, so an otherwise correct
+    snippet fails an exact match. Matching on stripped lines and re-indenting the
+    replacement to the block it lands in removes an obstacle that has nothing to
+    do with finding the bug. Returns the new text and the lines that matched.
+    """
+    lines = text.splitlines()
+    wanted = [line.strip() for line in old.splitlines()]
+    if not wanted:
+        return (None, [])
+    found = [
+        index + 1
+        for index in range(len(lines) - len(wanted) + 1)
+        if all(lines[index + offset].strip() == wanted[offset] for offset in range(len(wanted)))
+    ]
+    if not found:
+        return (None, [])
+    if at is not None and len(found) > 1:
+        found = [min(found, key=lambda n: abs(n - at))]
+    if len(found) > 1:
+        return (None, found)
+
+    start = found[0]
+    anchor = lines[start - 1]
+    indent = anchor[: len(anchor) - len(anchor.lstrip())]
+    replacement = new.splitlines() or [""]
+    body = [line for line in replacement if line.strip()]
+    common = min((len(x) - len(x.lstrip()) for x in body), default=0)
+    rebuilt = [indent + line[common:] if line.strip() else "" for line in replacement]
+    out = lines[: start - 1] + rebuilt + lines[start - 1 + len(wanted) :]
+    return ("\n".join(out) + ("\n" if text.endswith("\n") else ""), found)
+
+
 def _number(lines: list[str], first: int) -> str:
     return "\n".join(f"{n:>5}  {line}" for n, line in enumerate(lines, start=first))
 
@@ -334,14 +372,26 @@ class Tools:
                 content=f"cannot read {path}: {exc}", status="error", error="unreadable"
             )
         if text.count(old) == 0:
-            return ToolOutcome(
-                content=(
-                    f"that snippet does not appear in {path}. Copy it exactly as the file "
-                    f"shows it, without the line numbers."
-                ),
-                status="error",
-                error="no match",
-            )
+            loose, where = _fuzzy_replace(text, old, new, at)
+            if loose is None:
+                if len(where) > 1:
+                    return ToolOutcome(
+                        content=(
+                            f"that snippet appears at lines {', '.join(str(n) for n in where[:8])} "
+                            f"in {path}. Add \"at\": <line number> to say which one you mean."
+                        ),
+                        status="error",
+                        error="ambiguous match",
+                    )
+                return ToolOutcome(
+                    content=(
+                        f"that snippet does not appear in {path}. Copy it exactly as the file "
+                        f"shows it, without the line numbers."
+                    ),
+                    status="error",
+                    error="no match",
+                )
+            return self._apply(path, loose, where[0], new)
 
         # Which occurrence, by the line each starts on. A snippet that appears
         # twice is not a dead end: the agent already knows the line it means,
@@ -371,15 +421,19 @@ class Tools:
                 status="error",
                 error="no match",
             )
-        self._fs.write_text(path, updated)
+        return self._apply(path, updated, hits[0], new)
 
-        # Show what the edit actually produced, and say so immediately if it broke
-        # the file. Otherwise the agent is guessing at its own result: a
-        # mis-indented insert leaves it unable to write a matching `old` for the
-        # repair, and it finds out only by running the whole suite.
+    def _apply(self, path: str, updated: str, line: int, new: str) -> ToolOutcome:
+        """Write the edit and show the agent what it actually produced.
+
+        Reporting a syntax error here rather than leaving it for the next test run
+        matters because the agent otherwise has to guess at the file's current
+        state to write a matching snippet for the repair.
+        """
+        self._fs.write_text(path, updated)
         lines = updated.splitlines()
-        first = max(1, hits[0] - EDIT_ECHO)
-        last = min(len(lines), hits[0] + new.count("\n") + EDIT_ECHO)
+        first = max(1, line - EDIT_ECHO)
+        last = min(len(lines), line + new.count("\n") + EDIT_ECHO)
         shown = f"{path} now reads:\n" + _number(lines[first - 1 : last], first)
         try:
             compile(updated, path, "exec")
@@ -394,7 +448,7 @@ class Tools:
                 status="error",
                 error="syntax error",
             )
-        return ToolOutcome(content=f"replaced 1 occurrence in {path} at line {hits[0]}.\n\n{shown}")
+        return ToolOutcome(content=f"replaced 1 occurrence in {path} at line {line}.\n\n{shown}")
 
 
 def parse_action(text: str) -> dict[str, Any] | None:

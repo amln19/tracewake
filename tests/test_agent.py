@@ -651,3 +651,73 @@ def test_an_elided_observation_can_be_asked_for_again(tmp_path: Path, repo: Path
     trace, _, _ = drive(tmp_path / "store", repo, [first, *others, first, block('{"action": "submit"}')])
 
     assert trace.repeats == 0, "a re-read of dropped content was refused as a repeat"
+
+
+def test_an_edit_matches_even_when_the_indentation_was_stripped(
+    tmp_path: Path, repo: Path
+) -> None:
+    """The model copies code out of a line-numbered view and loses the leading indent.
+
+    Nineteen percent of edits in a real batch failed for exactly this and nothing
+    else, which has nothing to do with whether the agent found the bug.
+    """
+    (repo / "pkg" / "cmp.py").write_text(
+        "def compare(rc1, rc2):\n"
+        "    if not rc1:\n"
+        "        return 1\n"
+        "    return 0\n",
+        encoding="utf-8",
+    )
+    trace, _, _ = drive(
+        tmp_path / "store",
+        repo,
+        [
+            block(
+                '{"action": "edit_file", "path": "pkg/cmp.py", '
+                '"old": "if not rc1:\\nreturn 1", '
+                '"new": "if not rc1:\\n    return -1"}'
+            ),
+            block('{"action": "submit"}'),
+        ],
+    )
+    assert trace.edits == 1, "a correct snippet was rejected over whitespace"
+    # And the replacement is re-indented into the block it landed in.
+    assert (repo / "pkg" / "cmp.py").read_text() == (
+        "def compare(rc1, rc2):\n"
+        "    if not rc1:\n"
+        "        return -1\n"
+        "    return 0\n"
+    )
+
+
+def test_a_stripped_single_line_snippet_also_matches(tmp_path: Path, repo: Path) -> None:
+    trace, _, _ = drive(
+        tmp_path / "store",
+        repo,
+        [
+            block(
+                '{"action": "edit_file", "path": "pkg/window.py", '
+                '"old": "return xs[i : i + n + 1]", "new": "return xs[i : i + n]"}'
+            ),
+            block('{"action": "submit"}'),
+        ],
+    )
+    assert trace.edits == 1
+    assert (repo / "pkg" / "window.py").read_text() == (
+        "def slice_window(xs, i, n):\n    return xs[i : i + n]\n"
+    )
+
+
+def test_a_genuinely_absent_snippet_is_still_refused(tmp_path: Path, repo: Path) -> None:
+    trace, run_id, _ = drive(
+        tmp_path / "store",
+        repo,
+        [
+            block(
+                '{"action": "edit_file", "path": "pkg/window.py", '
+                '"old": "this text is nowhere in the file", "new": "x"}'
+            ),
+            block('{"action": "submit"}'),
+        ],
+    )
+    assert trace.edits == 0, "tolerant matching must not invent a match"
