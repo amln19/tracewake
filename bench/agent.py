@@ -87,7 +87,9 @@ function or class the failing tests exercise, not for the name of the test.
   {"action": "edit_file", "path": "PATH", "old": "OLD", "new": "NEW", "at": N}
       Replace a snippet. OLD must be copied character for character from what you
       read, without the line numbers. "at" is optional and takes a line number;
-      use it when the same snippet appears more than once.
+      use it when the same snippet appears more than once. The result is echoed
+      back to you. If NEW spans several lines, every line needs the indentation
+      of the block it sits in.
 
   {"action": "run_tests"}
       Run the suite and see what passes.
@@ -116,6 +118,9 @@ MAX_TOOL_CHARS = 6_000
 # exist so the agent can locate code without pulling a whole module into context.
 WINDOW_LINES = 120
 SEARCH_CONTEXT = 2
+# Lines of the result echoed back after an edit, so the agent can see what it
+# actually wrote rather than guess when it needs to repair it.
+EDIT_ECHO = 6
 
 
 # Raised from three once file reads were windowed: with the bug actually
@@ -347,7 +352,29 @@ class Tools:
                 error="no match",
             )
         self._fs.write_text(path, updated)
-        return ToolOutcome(content=f"replaced 1 occurrence in {path} at line {hits[0]}")
+
+        # Show what the edit actually produced, and say so immediately if it broke
+        # the file. Otherwise the agent is guessing at its own result: a
+        # mis-indented insert leaves it unable to write a matching `old` for the
+        # repair, and it finds out only by running the whole suite.
+        lines = updated.splitlines()
+        first = max(1, hits[0] - EDIT_ECHO)
+        last = min(len(lines), hits[0] + new.count("\n") + EDIT_ECHO)
+        shown = f"{path} now reads:\n" + _number(lines[first - 1 : last], first)
+        try:
+            compile(updated, path, "exec")
+        except SyntaxError as exc:
+            return ToolOutcome(
+                content=(
+                    f"that edit left {path} with a syntax error on line {exc.lineno}: "
+                    f"{exc.msg}. Python is whitespace-sensitive, so a replacement spanning "
+                    f"several lines has to carry the indentation of the block it sits in.\n\n"
+                    f"{shown}"
+                ),
+                status="error",
+                error="syntax error",
+            )
+        return ToolOutcome(content=f"replaced 1 occurrence in {path} at line {hits[0]}.\n\n{shown}")
 
 
 def parse_action(text: str) -> dict[str, Any] | None:

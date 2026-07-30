@@ -536,3 +536,68 @@ def test_an_edit_makes_earlier_reads_and_tests_repeatable_again(
     assert trace.actions_taken == 5
     assert trace.actions[-1] == "submit"
     assert test_calls == 2, "the second test run never reached the runner"
+
+
+def test_an_edit_echoes_what_it_actually_wrote(tmp_path: Path, repo: Path) -> None:
+    """Otherwise a repair has to guess at the file's current contents."""
+    _, run_id, _ = drive(
+        tmp_path / "store",
+        repo,
+        [
+            block(
+                '{"action": "edit_file", "path": "pkg/window.py", '
+                '"old": "i + n + 1", "new": "i + n"}'
+            ),
+            block('{"action": "submit"}'),
+        ],
+    )
+    store = Store(tmp_path / "store")
+    body = store.blobs.get(
+        next(
+            e.event.result.digest for e in store.events(run_id)
+            if e.event.type == "tool_call" and e.event.name == "edit_file"
+        )
+    ).decode()
+    store.close()
+    assert "now reads" in body
+    assert "return xs[i : i + n]" in body
+
+
+def test_an_edit_that_breaks_the_file_says_so_at_once(tmp_path: Path, repo: Path) -> None:
+    """A multi-line insert that loses its indentation is the real failure here.
+
+    Taken from a run that inserted a column-zero line inside an except block,
+    broke the module, and then could not write a matching snippet to repair it.
+    """
+    (repo / "pkg" / "cache.py").write_text(
+        "def get(store, key):\n"
+        "    try:\n"
+        "        return store[key]\n"
+        "    except KeyError:\n"
+        "        value = compute(key)\n"
+        "        return value\n",
+        encoding="utf-8",
+    )
+    trace, run_id, _ = drive(
+        tmp_path / "store",
+        repo,
+        [
+            block(
+                '{"action": "edit_file", "path": "pkg/cache.py", '
+                '"old": "value = compute(key)", '
+                '"new": "value = compute(key)\\nstore[key] = value"}'
+            ),
+            block('{"action": "submit"}'),
+        ],
+    )
+    store = Store(tmp_path / "store")
+    edit = next(
+        e.event for e in store.events(run_id)
+        if e.event.type == "tool_call" and e.event.name == "edit_file"
+    )
+    body = store.blobs.get(edit.result.digest).decode()
+    store.close()
+    assert edit.status == "error"
+    assert "syntax error" in body
+    assert "indentation" in body
+    assert "now reads" in body, "the agent needs to see the broken state to repair it"
