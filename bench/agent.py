@@ -257,6 +257,22 @@ class Tools:
     def source_files(self) -> list[str]:
         return relative_source_files(self._root, self._source_dirs)
 
+    def _all_python_files(self) -> list[str]:
+        """Every Python file under the root, tests included.
+
+        `search` uses this rather than `source_files()`: the issue text names
+        failing tests prominently, so the agent naturally searches for them, and
+        a query that structurally cannot match sends it looping on a dead end.
+        `read_file` can already open a test file to see why it fails, so `search`
+        seeing the same files removes an inconsistency rather than widening what
+        the agent may act on — editing a test file is still refused separately.
+        """
+        return sorted(
+            str(p.relative_to(self._root))
+            for p in self._root.rglob("*.py")
+            if "__pycache__" not in p.parts
+        )
+
     def dispatch(self, name: str, args: dict[str, Any]) -> ToolOutcome:
         match name:
             case "list_files":
@@ -331,7 +347,7 @@ class Tools:
             return ToolOutcome(content="search needs a query", status="error", error="no query")
         blocks: list[str] = []
         found = 0
-        for relative in self.source_files():
+        for relative in self._all_python_files():
             try:
                 lines = self._fs.read_text(relative).splitlines()
             except (FileNotFoundError, ValueError):
@@ -348,9 +364,18 @@ class Tools:
                 blocks.append(
                     f"{relative}:{number}\n" + _number(lines[first - 1 : last], first)
                 )
-        return ToolOutcome(
-            content="\n\n".join(blocks) if blocks else f"no matches for {query!r}"
+        if blocks:
+            return ToolOutcome(content="\n\n".join(blocks))
+        # A bare "no matches" gives the model nothing to correct, and a query
+        # combining several identifiers is the usual cause: substring search
+        # cannot match "a\nb" or "a and b" against any single line.
+        hint = (
+            " That query has more than one line or word in it — search for one "
+            "identifier at a time."
+            if len(query.split()) > 1 or "\n" in query
+            else ""
         )
+        return ToolOutcome(content=f"no matches for {query!r}.{hint}")
 
     def _edit(self, path: str, old: str, new: str, at: int | None = None) -> ToolOutcome:
         if not path or not old:
@@ -383,10 +408,14 @@ class Tools:
                         status="error",
                         error="ambiguous match",
                     )
+                # Shown immediately rather than telling the agent to go read the
+                # file: after a previous edit broke this file, the agent tends to
+                # retry the same "old" text rather than spend a turn re-reading,
+                # and repeats the identical failing edit until it stalls out.
                 return ToolOutcome(
                     content=(
-                        f"that snippet does not appear in {path}. Copy it exactly as the file "
-                        f"shows it, without the line numbers."
+                        f"that snippet does not appear in {path} — the file may have changed "
+                        f"since you last read it.\n\n{self._nearby(path, text, at)}"
                     ),
                     status="error",
                     error="no match",
@@ -415,13 +444,21 @@ class Tools:
         if updated is None:
             return ToolOutcome(
                 content=(
-                    f"the snippet does not start at line {hits[0]} of {path} as written. Read "
-                    f"the file around that line and copy it exactly."
+                    f"the snippet does not start at line {hits[0]} of {path} as written — the "
+                    f"file may have changed since you last read it.\n\n"
+                    f"{self._nearby(path, text, hits[0])}"
                 ),
                 status="error",
                 error="no match",
             )
         return self._apply(path, updated, hits[0], new)
+
+    def _nearby(self, path: str, text: str, around: int | None) -> str:
+        lines = text.splitlines()
+        centre = around if around is not None else 1
+        first = max(1, centre - EDIT_ECHO)
+        last = min(len(lines), centre + EDIT_ECHO)
+        return f"{path} currently reads:\n" + _number(lines[first - 1 : last], first)
 
     def _apply(self, path: str, updated: str, line: int, new: str) -> ToolOutcome:
         """Write the edit and show the agent what it actually produced.

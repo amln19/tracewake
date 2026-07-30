@@ -721,3 +721,72 @@ def test_a_genuinely_absent_snippet_is_still_refused(tmp_path: Path, repo: Path)
         ],
     )
     assert trace.edits == 0, "tolerant matching must not invent a match"
+
+
+def test_search_finds_matches_in_test_files_too(tmp_path: Path, repo: Path) -> None:
+    """The issue text names failing tests, and search must be able to find them."""
+    trace, run_id, _ = drive(
+        tmp_path / "store",
+        repo,
+        [
+            block('{"action": "search", "query": "test_x"}'),
+            block('{"action": "submit"}'),
+        ],
+    )
+    store = Store(tmp_path / "store")
+    hit = next(
+        e.event for e in store.events(run_id)
+        if e.event.type == "tool_call" and e.event.name == "search"
+    )
+    body = store.blobs.get(hit.result.digest).decode()
+    store.close()
+    assert "pkg/test_window.py" in body
+    assert "no matches" not in body
+
+
+def test_a_multi_term_search_gets_a_specific_hint(tmp_path: Path, repo: Path) -> None:
+    _, run_id, _ = drive(
+        tmp_path / "store",
+        repo,
+        [
+            block('{"action": "search", "query": "foo\\nbar"}'),
+            block('{"action": "submit"}'),
+        ],
+    )
+    store = Store(tmp_path / "store")
+    body = store.blobs.get(
+        next(
+            e.event.result.digest for e in store.events(run_id)
+            if e.event.type == "tool_call" and e.event.name == "search"
+        )
+    ).decode()
+    store.close()
+    assert "one identifier at a time" in body
+
+
+def test_retrying_a_stale_snippet_shows_the_current_file_not_just_an_error(
+    tmp_path: Path, repo: Path
+) -> None:
+    """Taken from a real run: a stale 'old' after a broken edit repeated forever
+    because the error told it to re-read rather than showing the current state."""
+    trace, run_id, _ = drive(
+        tmp_path / "store",
+        repo,
+        [
+            block(
+                '{"action": "edit_file", "path": "pkg/window.py", '
+                '"old": "does not exist anywhere", "new": "x"}'
+            ),
+            block('{"action": "submit"}'),
+        ],
+    )
+    store = Store(tmp_path / "store")
+    body = store.blobs.get(
+        next(
+            e.event.result.digest for e in store.events(run_id)
+            if e.event.type == "tool_call" and e.event.name == "edit_file"
+        )
+    ).decode()
+    store.close()
+    assert "currently reads" in body
+    assert "def slice_window" in body
