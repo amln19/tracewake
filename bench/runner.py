@@ -300,10 +300,14 @@ def status(ledger: Path = LEDGER) -> str:
     lines.append(_by_operator(rows))
     lines.append("")
     lines.append(_trajectories(rows))
+    # Read the run count off the data rather than assuming it. A batch run with
+    # `--runs 3` against a hardcoded 5 reported that no task had finished and
+    # printed no histogram at all, which is the one number the gate turns on.
+    runs = Counter(len(rs) for rs in by_task.values()).most_common(1)[0][0]
     for label in ("coverage", "resolve"):
         lines.append("")
-        lines.append(f"successes per task, {label} (only tasks with every run in):")
-        lines.append(_histogram(by_task, label))
+        lines.append(f"successes per task, {label} (tasks with all {runs} runs in):")
+        lines.append(_histogram(by_task, label, runs))
     return "\n".join(lines)
 
 

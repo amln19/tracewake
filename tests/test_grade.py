@@ -333,3 +333,33 @@ def test_tasks_complete_as_the_job_runs_rather_than_all_at_the_end(monkeypatch) 
                 if sum(1 for q in prefix if q[0].task_id == t) == 5]
     assert len(complete) >= 9, f"only {len(complete)} tasks finished in the first 50 attempts"
     assert len({p[0].repo for p in prefix}) >= 5, "a prefix should still span repositories"
+
+
+def test_the_histogram_reads_the_run_count_off_the_data(tmp_path: Path) -> None:
+    """A batch run with three runs per task against a hardcoded five reported
+    that no task had finished, hiding the one number the gate turns on."""
+    ledger = tmp_path / "runs.jsonl"
+    for task_id, successes in {"a": 1, "b": 0, "c": 3}.items():
+        for index in range(3):
+            runner.record_attempt(
+                Attempt(
+                    task_id=task_id,
+                    run_index=index,
+                    run_id=f"{task_id}{index}",
+                    coverage=index < successes,
+                    resolve=False,
+                    turns=5,
+                    actions=4,
+                    edits=1,
+                    repeats=0,
+                    parse_failures=0,
+                    stop_reason="submitted",
+                    seconds=10.0,
+                    summary="",
+                ),
+                ledger,
+            )
+    summary = runner.status(ledger)
+    assert "no task has all" not in summary
+    assert "all 3 runs in" in summary
+    assert "usable pairs: 1 of 3" in summary
