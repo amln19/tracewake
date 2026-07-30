@@ -121,6 +121,13 @@ SEARCH_CONTEXT = 2
 # Lines of the result echoed back after an edit, so the agent can see what it
 # actually wrote rather than guess when it needs to repair it.
 EDIT_ECHO = 6
+# Tool observations kept in full. Older ones are elided: a run that reads eight
+# file windows carries fifty thousand characters by its last turn, and inference
+# cost tracks context, so an unbounded history makes late turns cost several
+# times what early ones did. The content is re-readable on demand, so dropping it
+# costs the agent nothing it cannot recover.
+KEEP_OBSERVATIONS = 4
+ELIDED = "[earlier output dropped to keep the context small; repeat the action to see it again]"
 
 
 # Raised from three once file reads were windowed: with the bug actually
@@ -171,6 +178,19 @@ def _replace_at(text: str, old: str, new: str, line: int) -> str | None:
     if found == -1:
         return None
     return text[:found] + new + text[found + len(old) :]
+
+
+def _context(history: list[Message], observations: list[tuple[str, int]]) -> list[Message]:
+    """The history as the model should see it, with stale observations elided."""
+    stale = {index for _, index in observations[: max(0, len(observations) - KEEP_OBSERVATIONS)]}
+    return [
+        Message(
+            role=m.role, content=ELIDED, tool_call_id=m.tool_call_id, provenance=m.provenance
+        )
+        if position in stale
+        else m
+        for position, m in enumerate(history)
+    ]
 
 
 def _number(lines: list[str], first: int) -> str:
@@ -423,6 +443,7 @@ def run(
     ]
     trace = Trace()
     taken: dict[str, int] = {}
+    observations: list[tuple[str, int]] = []
     dispatcher = session.tools(tools.dispatch)
     started = session.clock.monotonic()
 
@@ -436,8 +457,14 @@ def run(
             trace.stop_reason = "stuck"
             break
         trace.turns += 1
+        # Dropping an observation makes its action worth taking again, so the
+        # signature goes with it; otherwise the agent is told to repeat an action
+        # and then refused permission to.
+        stale = observations[: max(0, len(observations) - KEEP_OBSERVATIONS)]
+        for signature, _ in stale:
+            taken.pop(signature, None)
         with model.stream(
-            messages=messages, tools=TOOL_NAMES, temperature=temperature
+            messages=_context(messages, observations), tools=TOOL_NAMES, temperature=temperature
         ) as stream:
             for _ in stream:
                 pass
@@ -517,6 +544,7 @@ def run(
 
         left = max_steps - step - 1
         budget = f"\n\n[{left} step{'' if left == 1 else 's'} left]" if left <= 4 else ""
+        observations.append((signature, len(messages)))
         messages.append(
             Message(
                 role="user",

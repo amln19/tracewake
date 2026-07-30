@@ -601,3 +601,53 @@ def test_an_edit_that_breaks_the_file_says_so_at_once(tmp_path: Path, repo: Path
     assert "syntax error" in body
     assert "indentation" in body
     assert "now reads" in body, "the agent needs to see the broken state to repair it"
+
+
+def test_old_observations_are_elided_to_bound_the_context(tmp_path: Path, repo: Path) -> None:
+    """Inference cost tracks context, and an unbounded history makes late turns dear."""
+    for n in range(7):
+        (repo / "pkg" / f"f{n}.py").write_text(f"UNIQUE_MARKER_{n} = {n}\n", encoding="utf-8")
+    replies = [block('{"action": "read_file", "path": "pkg/f%d.py"}' % n) for n in range(7)]
+    _, run_id, _ = drive(tmp_path / "store", repo, replies + [block('{"action": "submit"}')])
+
+    store = Store(tmp_path / "store")
+    calls = [e.event for e in store.events(run_id) if isinstance(e.event, ModelCallEvent)]
+    store.close()
+
+    last = "".join(m.content for m in calls[-1].messages)
+    assert "UNIQUE_MARKER_6" in last, "the newest observation must survive"
+    assert "UNIQUE_MARKER_0" not in last, "the oldest observation should be elided"
+    assert agent.ELIDED in last
+
+    # Setup context is never dropped: it is what the run is about.
+    assert any(m.provenance == agent.TASK_ISSUE and "broken" in m.content
+               for m in calls[-1].messages)
+    assert any(m.provenance == agent.REPO_MAP and "pkg/" in m.content
+               for m in calls[-1].messages)
+
+
+def test_context_stops_growing_once_the_window_is_full(tmp_path: Path, repo: Path) -> None:
+    for n in range(10):
+        (repo / "pkg" / f"g{n}.py").write_text(("x = 1\n" * 200), encoding="utf-8")
+    replies = [block('{"action": "read_file", "path": "pkg/g%d.py"}' % n) for n in range(10)]
+    _, run_id, _ = drive(tmp_path / "store", repo, replies + [block('{"action": "submit"}')])
+
+    store = Store(tmp_path / "store")
+    sizes = [
+        sum(len(m.content) for m in e.event.messages)
+        for e in store.events(run_id)
+        if isinstance(e.event, ModelCallEvent)
+    ]
+    store.close()
+    assert max(sizes[6:]) < sizes[5] * 1.5, f"context still growing: {sizes}"
+
+
+def test_an_elided_observation_can_be_asked_for_again(tmp_path: Path, repo: Path) -> None:
+    """Telling the agent to repeat an action and then refusing it would be a trap."""
+    for n in range(6):
+        (repo / "pkg" / f"h{n}.py").write_text(f"y = {n}\n", encoding="utf-8")
+    first = block('{"action": "read_file", "path": "pkg/h0.py"}')
+    others = [block('{"action": "read_file", "path": "pkg/h%d.py"}' % n) for n in range(1, 6)]
+    trace, _, _ = drive(tmp_path / "store", repo, [first, *others, first, block('{"action": "submit"}')])
+
+    assert trace.repeats == 0, "a re-read of dropped content was refused as a repeat"
