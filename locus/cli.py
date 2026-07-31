@@ -183,6 +183,62 @@ def ls(store: StoreOption = Path(".locus")) -> None:
     db.close()
 
 
+@app.command("diff")
+def diff_(
+    good: Annotated[str, typer.Argument(help="Passing run id or cassette name.")],
+    bad: Annotated[str, typer.Argument(help="Failing run id or cassette name.")],
+    store: StoreOption = Path(".locus"),
+    lexical: Annotated[
+        bool,
+        typer.Option(
+            "--lexical",
+            help="Skip the embedding model and score reasoning text lexically.",
+        ),
+    ] = False,
+) -> None:
+    """Align two runs and print the step where they stopped agreeing."""
+    from .align import (
+        EMBEDDING_MODEL,
+        EMBEDDING_REVISION,
+        LexicalEmbedder,
+        MlxEmbedder,
+        diff_runs,
+        format_diff,
+    )
+
+    db = Store(store)
+    good_header = db.resolve(good)
+    bad_header = db.resolve(bad)
+    good_events = db.events(good_header.run_id)
+    bad_events = db.events(bad_header.run_id)
+    db.close()
+
+    if lexical:
+        embed = LexicalEmbedder()
+        model_id = revision = None
+    else:
+        embedder = MlxEmbedder()
+        embed = embedder
+        model_id, revision = embedder.model_id, embedder.revision
+
+    result = diff_runs(
+        good_events,
+        bad_events,
+        embed=embed,
+        embedding_model=model_id or ("lexical" if lexical else EMBEDDING_MODEL),
+        embedding_revision=revision if not lexical else None,
+    )
+    typer.echo(
+        format_diff(
+            result,
+            good_label=f"GOOD {good_header.run_id[:8]}",
+            bad_label=f"BAD {bad_header.run_id[:8]}",
+        )
+    )
+    if result.excluded_by_length:
+        raise typer.Exit(2)
+
+
 def main() -> None:
     # A traceback is not a user interface. Locus raises these to say what failed
     # and what to do about it, so the CLI prints the message and nothing else.
