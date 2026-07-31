@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import aligneval, backend, fidelity, label, repos, runner, tasks
+from . import aligneval, backend, counterfactual, fidelity, label, repos, runner, tasks
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -95,6 +95,18 @@ def main(argv: list[str] | None = None) -> int:
         "ablations",
         help="Score pre-specified aligner ablations against pass1 labels.",
     )
+    cf = sub.add_parser(
+        "intervene",
+        help="Re-run a recorded attempt with context blocks dropped, into a new run.",
+    )
+    cf.add_argument("run", help="Run id or cassette name to fork.")
+    cf.add_argument(
+        "--drop-tag", action="append", required=True, help="Provenance tag to remove."
+    )
+    cf.add_argument("--from-step", type=int, default=0, help="First model call to change.")
+    cf.add_argument("--max-steps", type=int, default=18)
+    cf.add_argument("--temperature", type=float, default=0.7)
+    cf.add_argument("--model", default=backend.DEFAULT_MODEL)
 
     args = parser.parse_args(argv)
 
@@ -159,6 +171,17 @@ def main(argv: list[str] | None = None) -> int:
             print(aligneval.run_llm_judge(model_id=args.model))
         case "ablations":
             print(aligneval.run_ablations())
+        case "intervene":
+            print(
+                counterfactual.fork(
+                    args.run,
+                    drop_tags=args.drop_tag,
+                    from_turn=args.from_step,
+                    max_steps=args.max_steps,
+                    model_id=args.model,
+                    temperature=args.temperature,
+                ).format()
+            )
     return 0
 
 
