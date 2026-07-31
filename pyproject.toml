@@ -14,8 +14,14 @@ locus = "locus.cli:main"
 [project.entry-points.pytest11]
 locus = "locus.pytest_plugin"
 
+[project.optional-dependencies]
+embeddings = [
+    "mlx-embeddings>=0.1.0",
+]
+
 [dependency-groups]
 corpus = [
+    "mlx-embeddings>=0.1.0",
     "mlx-lm>=0.28",
 ]
 dev = ["pytest>=8.4"]
