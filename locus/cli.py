@@ -408,6 +408,24 @@ def pprof_(
     )
 
 
+@app.command("otel")
+def otel_(
+    run: Annotated[str, typer.Argument(help="Run id or cassette name.")],
+    out: Annotated[Path, typer.Option("--out", "-o", help="OTLP/JSON trace file.")],
+    store: StoreOption = Path(".locus"),
+) -> None:
+    """Export a run as OTLP/JSON spans under the GenAI semantic conventions."""
+    from .otel import write_spans
+
+    db = Store(store)
+    header = db.resolve(run)
+    events = db.events(header.run_id)
+    db.close()
+
+    spans = write_spans(out, header, events)
+    typer.echo(f"wrote {out} ({spans} spans, one trace for run {header.run_id[:12]})")
+
+
 def main() -> None:
     # A traceback is not a user interface. Locus raises these to say what failed
     # and what to do about it, so the CLI prints the message and nothing else.
