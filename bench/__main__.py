@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
-from . import backend, fidelity, label, repos, runner, tasks
+from . import aligneval, backend, fidelity, label, repos, runner, tasks
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -52,6 +53,26 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser(
         "fidelity-gate",
         help="Print both fidelity numbers (run-to-run divergence and replay).",
+    )
+    align = sub.add_parser(
+        "align-eval",
+        help="Align the evaluation pairs and score against hand labels.",
+    )
+    align.add_argument(
+        "--lexical",
+        action="store_true",
+        help="Score reasoning text lexically instead of with the pinned embedder.",
+    )
+    align.add_argument(
+        "--score",
+        action="store_true",
+        help="Score against a label sheet. Off by default so a labeling pass stays blind.",
+    )
+    align.add_argument(
+        "--labels",
+        type=Path,
+        default=None,
+        help="Label JSONL (default: corpus/labels/pass1.jsonl when --score).",
     )
 
     args = parser.parse_args(argv)
@@ -100,6 +121,14 @@ def main(argv: list[str] | None = None) -> int:
                     print(fidelity.replay_report())
         case "fidelity-gate":
             print(fidelity.fidelity_gate())
+        case "align-eval":
+            print(
+                aligneval.predict_and_score(
+                    lexical=args.lexical,
+                    labels=args.labels,
+                    score_labels=args.score,
+                )
+            )
     return 0
 
 
