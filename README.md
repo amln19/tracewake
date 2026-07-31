@@ -8,13 +8,14 @@ Record, replay, and trajectory alignment all work. Given two runs of the same
 task, `locus diff` aligns their tool traces with an affine-gap algorithm and
 reports the step where they stopped agreeing.
 
-On a blinded hand labeling of 41 synthetic good/bad pairs (single annotator,
-one pass), the aligner hit within two steps of the labeled divergence on 28/41
-pairs (median absolute error 0), against 19/41 for first target-width
-difference, 9/41 for last common prefix, and 13/41 for a local 7B LLM judge
-reading the same packets. Annotator self-agreement was not measured, so there
-is no empirical ceiling on those rates. The evaluation set is synthetic
-injected bugs; transfer to real-world issue trajectories is untested.
+On 41 blinded hand-labeled pairs (single annotator, one pass, synthetic injected
+bugs), the aligner beat the baselines that matter: within two steps of the label
+on 28/41 pairs, against 19/41 for first target-width difference (what simple
+session-diff tools do), 9/41 for last common prefix, and 13/41 for a local 7B
+judge on the same packets. On the 22 pairs where first-difference was already
+outside ±2 of the label — the only pairs where an aligner can show a distinct
+win — it hit 14/22 and first-difference hit 0/22. Annotator self-agreement was
+not measured. Transfer to real-world issue trajectories is untested.
 
 ```python
 import locus
@@ -220,15 +221,29 @@ Reasoning embeddings use a pinned local model (`mlx-community/bge-small-en-v1.5-
 install the optional extra with `uv sync --extra embeddings`. `--lexical` skips
 the model and scores reasoning text by string similarity instead.
 
+The headline rate is not uniform across the set. Pairs kept only by the looser
+4:1 length cap (success ran to the step ceiling, failure stalled early) are
+easy; on the stricter 3:1 subset the aligner is at 17/30 against 13/30 for
+first-difference. Failure trajectories of twelve or more steps are the hard
+slice — there first-difference is slightly ahead. A constant guess of step 5
+hits 33/41 because labels cluster early on short never-edited failures, so
+within-±2 alone overstates how much signal any method has; the baseline gaps
+and the contestable subset are the load-bearing numbers. The divergence
+definition (last re-alignment, then the next failure step) also means many
+correct predictions land on the failure run's last step when that run never
+produced an edit.
+
 ## Prior art
 
 The record/replay design — cassettes, request matchers, record modes, before-
 record redaction, staleness intervals — is borrowed from VCR.py and Ruby's VCR,
 which solved this for HTTP fifteen years ago. Trajectory alignment uses Gotoh
 affine-gap dynamic programming (the same family as Needleman–Wunsch) over a
-distance on agent steps rather than residues. What's new is applying both to
-model calls, tool calls, the filesystem and the clock, and evaluating the
-aligner against named baselines on hand-labeled pairs.
+distance on agent steps rather than residues. The backward divergence rule —
+the last position after which two traces never re-align — is the same move as
+the point-of-commitment idea in Causal Agent Replay (arXiv 2606.08275). What's
+new is applying both to model calls, tool calls, the filesystem and the clock,
+and evaluating the aligner against named baselines on hand-labeled pairs.
 
 ## Development
 
