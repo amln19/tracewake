@@ -8,13 +8,13 @@ Record, replay, and trajectory alignment all work. Given two runs of the same
 task, `locus diff` aligns their tool traces with an affine-gap algorithm and
 reports the step where they stopped agreeing.
 
-On a first-pass hand labeling of 41 synthetic good/bad pairs, the aligner hit
-within two steps of the labeled divergence on 28/41 pairs (median absolute
-error 0), against 19/41 for first target-width difference, 9/41 for last common
-prefix, and 13/41 for a local 7B LLM judge reading the same blinded packets.
-A second labeling pass for self-agreement is still open, so treat those rates
-as interim. The evaluation set is synthetic injected bugs; transfer to
-real-world issue trajectories is untested.
+On a blinded hand labeling of 41 synthetic good/bad pairs (single annotator,
+one pass), the aligner hit within two steps of the labeled divergence on 28/41
+pairs (median absolute error 0), against 19/41 for first target-width
+difference, 9/41 for last common prefix, and 13/41 for a local 7B LLM judge
+reading the same packets. Annotator self-agreement was not measured, so there
+is no empirical ceiling on those rates. The evaluation set is synthetic
+injected bugs; transfer to real-world issue trajectories is untested.
 
 ```python
 import locus
