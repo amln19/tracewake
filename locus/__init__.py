@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import replace
 from pathlib import Path
@@ -24,6 +24,7 @@ from .events import (
     EventMeta,
     FsReadEvent,
     FsWriteEvent,
+    InterventionEvent,
     Message,
     ModelCallEvent,
     ModelIdentity,
@@ -57,9 +58,11 @@ from .redaction import REDACTED, Redactor
 from .session import (
     CassetteStale,
     Completion,
+    Intervention,
     ReplayMiss,
     Session,
     StreamHandle,
+    plan_intervention,
     warn_if_stale,
 )
 from .store import BlobStore, Store
@@ -80,6 +83,8 @@ __all__ = [
     "FsReadEvent",
     "FsWriteEvent",
     "HashSeedError",
+    "Intervention",
+    "InterventionEvent",
     "LocusError",
     "Message",
     "ModelCallEvent",
@@ -110,6 +115,9 @@ __all__ = [
     "hash_args",
     "hash_messages",
     "import_cassette",
+    "intervene",
+    "plan",
+    "plan_intervention",
     "read_header",
     "record",
     "replay",
@@ -139,6 +147,7 @@ def open_session(
     config: Config | None = None,
     command: list[str] | None = None,
     task_id: str | None = None,
+    intervention: Intervention | None = None,
     **overrides: Any,
 ) -> Iterator[Session]:
     if mode not in RECORD_MODES:
@@ -149,26 +158,43 @@ def open_session(
     db = Store(store)
     stack = ExitStack()
     try:
-        header = None if mode == "all" else db.find(run_or_name)
-        if header is None and mode == "none":
-            db.resolve(run_or_name)
-        if header is None:
+        if intervention is not None:
+            source = db.resolve(intervention.source_run_id)
+            # The source governs redaction the same way replaying it would, and
+            # the fork inherits its task and command so the two stay comparable.
+            cfg = replace(cfg, redact=source.redacted)
+            replay_events = db.events(source.run_id)
             header = RunHeader(
                 run_id=real_uuid4().hex,
-                name=run_or_name,
+                name=run_or_name or f"{source.name}+{intervention.label()}",
                 started_at=real_time(),
                 status="running",
-                command=command,
+                command=command or source.command,
                 redacted=cfg.redact,
-                task_id=task_id,
+                task_id=task_id or source.task_id,
             )
             db.create_run(header)
-            replay_events = None
         else:
-            # How the cassette was written governs how it is matched, or a
-            # replay configured differently would miss every call.
-            cfg = replace(cfg, redact=header.redacted)
-            replay_events = db.events(header.run_id)
+            header = None if mode == "all" else db.find(run_or_name)
+            if header is None and mode == "none":
+                db.resolve(run_or_name)
+            if header is None:
+                header = RunHeader(
+                    run_id=real_uuid4().hex,
+                    name=run_or_name,
+                    started_at=real_time(),
+                    status="running",
+                    command=command,
+                    redacted=cfg.redact,
+                    task_id=task_id,
+                )
+                db.create_run(header)
+                replay_events = None
+            else:
+                # How the cassette was written governs how it is matched, or a
+                # replay configured differently would miss every call.
+                cfg = replace(cfg, redact=header.redacted)
+                replay_events = db.events(header.run_id)
 
         active = Session(
             store=db,
@@ -176,7 +202,17 @@ def open_session(
             mode=mode,
             config=cfg,
             replay_events=replay_events,
+            intervention=intervention,
         )
+        if intervention is not None:
+            active._append(
+                InterventionEvent(
+                    source_run_id=intervention.source_run_id,
+                    drop_tags=sorted(intervention.drop_tags),
+                    from_turn=intervention.from_turn,
+                    meta=EventMeta(recorded_at=real_time()),
+                )
+            )
         if active.can_replay:
             require_hash_seed(cfg)
             warn_if_stale(header, cfg)
@@ -248,6 +284,49 @@ def replay(
     **overrides: Any,
 ) -> Iterator[Session]:
     with _entered(run_or_name, mode, store, config, None, overrides) as s:
+        yield s
+
+
+def plan(
+    run_or_name: str,
+    *,
+    drop_tags: Iterable[str],
+    from_turn: int = 0,
+    store: str | Path = ".locus",
+) -> Intervention:
+    """Resolve a run and check the intervention would change something."""
+    db = Store(store)
+    try:
+        source = db.resolve(run_or_name)
+        return plan_intervention(source, db.events(source.run_id), frozenset(drop_tags), from_turn)
+    finally:
+        db.close()
+
+
+@contextmanager
+def intervene(
+    run_or_name: str,
+    *,
+    drop_tags: Iterable[str],
+    from_turn: int = 0,
+    name: str = "",
+    store: str | Path = ".locus",
+    config: Config | None = None,
+    **overrides: Any,
+) -> Iterator[Session]:
+    """Re-run a recorded run with context blocks removed, into a new run.
+
+    Turns before `from_turn` replay from the source log, so they cost no
+    inference. From there the request no longer matches what was recorded and
+    the agent runs against the live model. The source run is never written to.
+    """
+    intervention = plan(
+        run_or_name, drop_tags=drop_tags, from_turn=from_turn, store=store
+    )
+    with open_session(
+        name, store=store, mode="new_episodes", config=config, intervention=intervention,
+        **overrides,
+    ) as s:
         yield s
 
 

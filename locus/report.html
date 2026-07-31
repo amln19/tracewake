@@ -317,7 +317,16 @@ function renderRows() {
   });
 }
 
-function blockNode(id) {
+// A file:// page has no server and cannot start a replay, so the counterfactual
+// is offered as the command that runs it rather than as a button that cannot.
+function neutralizeCommand(side, turn, provenance) {
+  if (turn === null || turn === undefined || !provenance || provenance === "untagged") return null;
+  const run = (side === "good" ? D.good : D.bad).run_id.slice(0, 8);
+  return "locus intervene " + run + " --drop-tag " + provenance + " --from-step " + turn +
+    (D.store ? " --store " + D.store : "") + " -- <the command that runs your agent>";
+}
+
+function blockNode(id, command) {
   const b = D.blocks[id];
   const d = el("details", "block");
   const s = el("summary");
@@ -326,6 +335,12 @@ function blockNode(id) {
   s.appendChild(el("span", "size", num(b.chars) + " chars"));
   d.appendChild(s);
   if (b.clipped) d.appendChild(el("div", "clip", "clipped to " + num(b.text.length) + " characters"));
+  if (command) {
+    const box = el("div", "field");
+    box.appendChild(el("div", "label", "Neutralize this block and re-run"));
+    box.appendChild(el("code", null, command));
+    d.appendChild(box);
+  }
   d.appendChild(el("pre", null, b.text));
   return d;
 }
@@ -373,7 +388,9 @@ function sideNode(side, idx, title) {
 
   if (s.context.length) {
     const list = el("div");
-    for (const id of s.context) list.appendChild(blockNode(id));
+    for (const id of s.context) {
+      list.appendChild(blockNode(id, neutralizeCommand(side, s.turn, D.blocks[id].provenance)));
+    }
     field(wrap, "Context sent to the model (" + s.context.length + " blocks, provenance-tagged)", list);
   }
   return wrap;

@@ -134,6 +134,9 @@ def _step_details(
     blobs: BlobStore | None,
 ) -> list[dict[str, Any]]:
     calls = {e.event.call_id: e.event for e in events if isinstance(e.event, ModelCallEvent)}
+    # An intervention is addressed by model call, and a turn that produced no
+    # action is not a step, so the two indices come apart on real runs.
+    turns = {call_id: turn for turn, call_id in enumerate(calls)}
     seen_files: set[str] = set()
     out: list[dict[str, Any]] = []
 
@@ -181,6 +184,7 @@ def _step_details(
         out.append(
             {
                 "i": index,
+                "turn": turns.get(trace.parent_call_id),
                 "name": step.name,
                 "target": step.target,
                 "targets": sorted(step.targets),

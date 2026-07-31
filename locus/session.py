@@ -65,6 +65,29 @@ class Completion:
     response: ModelResponse
 
 
+@dataclass(frozen=True)
+class Intervention:
+    """One change to what the agent sees, applied from a chosen turn onward.
+
+    Dropping a context block changes the request, so the recorded call for that
+    turn stops matching and the run continues against the live model. Turns
+    before `from_turn` are untouched and still replay from the log, which is
+    what makes the counterfactual cost only the inference after the change.
+    """
+
+    source_run_id: str
+    drop_tags: frozenset[str]
+    from_turn: int = 0
+
+    def label(self) -> str:
+        tags = "+".join(sorted(self.drop_tags))
+        return f"drop-{tags}@{self.from_turn}"
+
+    def describe(self) -> str:
+        tags = ", ".join(sorted(self.drop_tags))
+        return f"dropping {tags} from turn {self.from_turn} of run {self.source_run_id[:12]}"
+
+
 class _GeneratorSource:
     """Drives a stream generator and captures its return value.
 
@@ -194,9 +217,10 @@ class Model:
         self, *, messages: list[Message], tools: list[str] | None = None, **params: Any
     ) -> Completion:
         decode = DecodeParams(**params)
-        messages = list(messages)
+        messages = self._session._turn_messages(messages)
         hit = self._matched(messages, tools)
         if hit is not None:
+            self._session._current_call_id = hit.call_id
             if hit.stream is not None:
                 raise ReplayMiss(
                     f"call {hit.call_id} was recorded as a stream but the replayed agent "
@@ -229,9 +253,10 @@ class Model:
         # agents append to their message list as they go. Hashing the mutated
         # list would record a request that was never sent, and matching hashes at
         # call time, so the two paths would disagree.
-        messages = list(messages)
+        messages = self._session._turn_messages(messages)
         hit = self._matched(messages, tools)
         if hit is not None:
+            self._session._current_call_id = hit.call_id
             if hit.stream is None:
                 raise ReplayMiss(
                     f"call {hit.call_id} was recorded without streaming, so there are no "
@@ -287,8 +312,14 @@ class Tools:
 
     def _call(self, parent_call_id: str, request: ToolCallRequest) -> ToolOutcome:
         # Keyed by (parent, tool id) rather than sequence, so a parallel batch
-        # replays correctly no matter what order its calls complete in.
-        recorded = self._session._tool_calls.get((parent_call_id, request.id))
+        # replays correctly no matter what order its calls complete in. A forked
+        # session takes none of them: it re-executes so the world reaches the
+        # state the trajectory describes.
+        recorded = (
+            None
+            if self._session.forked
+            else self._session._tool_calls.get((parent_call_id, request.id))
+        )
         if recorded is not None and hash_args(request.args) == recorded.args_hash:
             self._session.report.tool_calls_replayed += 1
             content = self._session._store.blobs.get(recorded.result.digest).decode("utf-8")
@@ -364,6 +395,7 @@ class Session:
         config: Config,
         replay_events: list[StoredEvent] | None,
         owns_store: bool = True,
+        intervention: Intervention | None = None,
     ) -> None:
         self.run_id = header.run_id
         self.name = header.name
@@ -371,6 +403,9 @@ class Session:
         self.config = config
         self.header = header
         self.report = ReplayReport()
+        self.intervention = intervention
+        self.blocks_dropped = 0
+        self._turn = 0
         self._store = store
         self._owns_store = owns_store
         self._redactor = Redactor(config)
@@ -381,6 +416,13 @@ class Session:
         self.can_record = mode == "all" or mode == "new_episodes" or (
             mode == "once" and not self.can_replay
         )
+        # A fork replays the model and re-executes the world. Serving a recorded
+        # tool result would skip its effect on the working tree, so a run that
+        # continued past the change would act on a tree the replayed prefix
+        # never actually built. Inference is the expensive input and the one the
+        # log exists to capture; tool calls are the agent's effect on the world
+        # and have to happen for that world to be real.
+        self.forked = intervention is not None
 
         self._tool_calls: dict[tuple[str, str], ToolCallEvent] = {}
         self._env: dict[tuple[str, str | None], list[Any]] = {}
@@ -391,6 +433,10 @@ class Session:
         self._matcher: CallMatcher | None = None
         if replay_events is not None:
             self._index(replay_events)
+        if self.forked:
+            # A different outcome is the result a fork is looking for, so the
+            # source run's outcome is not something to check this one against.
+            self._outcome = None
 
         self.clock = Clock(self)
         self.fs = Fs(self)
@@ -413,6 +459,15 @@ class Session:
                 case OutcomeEvent():
                     self._outcome = ev
         self._matcher = CallMatcher(calls, self.config, self.report)
+
+    def _turn_messages(self, messages: list[Message]) -> list[Message]:
+        turn = self._turn
+        self._turn += 1
+        if self.intervention is None or turn < self.intervention.from_turn:
+            return list(messages)
+        kept = [m for m in messages if m.provenance not in self.intervention.drop_tags]
+        self.blocks_dropped += len(messages) - len(kept)
+        return kept
 
     def model(
         self,
@@ -465,7 +520,7 @@ class Session:
         )
 
     def env_value(self, source: str, key: str | None, produce: Callable[[], Any]) -> Any:
-        if self.can_replay:
+        if self.can_replay and not self.forked:
             found, value = self._pop_env(source, key)
             if found:
                 return self._redactor.restore_path(value) if source == "env" else value
@@ -505,7 +560,9 @@ class Session:
         return (False, None)
 
     def _replay_fs(self, kind: str, path: str) -> Any:
-        if not self.can_replay:
+        # A fork reads the tree it is actually building. Serving a recorded read
+        # would hand back the file as it was before this run's own edits.
+        if not self.can_replay or self.forked:
             return None
         entries = self._fs.get((kind, path))
         index = self._fs_cursor.get((kind, path), 0)
@@ -613,6 +670,43 @@ class Session:
         if self.can_replay:
             self.report.recorded_new += 1
         return call_id
+
+
+def plan_intervention(
+    source: RunHeader,
+    events: list[StoredEvent],
+    drop_tags: frozenset[str],
+    from_turn: int,
+) -> Intervention:
+    """Check the change can happen before any inference is spent on it.
+
+    An intervention that matches nothing still produces a plausible-looking run,
+    and that run is a re-recording rather than a counterfactual. Finding out
+    afterward means the answer is wrong in a way nothing on the page shows.
+    """
+    if not drop_tags:
+        raise ValueError("an intervention has to drop at least one provenance tag.")
+    if from_turn < 0:
+        raise ValueError(f"from_turn cannot be negative (got {from_turn}).")
+    calls = [e.event for e in events if isinstance(e.event, ModelCallEvent)]
+    if from_turn >= len(calls):
+        raise ValueError(
+            f"run {source.run_id[:12]} made {len(calls)} model calls, so it has no turn "
+            f"{from_turn} to intervene at. Turns are numbered from 0."
+        )
+    hits = sum(
+        1 for call in calls[from_turn:] for m in call.messages if m.provenance in drop_tags
+    )
+    if not hits:
+        available = sorted({m.provenance for c in calls for m in c.messages if m.provenance})
+        raise ValueError(
+            f"no context block tagged {', '.join(sorted(drop_tags))} appears at or after "
+            f"turn {from_turn} of run {source.run_id[:12]}, so dropping it would change "
+            f"nothing. Tags in this run: {', '.join(available) or 'none'}."
+        )
+    return Intervention(
+        source_run_id=source.run_id, drop_tags=drop_tags, from_turn=from_turn
+    )
 
 
 def warn_if_stale(header: RunHeader, config: Config) -> str | None:

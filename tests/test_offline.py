@@ -155,6 +155,66 @@ def test_the_socket_block_is_lifted_when_the_session_ends(
     assert server.connections == 1
 
 
+def test_an_intervention_replays_the_prefix_and_pays_only_for_the_rest(
+    server: _Server, tmp_path: Path, env: dict[str, str]
+) -> None:
+    """A fork's cost is the inference after the change, not the whole run."""
+    store = tmp_path / "store"
+    recorded = _locus(
+        "record", "--store", str(store), "--name", "gate", "--", sys.executable, str(AGENT), env=env
+    )
+    assert recorded.returncode == 0, recorded.stderr
+    source = Store(store).latest_named("gate").run_id
+    server.reset()
+
+    forked = _locus(
+        "intervene", source, "--store", str(store),
+        "--drop-tag", "user_task", "--from-step", "1",
+        "--", sys.executable, str(AGENT),
+        env=env,
+    )
+    assert forked.returncode == 0, forked.stderr
+    # Turn 0 still matched the recorded call and never left the log; only the
+    # turn whose context changed reached the model.
+    assert server.connections == 1
+
+    db = Store(store)
+    runs = {h.run_id for h in db.runs()}
+    fork = next(h for h in db.runs() if h.run_id != source)
+    declared = [e.event for e in db.events(fork.run_id) if e.event.type == "intervention"]
+    kept = [
+        m
+        for e in db.events(fork.run_id)
+        if e.event.type == "model_call"
+        for m in e.event.messages
+    ]
+    db.close()
+
+    assert len(runs) == 2
+    assert declared and declared[0].source_run_id == source
+    assert fork.name == "gate+drop-user_task@1"
+    assert not [m for m in kept if m.provenance == "user_task"]
+
+
+def test_an_intervention_that_changes_nothing_is_refused_by_the_cli(
+    server: _Server, tmp_path: Path, env: dict[str, str]
+) -> None:
+    store = tmp_path / "store"
+    _locus("record", "--store", str(store), "--name", "gate", "--", sys.executable, str(AGENT), env=env)
+    source = Store(store).latest_named("gate").run_id
+    server.reset()
+
+    refused = _locus(
+        "intervene", source, "--store", str(store), "--drop-tag", "repo_map",
+        "--", sys.executable, str(AGENT),
+        env=env,
+    )
+    assert refused.returncode != 0
+    assert "repo_map" in refused.stderr + refused.stdout
+    assert server.connections == 0, "it spent inference before finding out"
+    assert len(Store(store).runs()) == 1, "it created a run it could not use"
+
+
 def test_recording_through_the_cli_captures_the_whole_environment(
     server: _Server, tmp_path: Path, env: dict[str, str]
 ) -> None:

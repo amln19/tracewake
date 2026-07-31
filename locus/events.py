@@ -234,8 +234,27 @@ class OutcomeEvent(Event):
     test_summary: str | None = None
 
 
+class InterventionEvent(Event):
+    """What was changed about the inputs, written first in a forked run.
+
+    A fork is only interpretable next to the run it came from and the change
+    that was made, and neither is recoverable from the trajectory afterward.
+    """
+
+    type: Literal["intervention"] = "intervention"
+    source_run_id: str
+    drop_tags: list[str]
+    from_turn: int
+
+
 AnyEvent = Annotated[
-    ModelCallEvent | ToolCallEvent | EnvironmentEvent | FsReadEvent | FsWriteEvent | OutcomeEvent,
+    ModelCallEvent
+    | ToolCallEvent
+    | EnvironmentEvent
+    | FsReadEvent
+    | FsWriteEvent
+    | OutcomeEvent
+    | InterventionEvent,
     Field(discriminator="type"),
 ]
 

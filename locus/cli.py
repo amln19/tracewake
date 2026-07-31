@@ -19,6 +19,7 @@ from .config import RECORD_MODES, RecordMode
 from .events import RunHeader, StoredEvent
 from .patches import LocusError
 from .report import PAYLOAD_BUDGET, write_report
+from .session import Intervention
 from .store import Store
 
 app = typer.Typer(
@@ -48,6 +49,15 @@ def bootstrap_from_env() -> None:
     """
     import locus
 
+    spec = os.environ.get("LOCUS_INTERVENTION")
+    intervention = None
+    if spec:
+        fields = json.loads(spec)
+        intervention = locus.Intervention(
+            source_run_id=fields["source_run_id"],
+            drop_tags=frozenset(fields["drop_tags"]),
+            from_turn=fields["from_turn"],
+        )
     stack = ExitStack()
     session = stack.enter_context(
         locus.open_session(
@@ -56,6 +66,7 @@ def bootstrap_from_env() -> None:
             mode=os.environ["LOCUS_MODE"],  # type: ignore[arg-type]
             command=json.loads(os.environ["LOCUS_COMMAND"]),
             redact=os.environ["LOCUS_REDACT"] == "1",
+            intervention=intervention,
         )
     )
     locus._adopt(session)
@@ -64,7 +75,12 @@ def bootstrap_from_env() -> None:
 
 
 def _run_child(
-    target: str, command: list[str], store: Path, mode: RecordMode, redact: bool = True
+    target: str,
+    command: list[str],
+    store: Path,
+    mode: RecordMode,
+    redact: bool = True,
+    intervention: Intervention | None = None,
 ) -> tuple[int, str]:
     with tempfile.TemporaryDirectory(prefix="locus-bootstrap-") as tmp:
         Path(tmp, "sitecustomize.py").write_text(BOOTSTRAP, encoding="utf-8")
@@ -83,6 +99,14 @@ def _run_child(
             LOCUS_RUN_ID_FILE=str(id_file),
             LOCUS_REDACT="1" if redact else "0",
         )
+        if intervention is not None:
+            env["LOCUS_INTERVENTION"] = json.dumps(
+                {
+                    "source_run_id": intervention.source_run_id,
+                    "drop_tags": sorted(intervention.drop_tags),
+                    "from_turn": intervention.from_turn,
+                }
+            )
         completed = subprocess.run(command, env=env, check=False)
         run_id = id_file.read_text(encoding="utf-8").strip() if id_file.exists() else ""
     if not run_id:
@@ -144,6 +168,58 @@ def replay(
             f"command to re-run. Pass the program after the run id."
         )
     code, _ = _run_child(header.run_id, target, store, "none")
+    raise typer.Exit(code)
+
+
+@app.command("intervene")
+def intervene_(
+    run: Annotated[str, typer.Argument(help="Run id or cassette name to fork.")],
+    command: Annotated[list[str] | None, typer.Argument(help="Program to re-run, after `--`.")] = None,
+    drop_tag: Annotated[
+        list[str] | None,
+        typer.Option("--drop-tag", help="Provenance tag to remove from the context."),
+    ] = None,
+    from_step: Annotated[
+        int, typer.Option("--from-step", help="First model call to change, numbered from 0.")
+    ] = 0,
+    name: Annotated[str, typer.Option("--name", help="Cassette name for the forked run.")] = "",
+    store: StoreOption = Path(".locus"),
+) -> None:
+    """Re-run a recorded run with context blocks removed, into a new run.
+
+    Turns before --from-step replay from the recorded log and cost no inference.
+    From there the request no longer matches what was recorded, so the run
+    continues against the live model. The original run is never written to.
+    """
+    import locus
+
+    if not drop_tag:
+        raise typer.BadParameter("pass --drop-tag TAG to say what to neutralize")
+
+    db = Store(store)
+    header = db.resolve(run)
+    db.close()
+    # Fails here rather than after the inference it would have taken to find out.
+    plan = locus.plan(run, drop_tags=drop_tag, from_turn=from_step, store=store)
+
+    target = command or header.command
+    if not target:
+        raise typer.BadParameter(
+            f"run {header.run_id[:12]} was not recorded through `locus record`, so it has no "
+            f"command to re-run. Pass the program after the run id."
+        )
+    typer.echo(f"forking {header.run_id[:12]} — {plan.describe()}")
+    code, forked = _run_child(
+        name or f"{header.name}+{plan.label()}",
+        target,
+        store,
+        "new_episodes",
+        intervention=plan,
+    )
+    db = Store(store)
+    db.finish_run(forked, "ok" if code == 0 else "error", time.time())
+    typer.echo(f"recorded {forked}  —  compare with: locus diff {run} {forked}")
+    db.close()
     raise typer.Exit(code)
 
 
