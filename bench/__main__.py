@@ -108,6 +108,12 @@ def main(argv: list[str] | None = None) -> int:
     cf.add_argument("--temperature", type=float, default=0.7)
     cf.add_argument("--model", default=backend.DEFAULT_MODEL)
 
+    cfd = sub.add_parser(
+        "fork-diff", help="Align a forked run against the run it was forked from."
+    )
+    cfd.add_argument("run", help="Forked run id.")
+    cfd.add_argument("--lexical", action="store_true")
+
     args = parser.parse_args(argv)
 
     match args.command:
@@ -182,6 +188,8 @@ def main(argv: list[str] | None = None) -> int:
                     temperature=args.temperature,
                 ).format()
             )
+        case "fork-diff":
+            print(counterfactual.fork_diff(args.run, lexical=args.lexical))
     return 0
 
 

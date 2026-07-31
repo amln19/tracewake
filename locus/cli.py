@@ -67,6 +67,7 @@ def bootstrap_from_env() -> None:
             command=json.loads(os.environ["LOCUS_COMMAND"]),
             redact=os.environ["LOCUS_REDACT"] == "1",
             intervention=intervention,
+            source_store=os.environ.get("LOCUS_SOURCE_STORE"),
         )
     )
     locus._adopt(session)
@@ -81,6 +82,7 @@ def _run_child(
     mode: RecordMode,
     redact: bool = True,
     intervention: Intervention | None = None,
+    source_store: Path | None = None,
 ) -> tuple[int, str]:
     with tempfile.TemporaryDirectory(prefix="locus-bootstrap-") as tmp:
         Path(tmp, "sitecustomize.py").write_text(BOOTSTRAP, encoding="utf-8")
@@ -107,6 +109,8 @@ def _run_child(
                     "from_turn": intervention.from_turn,
                 }
             )
+            if source_store is not None:
+                env["LOCUS_SOURCE_STORE"] = str(source_store)
         completed = subprocess.run(command, env=env, check=False)
         run_id = id_file.read_text(encoding="utf-8").strip() if id_file.exists() else ""
     if not run_id:
@@ -184,23 +188,29 @@ def intervene_(
     ] = 0,
     name: Annotated[str, typer.Option("--name", help="Cassette name for the forked run.")] = "",
     store: StoreOption = Path(".locus"),
+    source_store: Annotated[
+        Path | None,
+        typer.Option("--source-store", help="Read the run from here and write the fork to --store."),
+    ] = None,
 ) -> None:
     """Re-run a recorded run with context blocks removed, into a new run.
 
-    Turns before --from-step replay from the recorded log and cost no inference.
-    From there the request no longer matches what was recorded, so the run
-    continues against the live model. The original run is never written to.
+    Turns before --from-step replay from the recorded log and cost no inference,
+    up to the first tool output that differs from the recorded one. From there
+    the request no longer matches, so the run continues against the live model.
+    The original run is never written to.
     """
     import locus
 
     if not drop_tag:
         raise typer.BadParameter("pass --drop-tag TAG to say what to neutralize")
 
-    db = Store(store)
+    origin = source_store or store
+    db = Store(origin)
     header = db.resolve(run)
     db.close()
     # Fails here rather than after the inference it would have taken to find out.
-    plan = locus.plan(run, drop_tags=drop_tag, from_turn=from_step, store=store)
+    plan = locus.plan(run, drop_tags=drop_tag, from_turn=from_step, store=origin)
 
     target = command or header.command
     if not target:
@@ -215,6 +225,7 @@ def intervene_(
         store,
         "new_episodes",
         intervention=plan,
+        source_store=source_store,
     )
     db = Store(store)
     db.finish_run(forked, "ok" if code == 0 else "error", time.time())
@@ -268,13 +279,19 @@ LexicalOption = Annotated[
 ]
 
 
+StoreBOption = Annotated[
+    Path | None,
+    typer.Option("--store-b", help="Store holding the second run, if it is not in --store."),
+]
+
+
 def _align_pair(
-    db: Store, good: str, bad: str, lexical: bool
+    db: Store, db_b: Store, good: str, bad: str, lexical: bool
 ) -> tuple[RunHeader, list[StoredEvent], RunHeader, list[StoredEvent], DiffResult]:
     good_header = db.resolve(good)
-    bad_header = db.resolve(bad)
+    bad_header = db_b.resolve(bad)
     good_events = db.events(good_header.run_id)
-    bad_events = db.events(bad_header.run_id)
+    bad_events = db_b.events(bad_header.run_id)
 
     if lexical:
         embed = LexicalEmbedder()
@@ -300,11 +317,15 @@ def diff_(
     good: Annotated[str, typer.Argument(help="Passing run id or cassette name.")],
     bad: Annotated[str, typer.Argument(help="Failing run id or cassette name.")],
     store: StoreOption = Path(".locus"),
+    store_b: StoreBOption = None,
     lexical: LexicalOption = False,
 ) -> None:
     """Align two runs and print the step where they stopped agreeing."""
     db = Store(store)
-    good_header, _, bad_header, _, result = _align_pair(db, good, bad, lexical)
+    db_b = Store(store_b) if store_b else db
+    good_header, _, bad_header, _, result = _align_pair(db, db_b, good, bad, lexical)
+    if db_b is not db:
+        db_b.close()
     db.close()
 
     typer.echo(
@@ -326,6 +347,7 @@ def view(
         Path, typer.Option("--out", "-o", help="Destination HTML file.")
     ] = Path("locus-report.html"),
     store: StoreOption = Path(".locus"),
+    store_b: StoreBOption = None,
     lexical: LexicalOption = False,
     max_bytes: Annotated[
         int,
@@ -334,7 +356,10 @@ def view(
 ) -> None:
     """Write a self-contained HTML report comparing two runs."""
     db = Store(store)
-    good_header, good_events, bad_header, bad_events, result = _align_pair(db, good, bad, lexical)
+    db_b = Store(store_b) if store_b else db
+    good_header, good_events, bad_header, bad_events, result = _align_pair(
+        db, db_b, good, bad, lexical
+    )
     payload = write_report(
         out,
         good_header,
@@ -343,9 +368,12 @@ def view(
         bad_events,
         result,
         blobs=db.blobs,
+        blobs_b=db_b.blobs,
         store_path=str(store),
         budget=max_bytes,
     )
+    if db_b is not db:
+        db_b.close()
     db.close()
 
     size = out.stat().st_size

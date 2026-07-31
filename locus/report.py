@@ -232,6 +232,7 @@ def build_payload(
     result: DiffResult,
     *,
     blobs: BlobStore | None = None,
+    blobs_b: BlobStore | None = None,
     store_path: str = "",
     budget: int = PAYLOAD_BUDGET,
 ) -> dict[str, Any]:
@@ -243,7 +244,7 @@ def build_payload(
     blocks = _Blocks()
     steps = {
         "good": _step_details(good_traces, good_events, blocks, blobs),
-        "bad": _step_details(bad_traces, bad_events, blocks, blobs),
+        "bad": _step_details(bad_traces, bad_events, blocks, blobs_b or blobs),
     }
 
     columns = []
@@ -313,6 +314,7 @@ def write_report(
     result: DiffResult,
     *,
     blobs: BlobStore | None = None,
+    blobs_b: BlobStore | None = None,
     store_path: str = "",
     budget: int = PAYLOAD_BUDGET,
 ) -> dict[str, Any]:
@@ -323,6 +325,7 @@ def write_report(
         bad_events,
         result,
         blobs=blobs,
+        blobs_b=blobs_b,
         store_path=store_path,
         budget=budget,
     )

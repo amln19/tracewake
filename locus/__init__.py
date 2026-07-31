@@ -138,6 +138,20 @@ def _adopt(session: Session | None) -> None:
     _ambient = session
 
 
+def _read_source(
+    db: Store, run_id: str, source_store: str | Path | None
+) -> tuple[RunHeader, list[StoredEvent]]:
+    if source_store is None:
+        header = db.resolve(run_id)
+        return header, db.events(header.run_id)
+    other = Store(source_store)
+    try:
+        header = other.resolve(run_id)
+        return header, other.events(header.run_id)
+    finally:
+        other.close()
+
+
 @contextmanager
 def open_session(
     run_or_name: str,
@@ -148,6 +162,7 @@ def open_session(
     command: list[str] | None = None,
     task_id: str | None = None,
     intervention: Intervention | None = None,
+    source_store: str | Path | None = None,
     **overrides: Any,
 ) -> Iterator[Session]:
     if mode not in RECORD_MODES:
@@ -159,11 +174,14 @@ def open_session(
     stack = ExitStack()
     try:
         if intervention is not None:
-            source = db.resolve(intervention.source_run_id)
+            # A fork only ever reads the source's events: it serves no recorded
+            # tool result and no recorded file read, so the source can live in a
+            # store this run never writes to. That is what lets a closed corpus
+            # be forked without being appended to.
+            source, replay_events = _read_source(db, intervention.source_run_id, source_store)
             # The source governs redaction the same way replaying it would, and
             # the fork inherits its task and command so the two stay comparable.
             cfg = replace(cfg, redact=source.redacted)
-            replay_events = db.events(source.run_id)
             header = RunHeader(
                 run_id=real_uuid4().hex,
                 name=run_or_name or f"{source.name}+{intervention.label()}",
@@ -311,20 +329,32 @@ def intervene(
     from_turn: int = 0,
     name: str = "",
     store: str | Path = ".locus",
+    source_store: str | Path | None = None,
     config: Config | None = None,
     **overrides: Any,
 ) -> Iterator[Session]:
     """Re-run a recorded run with context blocks removed, into a new run.
 
-    Turns before `from_turn` replay from the source log, so they cost no
-    inference. From there the request no longer matches what was recorded and
-    the agent runs against the live model. The source run is never written to.
+    Turns before `from_turn` replay from the source log and cost no inference,
+    up to the first tool output that differs from the recorded one. From there
+    the request no longer matches and the agent runs against the live model.
+
+    The source run is never written to, and `source_store` puts the new run in a
+    different store entirely so a closed corpus can be forked without growing.
     """
     intervention = plan(
-        run_or_name, drop_tags=drop_tags, from_turn=from_turn, store=store
+        run_or_name,
+        drop_tags=drop_tags,
+        from_turn=from_turn,
+        store=source_store if source_store is not None else store,
     )
     with open_session(
-        name, store=store, mode="new_episodes", config=config, intervention=intervention,
+        name,
+        store=store,
+        mode="new_episodes",
+        config=config,
+        intervention=intervention,
+        source_store=source_store,
         **overrides,
     ) as s:
         yield s

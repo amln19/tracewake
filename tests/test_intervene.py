@@ -179,6 +179,38 @@ def test_an_intervention_without_live_tools_says_so(tmp_path: Path):
             run_agent(model, s.tools(), s.clock, Transcript())
 
 
+def test_a_fork_can_write_to_a_different_store_than_it_reads(tmp_path: Path):
+    """What lets a closed corpus be forked without being appended to."""
+    source_store = tmp_path / "closed"
+    fork_store = tmp_path / "forks"
+    source, _ = _record(source_store)
+    before = _digest(source_store, source)
+
+    live = MockBackend()
+    with locus.intervene(
+        source,
+        drop_tags=["tool_output"],
+        from_turn=1,
+        store=fork_store,
+        source_store=source_store,
+    ) as s:
+        model = s.model(
+            provider="mock", model_id="mock-1", create_fn=live.create, stream_fn=live.stream
+        )
+        run_agent(model, s.tools(live.dispatch), s.clock, Transcript())
+        forked = s.run_id
+
+    db = Store(source_store)
+    closed = [h.run_id for h in db.runs()]
+    db.close()
+    assert closed == [source], "the source store grew"
+    assert _digest(source_store, source) == before
+
+    db = Store(fork_store)
+    assert [h.run_id for h in db.runs()] == [forked]
+    db.close()
+
+
 def test_dropping_from_turn_zero_makes_every_turn_live(tmp_path: Path):
     source, _ = _record(tmp_path)
 

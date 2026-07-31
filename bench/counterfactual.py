@@ -19,11 +19,16 @@ from locus import Store
 
 from . import agent, repos
 from .backend import DEFAULT_MODEL, PROVIDER, LocalModel
-from .repos import BY_NAME
+from .repos import CORPUS_ROOT, BY_NAME
 from .runner import STORE, grade, prepare
 from .tasks import load
 
 SEED_STRIDE = 1013
+
+# Forks come from a later agent than the corpus does, and a store holding two
+# agent versions cannot support a claim about why two runs diverged. They go in
+# their own store so the corpus stays exactly the 192 runs it was closed at.
+FORK_STORE = CORPUS_ROOT / "counterfactual"
 
 
 @dataclass(frozen=True)
@@ -46,8 +51,8 @@ class Fork:
         return "\n".join(
             [
                 f"task            {self.task_id}",
-                f"source run      {self.source_run_id}",
-                f"forked run      {self.run_id}",
+                f"source run      {self.source_run_id}  (in {STORE})",
+                f"forked run      {self.run_id}  (in {FORK_STORE})",
                 f"intervention    dropped {tags} from turn {self.from_turn}",
                 f"blocks dropped  {self.blocks_dropped}",
                 f"model calls     {self.replayed_calls} replayed, {self.live_calls} generated",
@@ -55,9 +60,60 @@ class Fork:
                 f"tests           {self.summary}",
                 f"wall clock      {self.seconds:.0f}s",
                 "",
-                f"compare with:   locus diff {self.source_run_id} {self.run_id} --store {STORE}",
+                "compare with:   python -m bench fork-diff " + self.run_id,
             ]
         )
+
+
+def fork_diff(
+    run: str, store: Path = STORE, fork_store: Path = FORK_STORE, lexical: bool = False
+) -> str:
+    """Align a fork against the run it was forked from, across the two stores."""
+    from locus.align import LexicalEmbedder, MlxEmbedder, diff_runs, format_diff
+    from locus.events import InterventionEvent
+
+    forks = Store(fork_store)
+    try:
+        header = forks.resolve(run)
+        events = forks.events(header.run_id)
+        declared = [e.event for e in events if isinstance(e.event, InterventionEvent)]
+        if not declared:
+            raise ValueError(
+                f"run {header.run_id[:12]} in {fork_store} is not a fork — it carries no "
+                f"record of what it was forked from."
+            )
+        source_id = declared[0].source_run_id
+        db = Store(store)
+        try:
+            source = db.resolve(source_id)
+            source_events = db.events(source.run_id)
+        finally:
+            db.close()
+    finally:
+        forks.close()
+
+    if lexical:
+        embed, model_id, revision = LexicalEmbedder(), "lexical", None
+    else:
+        embedder = MlxEmbedder()
+        embed, model_id, revision = embedder, embedder.model_id, embedder.revision
+
+    result = diff_runs(
+        source_events,
+        events,
+        embed=embed,
+        embedding_model=model_id,
+        embedding_revision=revision,
+    )
+    tags = ", ".join(declared[0].drop_tags)
+    return "\n".join(
+        [
+            f"source  {source.run_id[:12]}  {source.name}",
+            f"fork    {header.run_id[:12]}  dropped {tags} from turn {declared[0].from_turn}",
+            "",
+            format_diff(result, good_label="SOURCE", bad_label="FORK"),
+        ]
+    )
 
 
 def _run_index(name: str) -> int:
@@ -70,6 +126,7 @@ def fork(
     drop_tags: list[str],
     from_turn: int = 0,
     store: Path = STORE,
+    fork_store: Path = FORK_STORE,
     max_steps: int = 18,
     model_id: str = DEFAULT_MODEL,
     temperature: float = 0.7,
@@ -104,7 +161,8 @@ def fork(
             source.run_id,
             drop_tags=drop_tags,
             from_turn=from_turn,
-            store=store,
+            store=fork_store,
+            source_store=store,
             block_network=False,
         ) as session:
             tools = agent.Tools(session, root, repo.source_dirs, run_suite)
