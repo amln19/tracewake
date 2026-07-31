@@ -4,9 +4,10 @@ Find where two coding agent runs diverged. Record an agent run once, replay it
 offline for free, then diff a good run against a bad one to get the exact step
 where they stopped agreeing.
 
-Right now locus does the first two. Record and replay work, and there is a task
-suite that generates runs to work on; trajectory alignment — the part that answers
-"where did these two runs stop agreeing" — is next.
+Record, replay, and trajectory alignment all work. Given two runs of the same
+task, `locus diff` aligns their tool traces with an affine-gap algorithm and
+reports the step where they stopped agreeing. The evaluation set is synthetic
+injected bugs; transfer to real-world issue trajectories is untested.
 
 ```python
 import locus
@@ -191,13 +192,36 @@ map, feedback on its own malformed output. The labels are free to capture while
 the run happens and impossible to reconstruct afterwards, once a file's contents
 and a tool's output are both just text in a transcript.
 
+## Diffing two runs
+
+```
+locus diff <good-run> <bad-run>
+```
+
+Each run is turned into a sequence of steps — a tool name, its arguments, the
+model's reasoning text for that turn, and the set of source files changed so
+far. Parallel tool batches from one model call count as a single step. The two
+sequences are aligned with Gotoh's affine-gap algorithm so a multi-step
+excursion is charged once rather than per step, and the divergence point is the
+first step on the failing side after the traces stop re-aligning.
+
+Step similarity is a fixed weighted sum: tool name, argument similarity after
+path canonicalization, embedding cosine on the reasoning text, and Jaccard
+overlap of changed files. The weights were chosen before any hand labels were
+scored, so the accuracy number is not a product of tuning on the evaluation set.
+Reasoning embeddings use a pinned local model (`mlx-community/bge-small-en-v1.5-bf16`);
+install the optional extra with `uv sync --extra embeddings`. `--lexical` skips
+the model and scores reasoning text by string similarity instead.
+
 ## Prior art
 
 The record/replay design — cassettes, request matchers, record modes, before-
 record redaction, staleness intervals — is borrowed from VCR.py and Ruby's VCR,
-which solved this for HTTP fifteen years ago. What's new here is applying it to
-model calls, tool calls, the filesystem and the clock, and using it as the
-substrate for trajectory alignment.
+which solved this for HTTP fifteen years ago. Trajectory alignment uses Gotoh
+affine-gap dynamic programming (the same family as Needleman–Wunsch) over a
+distance on agent steps rather than residues. What's new is applying both to
+model calls, tool calls, the filesystem and the clock, and evaluating the
+aligner against named baselines on hand-labeled pairs.
 
 ## Development
 

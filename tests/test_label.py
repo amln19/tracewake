@@ -8,6 +8,7 @@ from bench.label import _anonymize, _paths_in, select_pairs
 def test_paths_are_collected_from_messy_tokens():
     assert _paths_in('see "pkg/mod.py", please') == ["pkg/mod.py"]
     assert _paths_in("pkg/mod.py:12") == ["pkg/mod.py"]
+    assert _paths_in("open test_schema.py next") == ["test_schema.py"]
 
 
 def test_anonymize_rewrites_paths_before_they_can_leak():

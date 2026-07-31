@@ -150,12 +150,15 @@ def _paths_in(text: str) -> list[str]:
     found: list[str] = []
     for token in text.replace("'", " ").replace('"', " ").split():
         cleaned = token.strip(".,;:()[]{}")
-        if "/" in cleaned and ".py" in cleaned:
-            # Trim anything past .py (punctuation, JSON commas).
-            end = cleaned.find(".py") + 3
-            cleaned = cleaned[:end]
-            if cleaned not in found:
-                found.append(cleaned)
+        if ".py" not in cleaned:
+            continue
+        # Trim anything past .py (punctuation, JSON commas).
+        end = cleaned.find(".py") + 3
+        cleaned = cleaned[:end]
+        # Slash paths and bare filenames both leak the task's package identity
+        # (`bidict.py`, `test_schema.py`). Rewrite both.
+        if cleaned not in found:
+            found.append(cleaned)
     return found
 
 
