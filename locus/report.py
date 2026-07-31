@@ -19,6 +19,7 @@ from typing import Any
 
 from .align import DiffResult, Step, StepTrace, extract_traces, target_agree, target_of
 from .events import ModelCallEvent, OutcomeEvent, RunHeader, StoredEvent
+from .pprof import attribute_tokens
 from .store import BlobStore
 
 PAYLOAD_BUDGET = 5_000_000
@@ -97,6 +98,25 @@ def _fit_budget(payload: dict[str, Any], texts: list[str], budget: int) -> None:
         )
 
 
+def _spend(header: RunHeader, events: list[StoredEvent]) -> list[dict[str, Any]]:
+    """Token spend by provenance tag — the same aggregation the profile exports.
+
+    Attribution across a call's blocks is proportional by character length, not
+    measured per block, and the page says so where it shows these numbers.
+    """
+    totals: dict[str, list[int]] = {}
+    for share in attribute_tokens(header, events):
+        slot = totals.setdefault(share.leaf, [0, 0])
+        slot[0] += share.input_tokens
+        slot[1] += share.output_tokens
+    rows = [
+        {"leaf": leaf, "input_tokens": inp, "output_tokens": out}
+        for leaf, (inp, out) in totals.items()
+    ]
+    rows.sort(key=lambda r: -(r["input_tokens"] + r["output_tokens"]))
+    return rows
+
+
 def _run_summary(header: RunHeader, events: list[StoredEvent], steps: int) -> dict[str, Any]:
     calls = [e.event for e in events if isinstance(e.event, ModelCallEvent)]
     outcome = next((e.event for e in events if isinstance(e.event, OutcomeEvent)), None)
@@ -115,6 +135,7 @@ def _run_summary(header: RunHeader, events: list[StoredEvent], steps: int) -> di
             "input_tokens": sum(c.response.usage.input_tokens for c in calls),
             "output_tokens": sum(c.response.usage.output_tokens for c in calls),
         },
+        "spend": _spend(header, events),
         "outcome": None
         if outcome is None
         else {

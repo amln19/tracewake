@@ -161,6 +161,34 @@ def test_the_report_and_the_diff_name_the_same_divergence(
     assert [c["b"] for c in payload["columns"]] == [j for _, j in result.alignment]
 
 
+def test_the_spend_panel_adds_up_to_the_recorded_usage(pair: tuple[Store, str, str]) -> None:
+    db, good, bad = pair
+    payload = _built(db, good, bad)
+
+    for side in ("good", "bad"):
+        run = payload[side]
+        assert run["spend"], "no spend breakdown"
+        assert sum(r["input_tokens"] for r in run["spend"]) == run["usage"]["input_tokens"]
+        assert sum(r["output_tokens"] for r in run["spend"]) == run["usage"]["output_tokens"]
+        # Heaviest first, so the panel reads as a ranking without the page sorting.
+        weights = [r["input_tokens"] + r["output_tokens"] for r in run["spend"]]
+        assert weights == sorted(weights, reverse=True)
+
+
+def test_each_context_block_can_name_the_call_that_would_neutralize_it(
+    pair: tuple[Store, str, str],
+) -> None:
+    db, good, bad = pair
+    payload = _built(db, good, bad)
+
+    # A step's turn is its model call, which is what an intervention addresses.
+    # Without it the page would offer a command aimed at the wrong turn.
+    for side in ("good", "bad"):
+        turns = [s["turn"] for s in payload["steps"][side]]
+        assert turns == sorted(turns)
+        assert all(t is not None for t in turns)
+
+
 def test_repeated_context_is_stored_once(pair: tuple[Store, str, str]) -> None:
     """Why the cap is reachable at all: a prompt resent every turn is one block."""
     db, good, bad = pair

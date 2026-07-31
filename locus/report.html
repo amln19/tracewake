@@ -142,6 +142,12 @@ details.block > summary .size { color: var(--dim); margin-left: auto; }
 details.block pre { margin: 0; padding: 8px 10px; border-top: 1px solid var(--line); font-size: 12px; max-height: 340px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
 .clip { color: var(--differ); font-size: 11.5px; padding: 4px 10px; }
 
+table.spend { width: 100%; border-collapse: collapse; font-size: 12px; margin: 4px 0; }
+table.spend td { padding: 2px 10px; vertical-align: middle; }
+table.spend td.mono { text-align: right; white-space: nowrap; }
+table.spend td:last-child { width: 40%; }
+.bar { height: 7px; background: var(--accent, #6aa9ff); border-radius: 3px; min-width: 1px; }
+
 .p-system_prompt { color: #b39ddb; }
 .p-tool_schema { color: #90caf9; }
 .p-repo_map { color: #80cbc4; }
@@ -225,7 +231,34 @@ function runCard(key, title) {
   }
   if (r.finished_at) add("wall clock", (r.finished_at - r.started_at).toFixed(1) + "s");
   card.appendChild(dl);
+  if (r.spend.length) card.appendChild(spendNode(r));
   return card;
+}
+
+function spendNode(r) {
+  const total = r.usage.input_tokens + r.usage.output_tokens;
+  const d = el("details", "block");
+  d.appendChild(el("summary", null, "Token spend by provenance"));
+  const table = el("table", "spend");
+  for (const row of r.spend) {
+    const n = row.input_tokens + row.output_tokens;
+    const tr = el("tr");
+    tr.appendChild(el("td", "prov p-" + row.leaf, row.leaf));
+    tr.appendChild(el("td", "mono", num(n)));
+    tr.appendChild(el("td", "mono", total ? (n / total * 100).toFixed(1) + "%" : "-"));
+    const bar = el("td");
+    const fill = el("div", "bar");
+    fill.style.width = (total ? n / total * 100 : 0).toFixed(1) + "%";
+    bar.appendChild(fill);
+    tr.appendChild(bar);
+    table.appendChild(tr);
+  }
+  d.appendChild(table);
+  d.appendChild(el("div", "clip",
+    "Usage is measured per model call. Input tokens are split across that call's " +
+    "context blocks in proportion to character length, so the split is proportional " +
+    "rather than a per-block measurement. Totals are exact."));
+  return d;
 }
 
 function renderHead() {
