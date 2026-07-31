@@ -6,7 +6,12 @@ where they stopped agreeing.
 
 Record, replay, and trajectory alignment all work. Given two runs of the same
 task, `locus diff` aligns their tool traces with an affine-gap algorithm and
-reports the step where they stopped agreeing.
+reports the step where they stopped agreeing. From there, `locus view` writes a
+self-contained HTML comparison, `locus pprof` exports token spend as a standard
+pprof profile, and `locus intervene` re-runs a recording with one class of
+context removed to see what changes. No harness adapter yet — the recorder is
+library-first, and wrapping a third-party harness is the next thing rather than
+a done thing.
 
 On 41 blinded hand-labeled pairs (single annotator, one pass, synthetic injected
 bugs), the aligner beat the baselines that matter: within two steps of the label
@@ -288,6 +293,75 @@ per-block measurement — say so when you cite it. Output tokens sit on a single
 On a corpus run of `bidict-deleted_guard-3` (117,033 input + 1,886 output
 tokens), the profile's sample totals matched the recorded usage exactly, and
 Speedscope imported the file as a protobuf pprof profile.
+
+The same aggregation backs the spend panel in the HTML report, so the profile
+and the page cannot drift. There are no dollar figures anywhere: the corpus ran
+on a local model, which cost nothing, and an invented price would be worse than
+no number.
+
+## Counterfactual re-runs
+
+```
+locus intervene <run> --drop-tag file_read --from-step 4 -- <your agent command>
+```
+
+Take a recorded run, remove a class of context block from a chosen turn onward,
+and let the agent run forward from there into a *new* run. The original is never
+written to. Every context block in the HTML report carries the exact command
+that neutralizes it — a `file://` page has no server and cannot start a replay,
+so the page offers the command rather than a button that could not work.
+
+Two things about how this runs, both of which cost more than they sound like:
+
+**The model replays; the world is re-executed.** Serving a recorded tool result
+would skip that call's effect on the working tree, so a run continuing past the
+change would act on a tree the replayed prefix never actually built. Inference
+is the input the log exists to capture; tool calls are the agent's effect on the
+world and have to happen for that world to be real.
+
+**So the free prefix ends at the first tool output that differs.** Re-executing
+means a tool whose output is not byte-identical — a test runner that prints its
+own duration, for one — changes the next turn's context and stops it matching.
+Forking the passing `bidict-deleted_guard-3` run at turn 4 replayed **1 of the 4
+prefix turns**, the same on both attempts, because the first test run reported a
+different elapsed time than when it was recorded. That is the tool reporting
+divergence rather than hiding it, but it means "replay is free up to the
+intervention" holds only for agents whose tools are deterministic in their
+output text.
+
+For the same reason the fork itself is not reproducible run to run: two forks of
+that run with identical arguments took 12 and 19 generated turns, because a test
+duration in the prompt is enough to move the trajectory. Both produced a
+well-formed patch, and neither made the suite pass — as the source run also did
+not.
+
+The sampler is held at the seed the source run used, advanced to the turn the
+fork starts generating at, so the model's own sampling is not a second thing
+that changed.
+
+Forks are written to a separate store from the runs they came from
+(`--source-store`), so a finished corpus can be forked without growing, and
+`locus diff --store-b` compares across the two.
+
+## OpenTelemetry
+
+```
+locus otel <run> -o trace.json
+```
+
+One trace per run — a root span, a `chat` span per model call, an
+`execute_tool` span per tool call — written as OTLP/JSON with the OpenTelemetry
+GenAI semantic convention attributes (`gen_ai.system`, `gen_ai.request.model`,
+`gen_ai.usage.input_tokens`, `gen_ai.tool.name`, and so on). Span ids are
+derived from the run and call ids by hash, so exporting a run twice produces the
+same trace instead of a new one.
+
+Written directly as OTLP/JSON rather than through the OpenTelemetry SDK, which
+keeps the wheel at two dependencies. The tests check the structure, the
+attribute names, that the spans form one tree, and that exported usage equals
+recorded usage. They do not check that a particular collector ingests it — that
+would need a collector running, so treat this as convention-shaped export rather
+than a certified integration.
 
 ## Prior art
 
