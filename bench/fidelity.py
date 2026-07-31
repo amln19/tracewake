@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import math
+import random
 import statistics
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
@@ -33,6 +34,13 @@ STORE = CORPUS_ROOT / "store"
 LEDGER = CORPUS_ROOT / "runs.jsonl"
 FIDELITY_ROOT = CORPUS_ROOT / "fidelity"
 PAIRS = FIDELITY_ROOT / "pairs.jsonl"
+# Fresh recordings for the replay-fidelity arm. Separate from the closed corpus
+# so measuring the tool never writes into runs reserved for alignment.
+REPLAY_STORE = FIDELITY_ROOT / "replay-store"
+REPLAY_LEDGER = FIDELITY_ROOT / "replay-runs.jsonl"
+REPLAY_RESULTS = FIDELITY_ROOT / "replay-results.jsonl"
+REPLAY_ARM_SEED = 20260730
+REPLAY_ARM_N = 8
 
 # A recorded run seeds the sampler from `run_index * RUN_STRIDE`, then advances by
 # one per model call, so each run owns the window `[seed, seed + RUN_STRIDE)`. Any
@@ -616,3 +624,217 @@ def report(store: Path = STORE, ledger: Path = LEDGER, out: Path = PAIRS) -> str
     )
     lines.append(f"per-pair detail written to {out}")
     return "\n".join(lines)
+
+
+# --- Replay fidelity ----------------------------------------------------------
+# A claim about the tool: a cassette replayed through `locus.replay` with the
+# network blocked reproduces its run. Fresh recordings, not the closed corpus —
+# those predate the current agent, and this arm only needs *a* recording.
+
+
+def pick_replay_tasks(n: int = REPLAY_ARM_N, seed: int = REPLAY_ARM_SEED) -> list:
+    from .tasks import load
+
+    tasks = list(load())
+    random.Random(seed).shuffle(tasks)
+    return tasks[:n]
+
+
+def record_replay_arm(
+    n: int = REPLAY_ARM_N,
+    store: Path = REPLAY_STORE,
+    ledger: Path = REPLAY_LEDGER,
+    max_steps: int = 18,
+) -> None:
+    """Record `n` fresh runs with the current agent into a store of their own."""
+    from .backend import DEFAULT_MODEL, LocalModel
+    from .runner import attempt, done, record_attempt
+
+    chosen = pick_replay_tasks(n)
+    # Seed far from the corpus windows so these recordings are never mistaken
+    # for a same-seed control against corpus runs.
+    model = LocalModel(model_id=DEFAULT_MODEL, temperature=0.7, seed=FRESH_BASE)
+    model.warm()
+    finished = done(ledger)
+    print(
+        f"replay-fidelity record: {len(chosen)} tasks, "
+        f"{len(finished)} already in {ledger}",
+        flush=True,
+    )
+    for position, task in enumerate(chosen, start=1):
+        key = f"{task.task_id}#0"
+        if key in finished:
+            print(f"[{position}/{len(chosen)}] {key} already recorded", flush=True)
+            continue
+        # run_index 0 keeps the name simple; the LocalModel seed is already fresh.
+        result = attempt(task, 0, model, store=store, max_steps=max_steps)
+        record_attempt(result, ledger)
+        print(
+            f"[{position}/{len(chosen)}] {result.key:<34} "
+            f"coverage={int(result.coverage)} resolve={int(result.resolve)} "
+            f"turns={result.turns:<3} actions={result.actions:<3} "
+            f"{result.stop_reason:<12} {result.seconds}s  run={result.run_id[:8]}",
+            flush=True,
+        )
+
+
+def _forbidden_model(*args: object, **kwargs: object):
+    raise AssertionError(
+        "replay reached the live model. Replay fidelity requires every completion "
+        "to come from the cassette."
+    )
+
+
+def replay_one(task_id: str, run_id: str, store: Path = REPLAY_STORE) -> dict:
+    """Replay one recording with the network blocked; model calls from the log."""
+    import shutil
+    import tempfile
+    import time
+
+    import locus
+    from locus import ReplayMiss
+
+    from . import agent, repos
+    from .repos import BY_NAME
+    from .runner import prepare
+    from .tasks import load
+
+    from .backend import DEFAULT_MODEL, PROVIDER
+
+    task = next(t for t in load() if t.task_id == task_id)
+    repo = BY_NAME[task.repo]
+    scratch = Path(tempfile.mkdtemp(prefix=f"replay-{task_id}-"))
+    root = prepare(task, scratch / "repo")
+    started = time.time()
+    outcome = {
+        "task_id": task_id,
+        "run_id": run_id,
+        "ok": False,
+        "error": None,
+        "matched": 0,
+        "missed": 0,
+        "degraded": 0,
+        "tool_calls_replayed": 0,
+        "seconds": 0.0,
+    }
+    try:
+        with locus.replay(run_id, store=store, block_network=True) as session:
+            tools = agent.Tools(
+                session,
+                root,
+                repo.source_dirs,
+                lambda: (_ for _ in ()).throw(
+                    AssertionError("replay reached the live test runner")
+                ),
+            )
+            # model_id must match the recording — matching includes it.
+            model = session.model(
+                provider=PROVIDER,
+                model_id=DEFAULT_MODEL,
+                stream_fn=_forbidden_model,
+                create_fn=_forbidden_model,
+            )
+            agent.run(session, model, task.issue, tools, max_steps=18, temperature=0.7)
+            report = session.report
+            outcome.update(
+                ok=report.missed == 0 and report.matched > 0,
+                matched=report.matched,
+                missed=report.missed,
+                degraded=report.degraded,
+                tool_calls_replayed=report.tool_calls_replayed,
+            )
+    except ReplayMiss as exc:
+        outcome["error"] = str(exc)
+        outcome["ok"] = False
+    except AssertionError as exc:
+        outcome["error"] = str(exc)
+        outcome["ok"] = False
+    finally:
+        outcome["seconds"] = round(time.time() - started, 1)
+        shutil.rmtree(scratch, ignore_errors=True)
+    return outcome
+
+
+def measure_replay_arm(
+    store: Path = REPLAY_STORE,
+    ledger: Path = REPLAY_LEDGER,
+    results: Path = REPLAY_RESULTS,
+) -> str:
+    """Replay every fresh recording and write the per-run result sheet."""
+    if not ledger.exists():
+        raise FileNotFoundError(
+            f"no replay-fidelity ledger at {ledger}. Record the arm first with "
+            f"`python -m bench replay-fidelity record`."
+        )
+    rows = [
+        json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
+    out_rows = []
+    results.parent.mkdir(parents=True, exist_ok=True)
+    print(f"replay-fidelity measure: {len(rows)} recordings in {store}", flush=True)
+    for position, row in enumerate(rows, start=1):
+        result = replay_one(row["task_id"], row["run_id"], store=store)
+        out_rows.append(result)
+        flag = "ok" if result["ok"] else "FAIL"
+        print(
+            f"[{position}/{len(rows)}] {row['task_id']:<34} {flag}  "
+            f"matched={result['matched']} missed={result['missed']} "
+            f"tools={result['tool_calls_replayed']}  {result['seconds']}s"
+            + (f"  {result['error'][:80]}" if result["error"] else ""),
+            flush=True,
+        )
+    with results.open("w", encoding="utf-8") as fh:
+        for row in out_rows:
+            fh.write(json.dumps(row, sort_keys=True) + "\n")
+    return replay_report(results)
+
+
+def replay_report(results: Path = REPLAY_RESULTS) -> str:
+    if not results.exists():
+        return f"no replay-fidelity results at {results}"
+    rows = [
+        json.loads(line)
+        for line in results.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if not rows:
+        return f"no replay-fidelity results at {results}"
+    ok = sum(1 for r in rows if r["ok"])
+    matched = sum(r["matched"] for r in rows)
+    missed = sum(r["missed"] for r in rows)
+    tools = sum(r["tool_calls_replayed"] for r in rows)
+    lo, hi = wilson(ok, len(rows))
+    lines = [
+        "replay fidelity: cassette replayed through locus.replay, network blocked",
+        "",
+        f"recordings reproduced  {ok}/{len(rows)} ({ok / len(rows):.1%})  [{lo:.0%}, {hi:.0%}]",
+        f"model calls matched    {matched}  missed {missed}  degraded "
+        f"{sum(r['degraded'] for r in rows)}",
+        f"tool calls replayed    {tools}",
+        f"wall clock             {sum(r['seconds'] for r in rows):.0f}s",
+        "",
+    ]
+    for r in rows:
+        flag = "ok" if r["ok"] else "FAIL"
+        lines.append(
+            f"  {r['task_id']:<34} {flag}  matched={r['matched']} missed={r['missed']}"
+        )
+        if r["error"]:
+            lines.append(f"    {r['error'][:120]}")
+    return "\n".join(lines)
+
+
+def fidelity_gate() -> str:
+    """Both fidelity numbers: run-to-run divergence, then replay fidelity."""
+    parts = [
+        "=" * 72,
+        "FIDELITY GATE",
+        "=" * 72,
+        "",
+        report(),
+        "",
+        "=" * 72,
+        "",
+        replay_report(),
+    ]
+    return "\n".join(parts)

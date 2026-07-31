@@ -41,6 +41,18 @@ def main(argv: list[str] | None = None) -> int:
         "export-labels",
         help="Write blinded divergence-labeling packets for the evaluation set.",
     )
+    replay = sub.add_parser(
+        "replay-fidelity",
+        help="Record fresh runs and replay them to measure cassette fidelity.",
+    )
+    replay_sub = replay.add_subparsers(dest="replay_command", required=True)
+    replay_sub.add_parser("record", help="Record N fresh runs into the fidelity store.")
+    replay_sub.add_parser("measure", help="Replay those recordings with the network blocked.")
+    replay_sub.add_parser("report", help="Print the replay-fidelity number.")
+    sub.add_parser(
+        "fidelity-gate",
+        help="Print both fidelity numbers (run-to-run divergence and replay).",
+    )
 
     args = parser.parse_args(argv)
 
@@ -78,6 +90,16 @@ def main(argv: list[str] | None = None) -> int:
             dest = label.export_packets()
             n = len(list((dest / "packets").glob("*.md")))
             print(f"{n} blinded packets written under {dest}")
+        case "replay-fidelity":
+            match args.replay_command:
+                case "record":
+                    fidelity.record_replay_arm()
+                case "measure":
+                    print(fidelity.measure_replay_arm())
+                case "report":
+                    print(fidelity.replay_report())
+        case "fidelity-gate":
+            print(fidelity.fidelity_gate())
     return 0
 
 
