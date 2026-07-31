@@ -267,6 +267,28 @@ at 5 MB (`--max-bytes`): past the cap, context blocks are clipped to a shared
 per-block limit, the page reports how much it dropped, and the full text stays
 in the store. No pair in that set reached the cap.
 
+## Token profiles
+
+```
+locus pprof <run> --view tokens -o run.pb.gz
+locus pprof <run> --view tokens --top 20
+```
+
+Token spend is exported as a standard gzipped pprof profile, so Speedscope,
+`go tool pprof`, and Pyroscope can open it without a custom renderer. The stack
+is run → model → turn → provenance tag. Sample types are input and output
+token counts.
+
+Usage is measured per model call. Input tokens are split across that call's
+context blocks in proportion to character length (largest-remainder, so the
+parts still sum to the measured total). That split is proportional, not a
+per-block measurement — say so when you cite it. Output tokens sit on a single
+`response` leaf.
+
+On a corpus run of `bidict-deleted_guard-3` (117,033 input + 1,886 output
+tokens), the profile's sample totals matched the recorded usage exactly, and
+Speedscope imported the file as a protobuf pprof profile.
+
 ## Prior art
 
 The record/replay design — cassettes, request matchers, record modes, before-
@@ -275,9 +297,13 @@ which solved this for HTTP fifteen years ago. Trajectory alignment uses Gotoh
 affine-gap dynamic programming (the same family as Needleman–Wunsch) over a
 distance on agent steps rather than residues. The backward divergence rule —
 the last position after which two traces never re-align — is the same move as
-the point-of-commitment idea in Causal Agent Replay (arXiv 2606.08275). What's
-new is applying both to model calls, tool calls, the filesystem and the clock,
-and evaluating the aligner against named baselines on hand-labeled pairs.
+the point-of-commitment idea in Causal Agent Replay (arXiv 2606.08275). Token
+flamegraphs as standard pprof rather than a custom renderer follows
+`agentpprof` / AgentSight; what locus adds is provenance tags already in the
+event log and (separately) intervention replay over a profiled block. What's
+new as a whole is applying record/replay to model calls, tool calls, the
+filesystem and the clock, and evaluating trajectory alignment against named
+baselines on hand-labeled pairs.
 
 ## Development
 

@@ -287,6 +287,51 @@ def view(
         )
 
 
+@app.command("pprof")
+def pprof_(
+    run: Annotated[str, typer.Argument(help="Run id or cassette name.")],
+    out: Annotated[
+        Path | None,
+        typer.Option("--out", "-o", help="Gzipped pprof profile (.pb.gz)."),
+    ] = None,
+    view: Annotated[
+        str,
+        typer.Option("--view", help="Profile kind. Only 'tokens' is supported."),
+    ] = "tokens",
+    top: Annotated[
+        int | None,
+        typer.Option("--top", help="Print the N heaviest leaves instead of writing a file."),
+    ] = None,
+    store: StoreOption = Path(".locus"),
+) -> None:
+    """Export a standard pprof profile of token spend for a run."""
+    from .pprof import format_top, write_token_profile
+
+    if view != "tokens":
+        raise typer.BadParameter(
+            f"unknown view {view!r}; only 'tokens' is supported. "
+            f"Example: locus pprof <run> --view tokens -o run.pb.gz"
+        )
+    if out is None and top is None:
+        raise typer.BadParameter("pass -o path.pb.gz to write a profile, or --top N for a summary")
+
+    db = Store(store)
+    header = db.resolve(run)
+    events = db.events(header.run_id)
+    db.close()
+
+    if top is not None:
+        typer.echo(format_top(header, events, n=top))
+        return
+
+    assert out is not None
+    input_tokens, output_tokens = write_token_profile(out, header, events)
+    typer.echo(
+        f"wrote {out} ({out.stat().st_size} bytes) — "
+        f"{input_tokens} input + {output_tokens} output tokens"
+    )
+
+
 def main() -> None:
     # A traceback is not a user interface. Locus raises these to say what failed
     # and what to do about it, so the CLI prints the message and nothing else.
