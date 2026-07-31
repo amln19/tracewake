@@ -146,11 +146,29 @@ def target_agree(a: Step, b: Step) -> bool:
     return a.names == b.names and a.targets == b.targets
 
 
+@dataclass(frozen=True)
+class StepTrace:
+    """A step with the events it came from, for anything that reports on steps."""
+
+    step: Step
+    # Empty for a synthesized submit, which no model call produced.
+    parent_call_id: str
+    tools: tuple[ToolCallEvent, ...]
+
+
 def extract_steps(
     events: Sequence[StoredEvent],
     *,
     append_submit: bool = False,
 ) -> list[Step]:
+    return [t.step for t in extract_traces(events, append_submit=append_submit)]
+
+
+def extract_traces(
+    events: Sequence[StoredEvent],
+    *,
+    append_submit: bool = False,
+) -> list[StepTrace]:
     """Build the alignment sequence from a run's event log.
 
     Insertion order, not `canonical_order`: the latter sorts by string
@@ -181,7 +199,7 @@ def extract_steps(
             tool_groups[key].append(event)
 
     changed: set[tuple[str, str]] = set()
-    out: list[Step] = []
+    out: list[StepTrace] = []
     for parent_id in group_order:
         tools = sorted(tool_groups[parent_id], key=lambda t: t.batch_index)
         for tool in tools:
@@ -194,37 +212,38 @@ def extract_steps(
         if len(tools) == 1:
             tool = tools[0]
             args = dict(tool.args)
-            out.append(
-                Step(
-                    name=tool.name,
-                    args=args,
-                    target=target_of(args),
-                    reasoning=reason,
-                    changed_files=files,
-                )
+            step = Step(
+                name=tool.name,
+                args=args,
+                target=target_of(args),
+                reasoning=reason,
+                changed_files=files,
             )
         else:
             names = tuple(t.name for t in tools)
             targets = tuple(target_of(dict(t.args)) for t in tools)
-            out.append(
-                Step(
-                    name="+".join(sorted(set(names))),
-                    args={"batch": [dict(t.args) for t in tools]},
-                    target="",
-                    reasoning=reason,
-                    changed_files=files,
-                    batch_names=names,
-                    batch_targets=targets,
-                )
+            step = Step(
+                name="+".join(sorted(set(names))),
+                args={"batch": [dict(t.args) for t in tools]},
+                target="",
+                reasoning=reason,
+                changed_files=files,
+                batch_names=names,
+                batch_targets=targets,
             )
+        out.append(StepTrace(step=step, parent_call_id=parent_id, tools=tuple(tools)))
 
     if append_submit:
         out.append(
-            Step(
-                name="submit",
-                args={},
-                reasoning="",
-                changed_files=frozenset(changed),
+            StepTrace(
+                step=Step(
+                    name="submit",
+                    args={},
+                    reasoning="",
+                    changed_files=frozenset(changed),
+                ),
+                parent_call_id="",
+                tools=(),
             )
         )
     return out
@@ -647,6 +666,14 @@ class DiffResult:
     length_ratio: float
     embedding_model: str | None = None
     embedding_revision: str | None = None
+    # scores[i][j] for the aligned columns, so a report can show how strongly a
+    # column matched rather than only whether it agreed at target width.
+    scores: list[list[float]] = field(default_factory=list)
+
+    def column_similarity(self, i: int | None, j: int | None) -> float | None:
+        if i is None or j is None or not self.scores:
+            return None
+        return (self.scores[i][j] + 1.0) / 2.0
 
     @property
     def excluded_by_length(self) -> bool:
@@ -677,7 +704,7 @@ def diff_runs(
 ) -> DiffResult:
     good = extract_steps(good_events, append_submit=append_submit_good)
     bad = extract_steps(bad_events, append_submit=append_submit_bad)
-    total, pairs, _ = align(good, bad, embed=embed)
+    total, pairs, scores = align(good, bad, embed=embed)
     return DiffResult(
         good_steps=good,
         bad_steps=bad,
@@ -687,6 +714,7 @@ def diff_runs(
         length_ratio=length_ratio(good, bad),
         embedding_model=embedding_model,
         embedding_revision=embedding_revision,
+        scores=scores,
     )
 
 
