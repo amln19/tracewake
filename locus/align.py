@@ -63,6 +63,56 @@ _TOKEN = re.compile(r"[A-Za-z0-9_./-]+")
 
 
 @dataclass(frozen=True)
+class AlignConfig:
+    """Knobs for ablations. Defaults are the frozen evaluation settings."""
+
+    weight_tool: float = WEIGHT_TOOL
+    weight_args: float = WEIGHT_ARGS
+    weight_reasoning: float = WEIGHT_REASONING
+    weight_files: float = WEIGHT_FILES
+    weight_target: float = WEIGHT_TARGET
+    weight_arg_rest: float = WEIGHT_ARG_REST
+    gap_open: float = GAP_OPEN
+    gap_extend: float = GAP_EXTEND
+    # "weighted" = frozen target/rest split; "target_only" = ignore non-target
+    # args; "strict" = binary equality on the full args dict.
+    arg_mode: str = "weighted"
+
+    def __post_init__(self) -> None:
+        if self.arg_mode not in ("weighted", "target_only", "strict"):
+            raise ValueError(
+                f"unknown arg_mode {self.arg_mode!r}; use weighted, target_only, or strict"
+            )
+
+
+DEFAULT_CONFIG = AlignConfig()
+
+
+def needleman_wunsch_config() -> AlignConfig:
+    # Linear gaps: every gap cell costs the open penalty. Affine collapses to
+    # this when open == extend.
+    return AlignConfig(gap_open=GAP_OPEN, gap_extend=GAP_OPEN)
+
+
+def drop_reasoning_config() -> AlignConfig:
+    rest = WEIGHT_TOOL + WEIGHT_ARGS + WEIGHT_FILES
+    return AlignConfig(
+        weight_tool=WEIGHT_TOOL / rest,
+        weight_args=WEIGHT_ARGS / rest,
+        weight_reasoning=0.0,
+        weight_files=WEIGHT_FILES / rest,
+    )
+
+
+def target_only_args_config() -> AlignConfig:
+    return AlignConfig(arg_mode="target_only")
+
+
+def strict_args_config() -> AlignConfig:
+    return AlignConfig(arg_mode="strict")
+
+
+@dataclass(frozen=True)
 class Step:
     name: str
     args: dict[str, Any]
@@ -252,7 +302,12 @@ def _value_similarity(key: str, a: Any, b: Any) -> float:
     return text_similarity(str(a), str(b))
 
 
-def argument_similarity(a: Step, b: Step) -> float:
+def argument_similarity(
+    a: Step, b: Step, *, config: AlignConfig = DEFAULT_CONFIG
+) -> float:
+    if config.arg_mode == "strict":
+        return 1.0 if a.args == b.args else 0.0
+
     if a.batch_names or b.batch_names:
         # Set-valued steps: compare targets by Jaccard; remaining args ignored.
         ta, tb = a.targets, b.targets
@@ -262,7 +317,9 @@ def argument_similarity(a: Step, b: Step) -> float:
             target_sim = 0.0
         else:
             target_sim = len(ta & tb) / len(ta | tb)
-        return WEIGHT_TARGET * target_sim + WEIGHT_ARG_REST * target_sim
+        if config.arg_mode == "target_only":
+            return target_sim
+        return config.weight_target * target_sim + config.weight_arg_rest * target_sim
 
     ta, tb = a.target, b.target
     if ta or tb:
@@ -275,6 +332,9 @@ def argument_similarity(a: Step, b: Step) -> float:
     else:
         target_sim = 1.0
 
+    if config.arg_mode == "target_only":
+        return target_sim
+
     keys = (set(a.args) | set(b.args)) - {"path", "query"}
     if not keys:
         rest_sim = 1.0
@@ -286,7 +346,7 @@ def argument_similarity(a: Step, b: Step) -> float:
             else:
                 parts.append(_value_similarity(key, a.args[key], b.args[key]))
         rest_sim = sum(parts) / len(parts)
-    return WEIGHT_TARGET * target_sim + WEIGHT_ARG_REST * rest_sim
+    return config.weight_target * target_sim + config.weight_arg_rest * rest_sim
 
 
 def tool_similarity(a: Step, b: Step) -> float:
@@ -315,22 +375,25 @@ def step_similarity(
     b: Step,
     *,
     reasoning_vectors: tuple[Sequence[float], Sequence[float]] | None = None,
+    config: AlignConfig = DEFAULT_CONFIG,
 ) -> float:
     parts = [
-        WEIGHT_TOOL * tool_similarity(a, b),
-        WEIGHT_ARGS * argument_similarity(a, b),
-        WEIGHT_FILES * jaccard_files(a.changed_files, b.changed_files),
+        config.weight_tool * tool_similarity(a, b),
+        config.weight_args * argument_similarity(a, b, config=config),
+        config.weight_files * jaccard_files(a.changed_files, b.changed_files),
     ]
-    if WEIGHT_REASONING:
+    if config.weight_reasoning:
         if reasoning_vectors is None:
             # Lexical stand-in only when both sides are empty; otherwise the
             # caller must supply embeddings so the frozen weight is real.
             if not a.reasoning and not b.reasoning:
-                parts.append(WEIGHT_REASONING * 1.0)
+                parts.append(config.weight_reasoning * 1.0)
             else:
-                parts.append(WEIGHT_REASONING * text_similarity(a.reasoning, b.reasoning))
+                parts.append(
+                    config.weight_reasoning * text_similarity(a.reasoning, b.reasoning)
+                )
         else:
-            parts.append(WEIGHT_REASONING * cosine(*reasoning_vectors))
+            parts.append(config.weight_reasoning * cosine(*reasoning_vectors))
     return sum(parts)
 
 
@@ -484,6 +547,7 @@ def _score_matrix(
     a: Sequence[Step],
     b: Sequence[Step],
     embed: EmbedFn | None,
+    config: AlignConfig = DEFAULT_CONFIG,
 ) -> list[list[float]]:
     if not a or not b:
         return [[0.0] for _ in a] if a and not b else []
@@ -492,7 +556,7 @@ def _score_matrix(
     reasons_b = [s.reasoning for s in b]
     vecs_a: list[list[float]] | None = None
     vecs_b: list[list[float]] | None = None
-    if embed is not None and WEIGHT_REASONING:
+    if embed is not None and config.weight_reasoning:
         # One call for both sides so a bag-of-words embedder shares a vocabulary
         # and a real model keeps a single batch.
         combined = embed([*reasons_a, *reasons_b])
@@ -511,7 +575,9 @@ def _score_matrix(
             vectors = None
             if vecs_a is not None and vecs_b is not None:
                 vectors = (vecs_a[i], vecs_b[j])
-            sim = step_similarity(left, right, reasoning_vectors=vectors)
+            sim = step_similarity(
+                left, right, reasoning_vectors=vectors, config=config
+            )
             row.append(score_from_similarity(sim))
         matrix.append(row)
     return matrix
@@ -522,15 +588,18 @@ def align(
     b: Sequence[Step],
     *,
     embed: EmbedFn | None = None,
+    config: AlignConfig = DEFAULT_CONFIG,
 ) -> tuple[float, Aligned, list[list[float]]]:
-    scores = _score_matrix(a, b, embed)
+    scores = _score_matrix(a, b, embed, config=config)
     if not a:
         pairs: Aligned = [(None, j) for j in range(len(b))]
         return (0.0, pairs, scores)
     if not b:
         pairs = [(i, None) for i in range(len(a))]
         return (0.0, pairs, scores)
-    total, pairs = gotoh(scores)
+    total, pairs = gotoh(
+        scores, gap_open=config.gap_open, gap_extend=config.gap_extend
+    )
     return (total, pairs, scores)
 
 

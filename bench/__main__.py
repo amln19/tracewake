@@ -91,6 +91,10 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help=f"Model id (default: {backend.DEFAULT_MODEL}).",
     )
+    sub.add_parser(
+        "ablations",
+        help="Score pre-specified aligner ablations against pass1 labels.",
+    )
 
     args = parser.parse_args(argv)
 
@@ -153,6 +157,8 @@ def main(argv: list[str] | None = None) -> int:
             print(aligneval.self_agreement())
         case "llm-judge":
             print(aligneval.run_llm_judge(model_id=args.model))
+        case "ablations":
+            print(aligneval.run_ablations())
     return 0
 
 

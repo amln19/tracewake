@@ -233,6 +233,14 @@ definition (last re-alignment, then the next failure step) also means many
 correct predictions land on the failure run's last step when that run never
 produced an edit.
 
+Pre-specified ablations on the same 41 pairs: scoring arguments by target file
+or pattern alone matches the full distance (28/41); swapping Gotoh for linear
+gaps loses one pair (27/41); bag-of-words reasoning matches BGE (28/41); dropping
+the reasoning term entirely is 30/41. So on this corpus the load-bearing piece is
+target-width argument similarity, not affine gaps or embeddings — those stay in
+the default because the design is aimed at longer excursions than this set
+mostly contains, not because they moved the headline here.
+
 ## Prior art
 
 The record/replay design — cassettes, request matchers, record modes, before-

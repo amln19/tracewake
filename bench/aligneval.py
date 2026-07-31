@@ -16,16 +16,22 @@ from pathlib import Path
 
 from locus import Store
 from locus.align import (
+    DEFAULT_CONFIG,
     EMBEDDING_MODEL,
     EMBEDDING_REVISION,
+    AlignConfig,
     LexicalEmbedder,
     MlxEmbedder,
     Step,
     align,
     divergence_step,
+    drop_reasoning_config,
     extract_steps,
     first_target_difference,
     last_common_prefix,
+    needleman_wunsch_config,
+    strict_args_config,
+    target_only_args_config,
 )
 
 from .fidelity import ledger_rows
@@ -36,8 +42,19 @@ from .runner import LEDGER, STORE
 PRED_ROOT = CORPUS_ROOT / "alignment"
 PRED_SHEET = PRED_ROOT / "predictions.jsonl"
 LLM_SHEET = PRED_ROOT / "llm_judge.jsonl"
+ABLATION_SHEET = PRED_ROOT / "ablations.jsonl"
 JUDGE_SEED = 20260730
 JUDGE_MAX_TOKENS = 32
+
+# Pre-specified before any ablation number was read. Report every arm.
+ABLATION_ARMS: tuple[tuple[str, str], ...] = (
+    ("full", "Gotoh + frozen weights + BGE embeddings"),
+    ("needleman_wunsch", "linear gaps (open == extend)"),
+    ("no_reasoning", "drop reasoning weight; renormalize the rest"),
+    ("lexical_reasoning", "bag-of-words instead of BGE"),
+    ("target_only_args", "argument component = target similarity only"),
+    ("strict_args", "argument component = full-args equality"),
+)
 
 
 @dataclass(frozen=True)
@@ -111,6 +128,8 @@ def predict_pair(
     pair: SelectedPair,
     stops: dict[str, str],
     embed,
+    *,
+    config: AlignConfig = DEFAULT_CONFIG,
 ) -> tuple[list[Step], list[Step], int, int, int]:
     good = trajectory_for(store, pair.good_run, stops[pair.good_run])
     bad = trajectory_for(store, pair.bad_run, stops[pair.bad_run])
@@ -118,7 +137,7 @@ def predict_pair(
         # key.jsonl records failure_steps after anonymize; bad_actions is the
         # pre-export count from select_pairs and must match extraction here.
         pass
-    _, pairs, _ = align(good, bad, embed=embed)
+    _, pairs, _ = align(good, bad, embed=embed, config=config)
     aligned = divergence_step(pairs, good, bad)
     pred = aligned if aligned is not None else len(bad)
     return (
@@ -484,6 +503,125 @@ def run_llm_judge(
         f"llm-judge wrote {parsed}/{len(rows)} parsed labels to {out} "
         f"(model {model.model_id}, seed {seed})"
     )
+
+
+def _arm_config(name: str) -> AlignConfig:
+    if name == "full" or name == "lexical_reasoning":
+        return DEFAULT_CONFIG
+    if name == "needleman_wunsch":
+        return needleman_wunsch_config()
+    if name == "no_reasoning":
+        return drop_reasoning_config()
+    if name == "target_only_args":
+        return target_only_args_config()
+    if name == "strict_args":
+        return strict_args_config()
+    raise ValueError(f"unknown ablation arm {name!r}")
+
+
+def run_ablations(
+    store: Path = STORE,
+    ledger: Path = LEDGER,
+    labels_path: Path = LABEL_ROOT / "pass1.jsonl",
+    out: Path = ABLATION_SHEET,
+) -> str:
+    """Score every pre-specified arm. Writes the sheet; returns the table."""
+    selected = select_pairs(store, ledger, SELECT_SEED)
+    rows = {r["run_id"]: r for r in ledger_rows(ledger)}
+    stops = {rid: r["stop_reason"] for rid, r in rows.items()}
+    key = _key_by_packet()
+    packet_for_task = {v["task_id"]: k for k, v in key.items()}
+    labels = _load_labels(labels_path)
+    if len(labels) != len(selected):
+        raise RuntimeError(
+            f"ablations need labels for every selected pair; have {len(labels)} "
+            f"labels and {len(selected)} pairs"
+        )
+
+    bge: MlxEmbedder | None = None
+    lexical = LexicalEmbedder()
+
+    def embedder_for(name: str):
+        nonlocal bge
+        if name in ("no_reasoning", "lexical_reasoning"):
+            return lexical
+        if bge is None:
+            bge = MlxEmbedder(EMBEDDING_MODEL, EMBEDDING_REVISION)
+        return bge
+
+    db = Store(store)
+    arm_preds: dict[str, list[int]] = {}
+    label_list: list[int] = []
+    task_order: list[str] = []
+    try:
+        for pair in selected:
+            packet_id = packet_for_task[pair.task_id]
+            label_list.append(labels[packet_id])
+            task_order.append(pair.task_id)
+
+        for arm_name, _ in ABLATION_ARMS:
+            config = _arm_config(arm_name)
+            embed = embedder_for(arm_name)
+            preds: list[int] = []
+            print(f"ablation: {arm_name}", flush=True)
+            for pair in selected:
+                _, _, pred, _, _ = predict_pair(
+                    db, pair, stops, embed, config=config
+                )
+                preds.append(pred)
+            arm_preds[arm_name] = preds
+    finally:
+        db.close()
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", encoding="utf-8") as fh:
+        fh.write(
+            json.dumps(
+                {
+                    "_meta": {
+                        "arms": [a for a, _ in ABLATION_ARMS],
+                        "n": len(selected),
+                        "labels": str(labels_path),
+                    }
+                },
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        for i, task_id in enumerate(task_order):
+            row = {"task_id": task_id, "label": label_list[i]}
+            for arm_name, _ in ABLATION_ARMS:
+                row[arm_name] = arm_preds[arm_name][i]
+            fh.write(json.dumps(row, sort_keys=True) + "\n")
+
+    lines = [
+        "alignment ablations (pre-specified; all arms reported)",
+        f"n={len(selected)}  labels={labels_path.name}",
+        "",
+        f"{'arm':<22} {'within±2':>10} {'median|err|':>12}  note",
+    ]
+    full_hits = [
+        within_tol(p, y) for p, y in zip(arm_preds["full"], label_list)
+    ]
+    for arm_name, note in ABLATION_ARMS:
+        preds = arm_preds[arm_name]
+        hits = [within_tol(p, y) for p, y in zip(preds, label_list)]
+        n_hit = sum(hits)
+        mae = median_abs_error(preds, label_list)
+        extra = ""
+        if arm_name != "full":
+            b_only, a_only, p = mcnemar(full_hits, hits)
+            # Here full_hits is "a", arm hits is "b" in mcnemar(aligner, baseline)
+            # We want full vs arm: pass full as a, arm as b → a_only = full right arm wrong
+            p_txt = f"{p:.3f}" if p is not None else "n/a"
+            extra = f"  vs full: full-only {a_only}, arm-only {b_only}, n_disc {a_only + b_only}, p={p_txt}"
+        lines.append(
+            f"{arm_name:<22} {n_hit:>4}/{len(selected)} ({n_hit / len(selected):>5.1%})  "
+            f"{mae:>10.1f}  {note}{extra}"
+        )
+    lines.append("")
+    lines.append(f"per-pair sheet → {out}")
+    return "\n".join(lines)
 
 
 def predict_and_score(
