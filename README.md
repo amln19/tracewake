@@ -241,6 +241,32 @@ target-width argument similarity, not affine gaps or embeddings — those stay i
 the default because the design is aimed at longer excursions than this set
 mostly contains, not because they moved the headline here.
 
+## The HTML report
+
+```
+locus view <good-run> <bad-run> -o report.html
+```
+
+One file, no server, no network. The comparison travels inside the page as JSON,
+because a `file://` page cannot read the SQLite store without either a server or
+a WASM SQLite build; the report opens from disk, from a README link, or straight
+out of a CI artifact.
+
+It shows the two trajectories aligned side by side with the divergence
+highlighted, and for whichever step you select, the full context that produced
+it — every block labelled with where it came from, whether that is the system
+prompt, the bug report, a file the agent read, or test output. Arrow keys walk
+the alignment.
+
+Repeated context is stored once. An agent resends its whole history every turn,
+so embedding each turn's context separately would grow the payload with the
+square of the trajectory length; keyed by content it does not. On the 41 labeled
+pairs that is up to a 23× reduction against the raw event log, and the largest
+report comes out at 0.3 MB with a median of 0.13 MB. The embedded data is capped
+at 5 MB (`--max-bytes`): past the cap, context blocks are clipped to a shared
+per-block limit, the page reports how much it dropped, and the full text stays
+in the store. No pair in that set reached the cap.
+
 ## Prior art
 
 The record/replay design — cassettes, request matchers, record modes, before-

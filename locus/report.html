@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>locus — __LOCUS_TITLE__</title>
+<style>
+:root {
+  --bg: #12141a;
+  --panel: #1a1d26;
+  --panel-2: #21252f;
+  --line: #2c313d;
+  --text: #dfe3ec;
+  --dim: #8b93a7;
+  --agree: #3fb27f;
+  --differ: #d98b4a;
+  --diverge: #e05561;
+  --accent: #6aa9f4;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+a { color: var(--accent); }
+
+header {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--line);
+}
+h1 { margin: 0 0 4px; font-size: 17px; font-weight: 600; }
+h1 .sub { color: var(--dim); font-weight: 400; }
+.banner {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: rgba(224, 85, 97, 0.12);
+  border: 1px solid rgba(224, 85, 97, 0.4);
+  font-size: 15px;
+}
+.banner.none {
+  background: rgba(63, 178, 127, 0.1);
+  border-color: rgba(63, 178, 127, 0.4);
+}
+.banner b { color: var(--diverge); }
+.banner.none b { color: var(--agree); }
+.warn {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(217, 139, 74, 0.12);
+  border: 1px solid rgba(217, 139, 74, 0.35);
+  color: #e8b98a;
+  font-size: 13px;
+}
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin-top: 12px;
+  color: var(--dim);
+  font-size: 12.5px;
+}
+.facts b { color: var(--text); font-weight: 500; }
+
+.runs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px 24px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+.card h2 { margin: 0 0 8px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.card .rid { font-size: 13px; }
+.card dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 8px 0 0; font-size: 12.5px; }
+.card dt { color: var(--dim); }
+.card dd { margin: 0; }
+
+main { display: grid; grid-template-columns: minmax(420px, 44%) 1fr; gap: 16px; padding: 0 24px 32px; align-items: start; }
+@media (max-width: 1100px) { main { grid-template-columns: 1fr; } .runs { grid-template-columns: 1fr; } }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.panel > h2 {
+  margin: 0; padding: 10px 14px; font-size: 12px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--dim); border-bottom: 1px solid var(--line);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.panel > h2 button {
+  font: inherit; letter-spacing: 0; text-transform: none;
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+  border-radius: 5px; padding: 3px 9px; cursor: pointer;
+}
+.panel > h2 button:hover { border-color: var(--accent); }
+
+.scroll { max-height: 68vh; overflow: auto; }
+table.align { width: 100%; border-collapse: collapse; }
+table.align th {
+  text-align: left; font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--dim); font-weight: 500; padding: 8px 10px; border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; background: var(--panel); z-index: 1;
+}
+table.align td { padding: 6px 10px; border-bottom: 1px solid rgba(44, 49, 61, .55); vertical-align: top; }
+table.align tr { cursor: pointer; }
+table.align tr:hover td { background: var(--panel-2); }
+table.align tr.sel td { background: #263049; }
+table.align tr.diverge td { box-shadow: inset 3px 0 0 var(--diverge); }
+.mark { width: 1.4em; text-align: center; font-weight: 600; }
+.mark.agree { color: var(--agree); }
+.mark.differ { color: var(--differ); }
+.mark.gap { color: var(--dim); }
+.cell { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+.cell .n { color: var(--dim); }
+.cell .tgt { color: var(--dim); }
+.cell.empty { color: #4a5163; }
+.sim { color: var(--dim); font-size: 11.5px; text-align: right; white-space: nowrap; }
+
+.detail { padding: 14px; }
+.detail .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 780px) { .detail .two { grid-template-columns: 1fr; } }
+.side h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.side h3 span { color: var(--text); letter-spacing: 0; text-transform: none; font-weight: 600; }
+.field { margin-bottom: 10px; }
+.field > .label { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); margin-bottom: 3px; }
+pre.box {
+  margin: 0; padding: 8px 10px; background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 6px; font-size: 12px; max-height: 320px; overflow: auto; white-space: pre-wrap;
+  word-break: break-word;
+}
+.chip {
+  display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px;
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--dim); margin-right: 5px;
+}
+.chip.ok { color: var(--agree); border-color: rgba(63,178,127,.4); }
+.chip.err { color: var(--diverge); border-color: rgba(224,85,97,.4); }
+
+details.block { border: 1px solid var(--line); border-radius: 6px; margin-bottom: 5px; background: var(--panel-2); }
+details.block > summary {
+  cursor: pointer; padding: 5px 9px; font-size: 12px; display: flex; gap: 8px; align-items: center;
+}
+details.block > summary::-webkit-details-marker { display: none; }
+details.block > summary .prov { font-weight: 600; }
+details.block > summary .size { color: var(--dim); margin-left: auto; }
+details.block pre { margin: 0; padding: 8px 10px; border-top: 1px solid var(--line); font-size: 12px; max-height: 340px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+.clip { color: var(--differ); font-size: 11.5px; padding: 4px 10px; }
+
+.p-system_prompt { color: #b39ddb; }
+.p-tool_schema { color: #90caf9; }
+.p-repo_map { color: #80cbc4; }
+.p-task_issue { color: #ffcc80; }
+.p-assistant_reasoning { color: #f48fb1; }
+.p-tool_output, .p-file_read { color: #a5d6a7; }
+.p-test_output { color: #ffab91; }
+.p-error_feedback { color: #ef9a9a; }
+.p-untagged { color: var(--dim); }
+
+footer { padding: 0 24px 28px; color: var(--dim); font-size: 12px; }
+footer code { color: var(--text); }
+.hint { color: var(--dim); font-size: 12px; padding: 8px 14px; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<header>
+  <h1>__LOCUS_TITLE__ <span class="sub">— locus</span></h1>
+  <div id="banner"></div>
+  <div id="warnings"></div>
+  <div class="facts" id="facts"></div>
+</header>
+
+<section class="runs" id="runs"></section>
+
+<main>
+  <div class="panel">
+    <h2>Alignment <button id="jump" type="button">Jump to divergence</button></h2>
+    <div class="scroll">
+      <table class="align">
+        <thead><tr><th></th><th>Passing run</th><th>Failing run</th><th class="sim">sim</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <div class="hint">Click a row, or use &uarr;/&darr;, to inspect the step and the context behind it.</div>
+  </div>
+  <div class="panel">
+    <h2>Step detail</h2>
+    <div class="detail" id="detail"></div>
+  </div>
+</main>
+
+<footer id="footer"></footer>
+
+<script type="application/json" id="locus-data">__LOCUS_PAYLOAD__</script>
+<script>
+"use strict";
+const D = JSON.parse(document.getElementById("locus-data").textContent);
+
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+};
+const num = (n) => (n === null || n === undefined ? "—" : n.toLocaleString());
+const flag = (v) => (v === null || v === undefined ? "—" : v ? "yes" : "no");
+
+function stepLabel(side, idx) {
+  if (idx === null) return null;
+  const s = D.steps[side][idx];
+  const tgt = s.batch ? s.targets.join(", ") : s.target;
+  return { n: idx + 1, name: s.name, target: tgt };
+}
+
+function runCard(key, title) {
+  const r = D[key];
+  const card = el("div", "card");
+  card.appendChild(el("h2", null, title));
+  card.appendChild(el("div", "rid mono", r.run_id.slice(0, 12) + "  " + r.name));
+  const dl = el("dl");
+  const add = (k, v) => { dl.appendChild(el("dt", null, k)); dl.appendChild(el("dd", null, v)); };
+  add("steps", num(r.steps));
+  add("model calls", num(r.model_calls));
+  add("tokens in / out", num(r.usage.input_tokens) + " / " + num(r.usage.output_tokens));
+  if (r.models.length) add("model", r.models.join(", "));
+  if (r.outcome) {
+    add("coverage", flag(r.outcome.coverage));
+    add("resolve", flag(r.outcome.resolve));
+    if (r.outcome.test_summary) add("tests", r.outcome.test_summary);
+  }
+  if (r.finished_at) add("wall clock", (r.finished_at - r.started_at).toFixed(1) + "s");
+  card.appendChild(dl);
+  return card;
+}
+
+function renderHead() {
+  const banner = el("div", "banner");
+  if (D.divergence === null) {
+    banner.className = "banner none";
+    banner.innerHTML = "The two runs re-align through the end. No standing divergence.";
+  } else {
+    const b = stepLabel("bad", D.divergence - 1);
+    banner.innerHTML = "Diverged at <b>failing step " + D.divergence + "</b>" +
+      (b ? " — <span class='mono'>" + b.name + (b.target ? " → " + b.target : "") + "</span>" : "");
+  }
+  document.getElementById("banner").appendChild(banner);
+
+  const warn = document.getElementById("warnings");
+  if (D.excluded_by_length) {
+    warn.appendChild(el("div", "warn",
+      "Length ratio " + D.length_ratio.toFixed(2) + ":1 exceeds 4:1. Gap cost dominates the " +
+      "alignment and the divergence index may be meaningless."));
+  }
+  if (D.truncation.blocks > 0) {
+    warn.appendChild(el("div", "warn",
+      "Context clipped to fit the embedded payload: " + num(D.truncation.blocks) + " blocks, " +
+      num(D.truncation.chars) + " characters dropped, each cut at " + num(D.truncation.limit) +
+      " characters. Read the store for the full text."));
+  }
+
+  const facts = document.getElementById("facts");
+  const fact = (k, v) => {
+    const s = el("span");
+    s.appendChild(document.createTextNode(k + " "));
+    s.appendChild(el("b", null, v));
+    facts.appendChild(s);
+  };
+  fact("alignment score", D.score.toFixed(3));
+  fact("length ratio", D.length_ratio.toFixed(2) + ":1");
+  fact("steps", D.good.steps + " vs " + D.bad.steps);
+  if (D.embedding.model) {
+    fact("reasoning embeddings", D.embedding.model + (D.embedding.revision ? "@" + D.embedding.revision.slice(0, 8) : ""));
+  }
+  if (D.good.task_id) fact("task", D.good.task_id);
+
+  document.getElementById("runs").appendChild(runCard("good", "Passing run"));
+  document.getElementById("runs").appendChild(runCard("bad", "Failing run"));
+
+  const foot = document.getElementById("footer");
+  foot.appendChild(document.createTextNode("Steps agree when the tool name and the file or pattern it aimed at match. " +
+    "Divergence is the last position after which the runs never agree again. "));
+  if (D.store) {
+    const code = el("code", null, "locus diff " + D.good.run_id.slice(0, 8) + " " + D.bad.run_id.slice(0, 8) + " --store " + D.store);
+    foot.appendChild(document.createTextNode("Full detail is in the store: "));
+    foot.appendChild(code);
+  }
+}
+
+let selected = 0;
+
+function renderRows() {
+  const body = document.getElementById("rows");
+  D.columns.forEach((col, k) => {
+    const tr = el("tr");
+    tr.dataset.k = k;
+    const diverges = D.divergence !== null && col.b !== null && col.b + 1 === D.divergence;
+    if (diverges) tr.classList.add("diverge");
+
+    let mark = "–", cls = "gap";
+    if (col.g !== null && col.b !== null) {
+      mark = col.agree ? "=" : "|";
+      cls = col.agree ? "agree" : "differ";
+    }
+    tr.appendChild(el("td", "mark " + cls, mark));
+
+    for (const [side, idx] of [["good", col.g], ["bad", col.b]]) {
+      const td = el("td", "cell");
+      const s = stepLabel(side, idx);
+      if (!s) {
+        td.classList.add("empty");
+        td.textContent = "—";
+      } else {
+        td.appendChild(el("span", "n", s.n + ". "));
+        td.appendChild(document.createTextNode(s.name));
+        if (s.target) td.appendChild(el("span", "tgt", " → " + s.target));
+      }
+      tr.appendChild(td);
+    }
+    tr.appendChild(el("td", "sim", col.similarity === null ? "" : col.similarity.toFixed(2)));
+    tr.addEventListener("click", () => select(k, false));
+    body.appendChild(tr);
+  });
+}
+
+function blockNode(id) {
+  const b = D.blocks[id];
+  const d = el("details", "block");
+  const s = el("summary");
+  s.appendChild(el("span", "prov p-" + b.provenance, b.provenance || b.kind));
+  if (b.provenance) s.appendChild(el("span", "chip", b.kind));
+  s.appendChild(el("span", "size", num(b.chars) + " chars"));
+  d.appendChild(s);
+  if (b.clipped) d.appendChild(el("div", "clip", "clipped to " + num(b.text.length) + " characters"));
+  d.appendChild(el("pre", null, b.text));
+  return d;
+}
+
+function field(parent, label, node) {
+  const f = el("div", "field");
+  f.appendChild(el("div", "label", label));
+  f.appendChild(node);
+  parent.appendChild(f);
+}
+
+function sideNode(side, idx, title) {
+  const wrap = el("div", "side");
+  const h = el("h3");
+  h.appendChild(document.createTextNode(title + " "));
+  if (idx === null) {
+    h.appendChild(el("span", null, "no step — gap"));
+    wrap.appendChild(h);
+    return wrap;
+  }
+  const s = D.steps[side][idx];
+  h.appendChild(el("span", null, "step " + (idx + 1) + ": " + s.name));
+  wrap.appendChild(h);
+
+  const meta = el("div", "field");
+  meta.appendChild(el("span", "chip", num(s.usage.input_tokens) + " in"));
+  meta.appendChild(el("span", "chip", num(s.usage.output_tokens) + " out"));
+  if (s.wrote.length) meta.appendChild(el("span", "chip ok", "wrote " + s.wrote.join(", ")));
+  wrap.appendChild(meta);
+
+  if (s.reasoning !== null) field(wrap, "Reasoning", el("pre", "box", D.blocks[s.reasoning].text));
+
+  for (const t of s.tools) {
+    const box = el("div");
+    const head = el("div", "field");
+    head.appendChild(el("span", "chip " + (t.status === "ok" ? "ok" : "err"), t.name + " " + t.status));
+    if (t.duration_ms !== null) head.appendChild(el("span", "chip", t.duration_ms.toFixed(0) + " ms"));
+    head.appendChild(el("span", "chip", num(t.result_size) + " B result"));
+    box.appendChild(head);
+    box.appendChild(el("pre", "box", t.args));
+    if (t.error) box.appendChild(el("pre", "box", t.error));
+    if (t.result !== null) box.appendChild(blockNode(t.result));
+    field(wrap, "Tool call", box);
+  }
+
+  if (s.context.length) {
+    const list = el("div");
+    for (const id of s.context) list.appendChild(blockNode(id));
+    field(wrap, "Context sent to the model (" + s.context.length + " blocks, provenance-tagged)", list);
+  }
+  return wrap;
+}
+
+function select(k, reveal) {
+  selected = k;
+  document.querySelectorAll("table.align tr").forEach((tr) => {
+    tr.classList.toggle("sel", Number(tr.dataset.k) === k);
+  });
+  if (reveal) {
+    // Scrolls the alignment panel only. `scrollIntoView` would also scroll the
+    // page and push the divergence banner off screen on load.
+    const row = document.querySelector("tr[data-k='" + k + "']");
+    const box = document.querySelector(".scroll");
+    if (row && box) {
+      const offset = row.getBoundingClientRect().top - box.getBoundingClientRect().top;
+      if (offset < 0 || offset + row.offsetHeight > box.clientHeight) {
+        box.scrollTop += offset - box.clientHeight / 2 + row.offsetHeight;
+      }
+    }
+  }
+  const col = D.columns[k];
+  const detail = document.getElementById("detail");
+  detail.textContent = "";
+  const two = el("div", "two");
+  two.appendChild(sideNode("good", col.g, "Passing"));
+  two.appendChild(sideNode("bad", col.b, "Failing"));
+  detail.appendChild(two);
+}
+
+function divergenceColumn() {
+  if (D.divergence === null) return D.columns.length - 1;
+  const k = D.columns.findIndex((c) => c.b !== null && c.b + 1 === D.divergence);
+  return k < 0 ? 0 : k;
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown" || e.key === "j") {
+    if (selected < D.columns.length - 1) select(selected + 1, true);
+    e.preventDefault();
+  } else if (e.key === "ArrowUp" || e.key === "k") {
+    if (selected > 0) select(selected - 1, true);
+    e.preventDefault();
+  }
+});
+
+renderHead();
+renderRows();
+document.getElementById("jump").addEventListener("click", () => select(divergenceColumn(), true));
+select(divergenceColumn(), true);
+</script>
+</body>
+</html>

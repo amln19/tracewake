@@ -13,9 +13,12 @@ from typing import Annotated
 
 import typer
 
+from .align import DiffResult, LexicalEmbedder, MlxEmbedder, diff_runs, format_diff
 from .cassette import export_cassette, import_cassette, read_header
 from .config import RECORD_MODES, RecordMode
+from .events import RunHeader, StoredEvent
 from .patches import LocusError
+from .report import PAYLOAD_BUDGET, write_report
 from .store import Store
 
 app = typer.Typer(
@@ -183,39 +186,24 @@ def ls(store: StoreOption = Path(".locus")) -> None:
     db.close()
 
 
-@app.command("diff")
-def diff_(
-    good: Annotated[str, typer.Argument(help="Passing run id or cassette name.")],
-    bad: Annotated[str, typer.Argument(help="Failing run id or cassette name.")],
-    store: StoreOption = Path(".locus"),
-    lexical: Annotated[
-        bool,
-        typer.Option(
-            "--lexical",
-            help="Skip the embedding model and score reasoning text lexically.",
-        ),
-    ] = False,
-) -> None:
-    """Align two runs and print the step where they stopped agreeing."""
-    from .align import (
-        EMBEDDING_MODEL,
-        EMBEDDING_REVISION,
-        LexicalEmbedder,
-        MlxEmbedder,
-        diff_runs,
-        format_diff,
-    )
+LexicalOption = Annotated[
+    bool,
+    typer.Option("--lexical", help="Skip the embedding model and score reasoning text lexically."),
+]
 
-    db = Store(store)
+
+def _align_pair(
+    db: Store, good: str, bad: str, lexical: bool
+) -> tuple[RunHeader, list[StoredEvent], RunHeader, list[StoredEvent], DiffResult]:
     good_header = db.resolve(good)
     bad_header = db.resolve(bad)
     good_events = db.events(good_header.run_id)
     bad_events = db.events(bad_header.run_id)
-    db.close()
 
     if lexical:
         embed = LexicalEmbedder()
-        model_id = revision = None
+        model_id = "lexical"
+        revision = None
     else:
         embedder = MlxEmbedder()
         embed = embedder
@@ -225,9 +213,24 @@ def diff_(
         good_events,
         bad_events,
         embed=embed,
-        embedding_model=model_id or ("lexical" if lexical else EMBEDDING_MODEL),
-        embedding_revision=revision if not lexical else None,
+        embedding_model=model_id,
+        embedding_revision=revision,
     )
+    return good_header, good_events, bad_header, bad_events, result
+
+
+@app.command("diff")
+def diff_(
+    good: Annotated[str, typer.Argument(help="Passing run id or cassette name.")],
+    bad: Annotated[str, typer.Argument(help="Failing run id or cassette name.")],
+    store: StoreOption = Path(".locus"),
+    lexical: LexicalOption = False,
+) -> None:
+    """Align two runs and print the step where they stopped agreeing."""
+    db = Store(store)
+    good_header, _, bad_header, _, result = _align_pair(db, good, bad, lexical)
+    db.close()
+
     typer.echo(
         format_diff(
             result,
@@ -237,6 +240,51 @@ def diff_(
     )
     if result.excluded_by_length:
         raise typer.Exit(2)
+
+
+@app.command("view")
+def view(
+    good: Annotated[str, typer.Argument(help="Passing run id or cassette name.")],
+    bad: Annotated[str, typer.Argument(help="Failing run id or cassette name.")],
+    out: Annotated[
+        Path, typer.Option("--out", "-o", help="Destination HTML file.")
+    ] = Path("locus-report.html"),
+    store: StoreOption = Path(".locus"),
+    lexical: LexicalOption = False,
+    max_bytes: Annotated[
+        int,
+        typer.Option("--max-bytes", help="Cap on the embedded comparison data."),
+    ] = PAYLOAD_BUDGET,
+) -> None:
+    """Write a self-contained HTML report comparing two runs."""
+    db = Store(store)
+    good_header, good_events, bad_header, bad_events, result = _align_pair(db, good, bad, lexical)
+    payload = write_report(
+        out,
+        good_header,
+        good_events,
+        bad_header,
+        bad_events,
+        result,
+        blobs=db.blobs,
+        store_path=str(store),
+        budget=max_bytes,
+    )
+    db.close()
+
+    size = out.stat().st_size
+    where = (
+        "no standing divergence"
+        if result.divergence is None
+        else f"divergence at failing step {result.divergence}"
+    )
+    typer.echo(f"wrote {out} ({size / 1e6:.2f} MB) — {where}")
+    clipped = payload["truncation"]["blocks"]
+    if clipped:
+        typer.echo(
+            f"clipped {clipped} context blocks to stay under the "
+            f"{max_bytes / 1e6:.2f} MB embedded payload cap; full text is in {store}"
+        )
 
 
 def main() -> None:
