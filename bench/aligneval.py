@@ -35,6 +35,9 @@ from .runner import LEDGER, STORE
 
 PRED_ROOT = CORPUS_ROOT / "alignment"
 PRED_SHEET = PRED_ROOT / "predictions.jsonl"
+LLM_SHEET = PRED_ROOT / "llm_judge.jsonl"
+JUDGE_SEED = 20260730
+JUDGE_MAX_TOKENS = 32
 
 
 @dataclass(frozen=True)
@@ -127,6 +130,21 @@ def predict_pair(
     )
 
 
+def _load_llm(path: Path = LLM_SHEET) -> dict[str, int]:
+    """packet_id → predicted step. Task ids are joined via the label key."""
+    if not path.exists():
+        return {}
+    by_packet: dict[str, int] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        if row.get("_meta") or row.get("label") is None:
+            continue
+        by_packet[row["packet_id"]] = int(row["label"])
+    return by_packet
+
+
 def run_predictions(
     store: Path = STORE,
     ledger: Path = LEDGER,
@@ -134,6 +152,7 @@ def run_predictions(
     *,
     lexical: bool = False,
     labels_path: Path | None = None,
+    llm_path: Path | None = LLM_SHEET,
 ) -> list[PairPred]:
     selected = select_pairs(store, ledger, SELECT_SEED)
     rows = {r["run_id"]: r for r in ledger_rows(ledger)}
@@ -141,6 +160,7 @@ def run_predictions(
     key = _key_by_packet()
     packet_for_task = {v["task_id"]: k for k, v in key.items()}
     labels = _load_labels(labels_path) if labels_path else {}
+    llm_by_packet = _load_llm(llm_path) if llm_path else {}
 
     if lexical:
         embed = LexicalEmbedder()
@@ -151,7 +171,9 @@ def run_predictions(
     preds: list[PairPred] = []
     try:
         for pair in selected:
-            good, bad, aligner, base_a, base_b = predict_pair(store=db, pair=pair, stops=stops, embed=embed)
+            good, bad, aligner, base_a, base_b = predict_pair(
+                store=db, pair=pair, stops=stops, embed=embed
+            )
             packet_id = packet_for_task.get(pair.task_id)
             key_row = key.get(packet_id or "", {})
             failure_steps = key_row.get("failure_steps", len(bad))
@@ -172,7 +194,7 @@ def run_predictions(
                     aligner=aligner,
                     baseline_a=base_a,
                     baseline_b=base_b,
-                    baseline_llm=None,
+                    baseline_llm=llm_by_packet.get(packet_id) if packet_id else None,
                     label=labels.get(packet_id) if packet_id else None,
                 )
             )
@@ -186,6 +208,7 @@ def run_predictions(
             "embedding_revision": None if lexical else EMBEDDING_REVISION,
             "lexical": lexical,
             "n_pairs": len(preds),
+            "llm_sheet": str(llm_path) if llm_path and llm_path.exists() else None,
         }
         fh.write(json.dumps({"_meta": meta}, sort_keys=True) + "\n")
         for pred in preds:
@@ -227,12 +250,16 @@ def oracle_constant(labels: Sequence[int]) -> int:
     """Best single index on this label set — a ceiling diagnostic, not a baseline."""
     if not labels:
         raise ValueError("no labels")
-    best = labels[0]
+    median = statistics.median(labels)
+    best = int(median)
     best_hits = -1
+    best_dist = float("inf")
     for candidate in range(1, max(labels) + 1):
         hits = sum(1 for y in labels if within_tol(candidate, y))
-        if hits > best_hits:
+        dist = abs(candidate - median)
+        if hits > best_hits or (hits == best_hits and dist < best_dist):
             best_hits = hits
+            best_dist = dist
             best = candidate
     return best
 
@@ -318,6 +345,147 @@ def score(
     return "\n".join(lines)
 
 
+def init_pass_sheet(pass_name: str = "pass2", dest: Path = LABEL_ROOT) -> Path:
+    """Blank label sheet for a second pass over the existing packets."""
+    key = _key_by_packet(dest / "key.jsonl")
+    path = dest / f"{pass_name}.jsonl"
+    if path.exists():
+        existing = [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        if existing:
+            return path
+    with path.open("w", encoding="utf-8") as fh:
+        for packet_id in sorted(key):
+            fh.write(
+                json.dumps({"packet_id": packet_id, "label": None, "note": ""}, sort_keys=True)
+                + "\n"
+            )
+    return path
+
+
+def self_agreement(
+    pass_a: Path = LABEL_ROOT / "pass1.jsonl",
+    pass_b: Path = LABEL_ROOT / "pass2.jsonl",
+    tol: int = 2,
+) -> str:
+    a = _load_labels(pass_a)
+    b = _load_labels(pass_b)
+    shared = sorted(set(a) & set(b))
+    if not shared:
+        return (
+            f"no overlapping labels between {pass_a.name} ({len(a)}) and "
+            f"{pass_b.name} ({len(b)}). Finish the second pass first."
+        )
+    exact = sum(1 for p in shared if a[p] == b[p])
+    within = sum(1 for p in shared if within_tol(a[p], b[p], tol))
+    mae = median_abs_error([a[p] for p in shared], [b[p] for p in shared])
+    return "\n".join(
+        [
+            "annotator self-agreement (ceiling on measured accuracy)",
+            f"  pairs labeled both passes  {len(shared)}",
+            f"  exact agreement            {exact}/{len(shared)} ({exact / len(shared):.1%})",
+            f"  within±{tol}                   {within}/{len(shared)} ({within / len(shared):.1%})",
+            f"  median |pass1 − pass2|     {mae:.1f}",
+        ]
+    )
+
+
+def _parse_judge_label(text: str, lo: int, hi: int) -> int | None:
+    import re
+
+    for match in re.finditer(r"\b(\d{1,3})\b", text):
+        value = int(match.group(1))
+        if lo <= value <= hi:
+            return value
+    return None
+
+
+def run_llm_judge(
+    packets_dir: Path = LABEL_ROOT / "packets",
+    key_path: Path = LABEL_ROOT / "key.jsonl",
+    out: Path = LLM_SHEET,
+    *,
+    model_id: str | None = None,
+    seed: int = JUDGE_SEED,
+) -> str:
+    """Baseline (c): same packets the annotator saw, one integer back."""
+    from locus import DecodeParams, Message
+
+    from .backend import DEFAULT_MODEL, LocalModel
+
+    key = _key_by_packet(key_path)
+    model = LocalModel(
+        model_id=model_id or DEFAULT_MODEL,
+        temperature=0.0,
+        max_tokens=JUDGE_MAX_TOKENS,
+        seed=seed,
+    )
+    model.warm()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    rows: list[dict] = []
+    packet_ids = sorted(key)
+    print(f"llm-judge: {len(packet_ids)} packets, model {model.model_id}", flush=True)
+    for i, packet_id in enumerate(packet_ids, start=1):
+        packet = (packets_dir / f"{packet_id}.md").read_text(encoding="utf-8")
+        hi = int(key[packet_id]["failure_steps"])
+        prompt = (
+            f"{packet}\n\n"
+            f"Reply with a single integer between 1 and {hi} inclusive. "
+            f"No words, no punctuation, just the number."
+        )
+        stream = model.stream(
+            model.model_id,
+            [Message(role="user", content=prompt)],
+            DecodeParams(temperature=0.0, max_tokens=JUDGE_MAX_TOKENS),
+        )
+        try:
+            while True:
+                next(stream)
+        except StopIteration as stop:
+            response = stop.value
+        assert isinstance(response, object)
+        text = getattr(response, "text", "") or ""
+        label = _parse_judge_label(text, 1, hi)
+        rows.append(
+            {
+                "packet_id": packet_id,
+                "label": label,
+                "raw": text.strip()[:200],
+                "failure_steps": hi,
+                "model_id": model.model_id,
+                "seed": seed,
+            }
+        )
+        flag = str(label) if label is not None else f"PARSE:{text.strip()[:40]!r}"
+        print(f"[{i}/{len(packet_ids)}] {packet_id} → {flag}", flush=True)
+
+    with out.open("w", encoding="utf-8") as fh:
+        fh.write(
+            json.dumps(
+                {
+                    "_meta": {
+                        "model_id": model.model_id,
+                        "seed": seed,
+                        "n": len(rows),
+                        "parsed": sum(1 for r in rows if r["label"] is not None),
+                    }
+                },
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        for row in rows:
+            fh.write(json.dumps(row, sort_keys=True) + "\n")
+    parsed = sum(1 for r in rows if r["label"] is not None)
+    return (
+        f"llm-judge wrote {parsed}/{len(rows)} parsed labels to {out} "
+        f"(model {model.model_id}, seed {seed})"
+    )
+
+
 def predict_and_score(
     *,
     lexical: bool = False,
@@ -329,21 +497,26 @@ def predict_and_score(
     Default writes the per-pair sheet and prints only counts — so a session that
     still has a labeling pass open does not see per-pair answers.
     """
-    preds = run_predictions(lexical=lexical, labels_path=labels if score_labels else None)
+    label_path = labels
+    if score_labels and label_path is None:
+        label_path = LABEL_ROOT / "pass1.jsonl"
+    preds = run_predictions(
+        lexical=lexical,
+        labels_path=label_path if score_labels else None,
+    )
     lines = [
         f"wrote {len(preds)} predictions to {PRED_SHEET}",
         f"lexical={lexical}",
         f"aligner divergence median {statistics.median(p.aligner for p in preds):.0f}",
         f"baseline_a median {statistics.median(p.baseline_a for p in preds):.0f}",
         f"pairs under 3:1 {sum(1 for p in preds if p.under_3_to_1)}/{len(preds)}",
+        f"llm-judge filled {sum(1 for p in preds if p.baseline_llm is not None)}/{len(preds)}",
     ]
     if score_labels:
-        if labels is None:
-            labels = LABEL_ROOT / "pass1.jsonl"
-        # Reload with labels attached for scoring.
-        preds = run_predictions(lexical=lexical, labels_path=labels)
         lines.append("")
         lines.append(score(preds))
+        lines.append("")
+        lines.append(self_agreement())
     else:
         lines.append(
             "labels not scored (pass --score with a label sheet after pass 2). "

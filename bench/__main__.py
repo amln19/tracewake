@@ -74,6 +74,23 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Label JSONL (default: corpus/labels/pass1.jsonl when --score).",
     )
+    sub.add_parser(
+        "init-pass2",
+        help="Create a blank pass2.jsonl over the existing labeling packets.",
+    )
+    sub.add_parser(
+        "self-agreement",
+        help="Report annotator self-agreement between pass1 and pass2.",
+    )
+    judge = sub.add_parser(
+        "llm-judge",
+        help="Run the LLM-as-judge baseline on the blinded packets.",
+    )
+    judge.add_argument(
+        "--model",
+        default=None,
+        help=f"Model id (default: {backend.DEFAULT_MODEL}).",
+    )
 
     args = parser.parse_args(argv)
 
@@ -129,6 +146,13 @@ def main(argv: list[str] | None = None) -> int:
                     score_labels=args.score,
                 )
             )
+        case "init-pass2":
+            path = aligneval.init_pass_sheet("pass2")
+            print(f"pass2 sheet ready at {path}")
+        case "self-agreement":
+            print(aligneval.self_agreement())
+        case "llm-judge":
+            print(aligneval.run_llm_judge(model_id=args.model))
     return 0
 
 
