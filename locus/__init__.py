@@ -62,9 +62,9 @@ from .session import (
     ReplayMiss,
     Session,
     StreamHandle,
-    plan_intervention,
     warn_if_stale,
 )
+from .session import plan_intervention as _check
 from .store import BlobStore, Store
 
 __all__ = [
@@ -116,7 +116,6 @@ __all__ = [
     "hash_messages",
     "import_cassette",
     "intervene",
-    "plan",
     "plan_intervention",
     "read_header",
     "record",
@@ -305,7 +304,7 @@ def replay(
         yield s
 
 
-def plan(
+def plan_intervention(
     run_or_name: str,
     *,
     drop_tags: Iterable[str],
@@ -316,7 +315,7 @@ def plan(
     db = Store(store)
     try:
         source = db.resolve(run_or_name)
-        return plan_intervention(source, db.events(source.run_id), frozenset(drop_tags), from_turn)
+        return _check(source, db.events(source.run_id), frozenset(drop_tags), from_turn)
     finally:
         db.close()
 
@@ -342,7 +341,7 @@ def intervene(
     The source run is never written to, and `source_store` puts the new run in a
     different store entirely so a closed corpus can be forked without growing.
     """
-    intervention = plan(
+    intervention = plan_intervention(
         run_or_name,
         drop_tags=drop_tags,
         from_turn=from_turn,

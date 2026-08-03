@@ -7,7 +7,14 @@ from pathlib import Path
 import pytest
 
 import locus
-from locus import InterventionEvent, ModelCallEvent, Store, run_digest
+from locus import (
+    InterventionEvent,
+    ModelCallEvent,
+    Store,
+    export_cassette,
+    import_cassette,
+    run_digest,
+)
 from locus.session import ReplayMiss
 
 from mock_agent import MockBackend, Transcript, run_agent
@@ -138,7 +145,7 @@ def test_an_intervention_that_would_change_nothing_is_refused_before_it_runs(tmp
     source, _ = _record(tmp_path)
 
     with pytest.raises(ValueError) as caught:
-        locus.plan(source, drop_tags=["repo_map"], store=tmp_path)
+        locus.plan_intervention(source, drop_tags=["repo_map"], store=tmp_path)
     message = str(caught.value)
     assert "repo_map" in message
     # The message names what is actually there, because guessing a tag is the
@@ -150,7 +157,7 @@ def test_intervening_past_the_end_of_the_run_is_refused(tmp_path: Path):
     source, _ = _record(tmp_path)
 
     with pytest.raises(ValueError, match="no turn 99"):
-        locus.plan(source, drop_tags=["tool_output"], from_turn=99, store=tmp_path)
+        locus.plan_intervention(source, drop_tags=["tool_output"], from_turn=99, store=tmp_path)
 
 
 def test_an_intervention_without_a_live_model_says_so(tmp_path: Path):
@@ -209,6 +216,36 @@ def test_a_fork_can_write_to_a_different_store_than_it_reads(tmp_path: Path):
     db = Store(fork_store)
     assert [h.run_id for h in db.runs()] == [forked]
     db.close()
+
+
+def test_a_fork_survives_a_cassette_round_trip(tmp_path: Path):
+    """The fork's own record of what it is has to travel with it."""
+    source, _ = _record(tmp_path)
+
+    live = MockBackend()
+    with locus.intervene(
+        source, drop_tags=["tool_output"], from_turn=1, store=tmp_path
+    ) as s:
+        model = s.model(
+            provider="mock", model_id="mock-1", create_fn=live.create, stream_fn=live.stream
+        )
+        run_agent(model, s.tools(live.dispatch), s.clock, Transcript())
+        s.outcome(status="ok")
+        forked = s.run_id
+
+    db = Store(tmp_path)
+    before = run_digest(db.events(forked))
+    cassette = export_cassette(db, forked, tmp_path / "cassette")
+    db.close()
+
+    restored = Store(tmp_path / "restored")
+    header = import_cassette(cassette, restored)
+    events = restored.events(header.run_id)
+    restored.close()
+
+    assert run_digest(events) == before
+    declared = [e.event for e in events if isinstance(e.event, InterventionEvent)]
+    assert declared and declared[0].source_run_id == source
 
 
 def test_dropping_from_turn_zero_makes_every_turn_live(tmp_path: Path):

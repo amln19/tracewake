@@ -210,7 +210,7 @@ def intervene_(
     header = db.resolve(run)
     db.close()
     # Fails here rather than after the inference it would have taken to find out.
-    plan = locus.plan(run, drop_tags=drop_tag, from_turn=from_step, store=origin)
+    plan = locus.plan_intervention(run, drop_tags=drop_tag, from_turn=from_step, store=origin)
 
     target = command or header.command
     if not target:
