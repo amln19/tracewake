@@ -638,12 +638,19 @@ def predict_and_score(
     label_path = labels
     if score_labels and label_path is None:
         label_path = LABEL_ROOT / "pass1.jsonl"
+    # A sensitivity check against a second label sheet writes its own file. The
+    # sheet carries a `label` column, so scoring against pass 2 into the shared
+    # path would silently replace the evaluation of record with a variant of it.
+    out = PRED_SHEET
+    if label_path is not None and label_path.stem != "pass1":
+        out = PRED_ROOT / f"predictions-{label_path.stem}.jsonl"
     preds = run_predictions(
+        out=out,
         lexical=lexical,
         labels_path=label_path if score_labels else None,
     )
     lines = [
-        f"wrote {len(preds)} predictions to {PRED_SHEET}",
+        f"wrote {len(preds)} predictions to {out}",
         f"lexical={lexical}",
         f"aligner divergence median {statistics.median(p.aligner for p in preds):.0f}",
         f"baseline_a median {statistics.median(p.baseline_a for p in preds):.0f}",
