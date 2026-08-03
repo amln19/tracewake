@@ -403,7 +403,7 @@ def self_agreement(
     mae = median_abs_error([a[p] for p in shared], [b[p] for p in shared])
     return "\n".join(
         [
-            "annotator self-agreement (ceiling on measured accuracy)",
+            "label agreement between two passes (floor under measured accuracy)",
             f"  pairs labeled both passes  {len(shared)}",
             f"  exact agreement            {exact}/{len(shared)} ({exact / len(shared):.1%})",
             f"  within±{tol}                   {within}/{len(shared)} ({within / len(shared):.1%})",
