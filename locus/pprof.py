@@ -135,7 +135,7 @@ def attribute_tokens(
             leaves = [UNTAGGED]
             weights = [0]
         parts = proportional(usage.input_tokens, weights)
-        for leaf, inp in zip(leaves, parts):
+        for leaf, inp in zip(leaves, parts, strict=True):
             if inp == 0:
                 continue
             shares.append(

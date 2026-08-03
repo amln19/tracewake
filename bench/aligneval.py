@@ -240,7 +240,7 @@ def within_tol(pred: int, label: int, tol: int = 2) -> bool:
 
 
 def median_abs_error(preds: Sequence[int], labels: Sequence[int]) -> float:
-    return float(statistics.median(abs(p - y) for p, y in zip(preds, labels)))
+    return float(statistics.median(abs(p - y) for p, y in zip(preds, labels, strict=True)))
 
 
 def mcnemar(a_hits: Sequence[bool], b_hits: Sequence[bool]) -> tuple[int, int, float | None]:
@@ -250,7 +250,7 @@ def mcnemar(a_hits: Sequence[bool], b_hits: Sequence[bool]) -> tuple[int, int, f
     aligner wrong; a_only = aligner right, baseline wrong.
     """
     a_only = b_only = 0
-    for a, b in zip(a_hits, b_hits):
+    for a, b in zip(a_hits, b_hits, strict=True):
         if a and not b:
             a_only += 1
         elif b and not a:
@@ -312,7 +312,7 @@ def score(
         lines = [f"{name}: n={len(group)}"]
         hits_by: dict[str, list[bool]] = {}
         for method, values in methods.items():
-            hits = [within_tol(v, y) for v, y in zip(values, labels)]
+            hits = [within_tol(v, y) for v, y in zip(values, labels, strict=True)]
             hits_by[method] = hits
             mae = median_abs_error(values, labels)
             n_hit = sum(hits)
@@ -601,11 +601,11 @@ def run_ablations(
         f"{'arm':<22} {'within±2':>10} {'median|err|':>12}  note",
     ]
     full_hits = [
-        within_tol(p, y) for p, y in zip(arm_preds["full"], label_list)
+        within_tol(p, y) for p, y in zip(arm_preds["full"], label_list, strict=True)
     ]
     for arm_name, note in ABLATION_ARMS:
         preds = arm_preds[arm_name]
-        hits = [within_tol(p, y) for p, y in zip(preds, label_list)]
+        hits = [within_tol(p, y) for p, y in zip(preds, label_list, strict=True)]
         n_hit = sum(hits)
         mae = median_abs_error(preds, label_list)
         extra = ""
