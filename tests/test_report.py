@@ -189,6 +189,36 @@ def test_each_context_block_can_name_the_call_that_would_neutralize_it(
         assert all(t is not None for t in turns)
 
 
+def test_each_run_carries_the_store_it_actually_lives_in(pair: tuple[Store, str, str]) -> None:
+    """The two runs can be in different stores, and a command naming the wrong
+    one points at a run that is not there."""
+    db, good, bad = pair
+    good_events = db.events(good)
+    bad_events = db.events(bad)
+    result = diff_runs(good_events, bad_events, embed=LexicalEmbedder())
+    payload = build_payload(
+        db.run(good),
+        good_events,
+        db.run(bad),
+        bad_events,
+        result,
+        blobs=db.blobs,
+        store_path="corpus/store",
+        store_path_b="corpus/counterfactual",
+    )
+
+    assert payload["good"]["store"] == "corpus/store"
+    assert payload["bad"]["store"] == "corpus/counterfactual"
+
+
+def test_one_store_applies_to_both_runs_when_only_one_is_given(
+    pair: tuple[Store, str, str],
+) -> None:
+    db, good, bad = pair
+    payload = _built(db, good, bad)
+    assert payload["good"]["store"] == payload["bad"]["store"] == str(db.root)
+
+
 def test_repeated_context_is_stored_once(pair: tuple[Store, str, str]) -> None:
     """Why the cap is reachable at all: a prompt resent every turn is one block."""
     db, good, bad = pair

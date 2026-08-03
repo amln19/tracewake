@@ -370,6 +370,7 @@ def view(
         blobs=db.blobs,
         blobs_b=db_b.blobs,
         store_path=str(store),
+        store_path_b=str(store_b) if store_b else None,
         budget=max_bytes,
     )
     if db_b is not db:

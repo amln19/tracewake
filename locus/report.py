@@ -67,7 +67,7 @@ def _fit_budget(payload: dict[str, Any], texts: list[str], budget: int) -> None:
     def apply(limit: int | None) -> int:
         """Clip to `limit` and return the size the report would then have."""
         clipped = dropped = 0
-        for block, text in zip(payload["blocks"], texts):
+        for block, text in zip(payload["blocks"], texts, strict=True):
             if limit is None or len(text) <= limit:
                 block["text"] = text
                 block["clipped"] = False
@@ -117,12 +117,17 @@ def _spend(header: RunHeader, events: list[StoredEvent]) -> list[dict[str, Any]]
     return rows
 
 
-def _run_summary(header: RunHeader, events: list[StoredEvent], steps: int) -> dict[str, Any]:
+def _run_summary(
+    header: RunHeader, events: list[StoredEvent], steps: int, store: str
+) -> dict[str, Any]:
     calls = [e.event for e in events if isinstance(e.event, ModelCallEvent)]
     outcome = next((e.event for e in events if isinstance(e.event, OutcomeEvent)), None)
     return {
         "run_id": header.run_id,
         "name": header.name,
+        # Per side, not one for the page: the two runs can live in different
+        # stores, and a command naming the wrong one silently does nothing.
+        "store": store,
         "task_id": header.task_id,
         "status": header.status,
         "models": [m.model_id for m in header.models],
@@ -234,6 +239,7 @@ def build_payload(
     blobs: BlobStore | None = None,
     blobs_b: BlobStore | None = None,
     store_path: str = "",
+    store_path_b: str | None = None,
     budget: int = PAYLOAD_BUDGET,
 ) -> dict[str, Any]:
     good_traces = extract_traces(good_events)
@@ -264,9 +270,10 @@ def build_payload(
             }
         )
 
+    store_b = store_path if store_path_b is None else store_path_b
     payload: dict[str, Any] = {
-        "good": _run_summary(good_header, good_events, len(result.good_steps)),
-        "bad": _run_summary(bad_header, bad_events, len(result.bad_steps)),
+        "good": _run_summary(good_header, good_events, len(result.good_steps), store_path),
+        "bad": _run_summary(bad_header, bad_events, len(result.bad_steps), store_b),
         "divergence": result.divergence,
         "score": round(result.score, 4),
         "length_ratio": round(result.length_ratio, 4),
@@ -276,6 +283,7 @@ def build_payload(
             "revision": result.embedding_revision,
         },
         "store": store_path,
+        "store_b": store_b,
         "columns": columns,
         "steps": steps,
         "blocks": [dict(m) for m in blocks.meta],
@@ -316,6 +324,7 @@ def write_report(
     blobs: BlobStore | None = None,
     blobs_b: BlobStore | None = None,
     store_path: str = "",
+    store_path_b: str | None = None,
     budget: int = PAYLOAD_BUDGET,
 ) -> dict[str, Any]:
     payload = build_payload(
@@ -327,6 +336,7 @@ def write_report(
         blobs=blobs,
         blobs_b=blobs_b,
         store_path=store_path,
+        store_path_b=store_path_b,
         budget=budget,
     )
     title = good_header.task_id or f"{good_header.name} vs {bad_header.name}"

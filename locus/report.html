@@ -308,7 +308,8 @@ function renderHead() {
   foot.appendChild(document.createTextNode("Steps agree when the tool name and the file or pattern it aimed at match. " +
     "Divergence is the last position after which the runs never agree again. "));
   if (D.store) {
-    const code = el("code", null, "locus diff " + D.good.run_id.slice(0, 8) + " " + D.bad.run_id.slice(0, 8) + " --store " + D.store);
+    const code = el("code", null, "locus diff " + D.good.run_id.slice(0, 8) + " " + D.bad.run_id.slice(0, 8) +
+      " --store " + D.store + (D.store_b && D.store_b !== D.store ? " --store-b " + D.store_b : ""));
     foot.appendChild(document.createTextNode("Full detail is in the store: "));
     foot.appendChild(code);
   }
@@ -354,9 +355,10 @@ function renderRows() {
 // is offered as the command that runs it rather than as a button that cannot.
 function neutralizeCommand(side, turn, provenance) {
   if (turn === null || turn === undefined || !provenance || provenance === "untagged") return null;
-  const run = (side === "good" ? D.good : D.bad).run_id.slice(0, 8);
-  return "locus intervene " + run + " --drop-tag " + provenance + " --from-step " + turn +
-    (D.store ? " --store " + D.store : "") + " -- <the command that runs your agent>";
+  const r = side === "good" ? D.good : D.bad;
+  return "locus intervene " + r.run_id.slice(0, 8) + " --drop-tag " + provenance +
+    " --from-step " + turn + (r.store ? " --store " + r.store : "") +
+    " -- <the command that runs your agent>";
 }
 
 function blockNode(id, command) {
