@@ -45,14 +45,18 @@ class Fork:
     resolve: bool
     seconds: float
     summary: str
+    # Where each run actually is, not where the defaults say. A fork reported
+    # against the wrong store is a run nobody can find.
+    store: Path
+    fork_store: Path
 
     def format(self) -> str:
         tags = ", ".join(self.drop_tags)
         return "\n".join(
             [
                 f"task            {self.task_id}",
-                f"source run      {self.source_run_id}  (in {STORE})",
-                f"forked run      {self.run_id}  (in {FORK_STORE})",
+                f"source run      {self.source_run_id}  (in {self.store})",
+                f"forked run      {self.run_id}  (in {self.fork_store})",
                 f"intervention    dropped {tags} from turn {self.from_turn}",
                 f"blocks dropped  {self.blocks_dropped}",
                 f"model calls     {self.replayed_calls} replayed, {self.live_calls} generated",
@@ -132,8 +136,10 @@ def fork(
     temperature: float = 0.7,
 ) -> Fork:
     db = Store(store)
-    source = db.resolve(run)
-    db.close()
+    try:
+        source = db.resolve(run)
+    finally:
+        db.close()
     if source.task_id is None:
         raise ValueError(
             f"run {source.run_id[:12]} carries no task id, so there is no task to rebuild a "
@@ -206,6 +212,8 @@ def fork(
                 resolve=resolve,
                 seconds=time.time() - started,
                 summary=final.summary,
+                store=store,
+                fork_store=fork_store,
             )
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
