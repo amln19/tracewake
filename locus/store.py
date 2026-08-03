@@ -213,9 +213,12 @@ class Store:
         if named is not None:
             return named
         # Whatever `locus ls` prints has to be valid input to `locus replay`,
-        # and it prints an abbreviated id.
+        # and it prints an abbreviated id. Compared by substring rather than
+        # LIKE, whose `_` and `%` are wildcards: an id prefix is a literal, and
+        # matching it as a pattern would resolve to a run nobody asked for.
         rows = self._db.execute(
-            "SELECT * FROM runs WHERE run_id LIKE ? || '%'", (run_or_name,)
+            "SELECT * FROM runs WHERE substr(run_id, 1, ?) = ?",
+            (len(run_or_name), run_or_name),
         ).fetchall()
         if len(rows) > 1:
             ids = ", ".join(r["run_id"][:12] for r in rows)

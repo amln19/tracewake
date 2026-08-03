@@ -129,6 +129,18 @@ def test_a_store_written_in_an_older_format_says_so(tmp_path: Path) -> None:
         Store(tmp_path)
 
 
+def test_an_id_prefix_is_matched_literally_not_as_a_pattern(tmp_path: Path) -> None:
+    """`_` and `%` are SQL LIKE wildcards; an abbreviated run id is neither."""
+    store = Store(tmp_path)
+    _run(store, "abc123def456")
+
+    assert store.find("abc").run_id == "abc123def456"
+    # Both of these match "abc123def456" if the prefix is read as a pattern.
+    assert store.find("a_c") is None
+    assert store.find("%") is None
+    store.close()
+
+
 def test_unknown_run_lists_the_runs_that_exist(tmp_path: Path) -> None:
     store = Store(tmp_path)
     _run(store, "known")
