@@ -134,6 +134,9 @@ def test_an_edited_cassette_is_refused(tmp_path: Path) -> None:
     into = Store(tmp_path / "b")
     with pytest.raises(ValueError, match="did not survive the round trip"):
         import_cassette(tmp_path / "cassette", into)
+    # Refused before anything was written. A half-imported run would make the
+    # retry fail with "already in the store" about a run that never imported.
+    assert into.runs() == []
     into.close()
 
 

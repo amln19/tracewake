@@ -147,6 +147,21 @@ def import_cassette(source: str | Path, store: Store) -> RunHeader:
             f"twice; delete it first or import into a different --store."
         )
 
+    # Checked before anything is written. Verifying only after the run exists
+    # leaves a half-imported run behind on a corrupt file, and the retry then
+    # fails with "already in the store" about a run that never imported.
+    events = _events(root / CASSETTE_FILE if path.is_dir() else path)
+    staged = [
+        StoredEvent(run_id=cassette.run_id, seq=seq, event=event) for seq, event in events
+    ]
+    digest = run_digest(staged)
+    if digest != cassette.digest:
+        raise ValueError(
+            f"{path} did not survive the round trip: its events hash to {digest[:12]} but "
+            f"the cassette header says {cassette.digest[:12]}. The file has been edited or "
+            f"truncated; re-export it. Nothing was imported."
+        )
+
     blobs = root / BLOB_DIR
     for blob in sorted(blobs.rglob("*")) if blobs.is_dir() else []:
         if blob.is_file():
@@ -164,16 +179,17 @@ def import_cassette(source: str | Path, store: Store) -> RunHeader:
         task_id=cassette.task_id,
     )
     store.create_run(header)
-    events = _events(root / CASSETTE_FILE if path.is_dir() else path)
     for _, event in sorted(events, key=lambda pair: pair[0]):
         store.append(header.run_id, event)
 
-    imported = store.events(header.run_id)
-    digest = run_digest(imported)
-    if digest != cassette.digest:
+    # The file was already proved good above, so a mismatch here is the store
+    # failing to hold what it was given rather than a bad cassette.
+    stored_digest = run_digest(store.events(header.run_id))
+    if stored_digest != cassette.digest:
         raise ValueError(
-            f"{path} did not survive the round trip: the imported run hashes to "
-            f"{digest[:12]} but the cassette header says {cassette.digest[:12]}. The file "
-            f"has been edited or truncated; re-export it."
+            f"importing {path} into {store.root} produced a run hashing to "
+            f"{stored_digest[:12]}, but the cassette's own events hash to "
+            f"{cassette.digest[:12]}. The store did not round-trip the events it was "
+            f"given."
         )
     return header
