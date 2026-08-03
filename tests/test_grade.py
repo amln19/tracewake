@@ -162,8 +162,6 @@ def test_status_reports_the_rate_and_which_tasks_came_out_mixed(tmp_path: Path) 
 
 
 def test_shards_partition_the_work_without_overlap(tmp_path: Path, monkeypatch) -> None:
-    from bench import tasks as tasks_module
-
     made = [
         Task(
             task_id=f"t{n}",

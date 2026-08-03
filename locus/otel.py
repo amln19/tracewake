@@ -95,7 +95,6 @@ def build_spans(header: RunHeader, events: Sequence[StoredEvent]) -> dict[str, A
     """One trace per run: a root span, a span per model call, one per tool call."""
     run_id = header.run_id
     spans: list[dict[str, Any]] = []
-    starts: list[float] = []
     ends: list[float] = []
 
     for stored in events:
@@ -105,7 +104,6 @@ def build_spans(header: RunHeader, events: Sequence[StoredEvent]) -> dict[str, A
         elapsed = (event.meta.duration_ms or 0.0) / 1000.0
         end = event.meta.recorded_at
         start = end - elapsed
-        starts.append(start)
         ends.append(end)
 
         if isinstance(event, ModelCallEvent):

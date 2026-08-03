@@ -86,7 +86,6 @@ def test_gotoh_charges_an_excursion_once():
     five_opens = 5 * GAP_OPEN
     assert one_excursion > five_opens
 
-    scores = [[1.0 if i == j else -1.0 for j in range(3)] for i in range(3)]
     # Insert a 5-step excursion into B between A[0] and A[1] by aligning
     # A=abc against B=a....bc with high mismatch cost for '.'.
     a = "abc"

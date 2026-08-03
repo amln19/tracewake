@@ -18,7 +18,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 import locus
-from locus import Store, Usage
+from locus import Store
 
 from . import agent, repos
 from .backend import DEFAULT_MODEL, PROVIDER, LocalModel

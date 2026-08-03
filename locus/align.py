@@ -465,8 +465,6 @@ class MlxEmbedder:
         self._generate = generate
 
     def __call__(self, texts: Sequence[str]) -> list[list[float]]:
-        import mlx.core as mx
-
         if not texts:
             return []
         # Empty strings still need a vector so index alignment stays 1:1.

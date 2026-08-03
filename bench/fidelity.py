@@ -694,7 +694,7 @@ def replay_one(task_id: str, run_id: str, store: Path = REPLAY_STORE) -> dict:
     import locus
     from locus import ReplayMiss
 
-    from . import agent, repos
+    from . import agent
     from .repos import BY_NAME
     from .runner import prepare
     from .tasks import load
