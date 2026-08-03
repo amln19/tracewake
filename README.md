@@ -19,8 +19,25 @@ on 28/41 pairs, against 19/41 for first target-width difference (what simple
 session-diff tools do), 9/41 for last common prefix, and 13/41 for a local 7B
 judge on the same packets. On the 22 pairs where first-difference was already
 outside ±2 of the label — the only pairs where an aligner can show a distinct
-win — it hit 14/22 and first-difference hit 0/22. Annotator self-agreement was
-not measured. Transfer to real-world issue trajectories is untested.
+win — it hit 14/22 and first-difference hit 0/22. Transfer to real-world issue
+trajectories is untested.
+
+A second labeling pass over the same 41 packets agrees with the first within two
+steps on 78% of them, which is the noise floor any measured accuracy sits on —
+the aligner's 68% is below it, as it has to be. **That second pass was made by an
+LLM, not by the human annotator**, so it bounds how repeatable the *definition*
+is, not how repeatable a person is; a true test-retest ceiling is still unmeasured.
+Scored against those second-pass labels instead, the aligner gets 31/41 against
+16/41 for first-difference — the gap widens rather than closing, which is the
+point of running it.
+
+The disagreement is not noise. On the 29 pairs whose failing run is under twelve
+steps the two passes agree within two steps 28 times; on the twelve longer ones
+they never agree exactly. Those are runs that spend their whole budget repeating
+one action, and the two passes read them differently: one marks the last step,
+the other the step the repetition started. That ambiguity is a property of the
+labeling definition, and it is the honest reason to distrust a headline built on
+long runs.
 
 ```python
 import locus
