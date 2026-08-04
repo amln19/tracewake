@@ -1,0 +1,41 @@
+{"label": 4, "note": "found the line, edit errored, ran out", "packet_id": "P01"}
+{"label": 5, "note": "never edited; drifted to the test file and ran out", "packet_id": "P02"}
+{"label": 6, "note": "explored the wrong entity throughout; ran out", "packet_id": "P03"}
+{"label": 4, "note": "two useless searches, reached the right file as it ran out", "packet_id": "P04"}
+{"label": 4, "note": "right file; edit errored on the last step", "packet_id": "P05"}
+{"label": 6, "note": "reached the right file only on the last step", "packet_id": "P06"}
+{"label": 8, "note": "9-12 identical re-reads of one line, then 4 identical edits", "packet_id": "P07"}
+{"label": 5, "note": "explored; edit errored on the last step", "packet_id": "P08"}
+{"label": 6, "note": "8-16 are the identical read repeated nine times", "packet_id": "P09"}
+{"label": 5, "note": "no-op edit (old == new) errored; ran out", "packet_id": "P10"}
+{"label": 7, "note": "8-16 alternate the same search and run_tests", "packet_id": "P11"}
+{"label": 3, "note": "wrong module throughout; only three steps", "packet_id": "P12"}
+{"label": 4, "note": "right file, never edited, ran out", "packet_id": "P13"}
+{"label": 5, "note": "no-op edit landed but changed nothing; ran out", "packet_id": "P14"}
+{"label": 4, "note": "three reads walking the same function; never edited", "packet_id": "P15"}
+{"label": 15, "note": "edits errored at 3 and 8; then a scan at new offsets to the end", "packet_id": "P16"}
+{"label": 5, "note": "right file, never edited, ran out", "packet_id": "P17"}
+{"label": 7, "note": "edits kept erroring but each attempt differed", "packet_id": "P18"}
+{"label": 4, "note": "edit errored on the last step", "packet_id": "P19"}
+{"label": 7, "note": "8-9 then 10-16 are two identical reads repeated", "packet_id": "P20"}
+{"label": 7, "note": "no-op edit at 4; 8-16 cycle three actions already taken", "packet_id": "P21"}
+{"label": 6, "note": "scan of the right file at new offsets; never edited", "packet_id": "P22"}
+{"label": 4, "note": "edit errored on the last step", "packet_id": "P23"}
+{"label": 16, "note": "shotgun across files, then a scan at new offsets", "packet_id": "P24"}
+{"label": 8, "note": "explored test names; never edited; ran out", "packet_id": "P25"}
+{"label": 16, "note": "twelve reads of the right file, every one a new offset", "packet_id": "P26"}
+{"label": 8, "note": "explored the cache classes; never edited", "packet_id": "P27"}
+{"label": 4, "note": "right file at 2, then the test file; never edited", "packet_id": "P28"}
+{"label": 6, "note": "alternating reads at new offsets; never edited", "packet_id": "P29"}
+{"label": 4, "note": "right file, never edited, ran out", "packet_id": "P30"}
+{"label": 5, "note": "edit errored on the last step", "packet_id": "P31"}
+{"label": 6, "note": "explored both files at new offsets; never edited", "packet_id": "P32"}
+{"label": 7, "note": "three reads of the right file at new offsets", "packet_id": "P33"}
+{"label": 12, "note": "edited the wrong file; 13-16 repeat earlier actions", "packet_id": "P34"}
+{"label": 4, "note": "right file, never edited, ran out", "packet_id": "P35"}
+{"label": 3, "note": "wrong file; only three steps", "packet_id": "P36"}
+{"label": 9, "note": "edits 4-9 each differed; 10-13 identical run_tests", "packet_id": "P37"}
+{"label": 6, "note": "reads at new offsets; never edited", "packet_id": "P38"}
+{"label": 9, "note": "edits kept erroring but differed; ended on a fresh read", "packet_id": "P39"}
+{"label": 12, "note": "wide scan; ended on a new offset", "packet_id": "P40"}
+{"label": 6, "note": "7-16 are the identical search repeated ten times", "packet_id": "P41"}

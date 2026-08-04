@@ -1,0 +1,1732 @@
+[
+  {
+    "baseline_summary": "125 passed in 1.77s",
+    "broken_summary": "1 failed, 124 passed in 1.62s",
+    "broken_tests": [
+      "tests/test_bidict.py::test_orderedbidict_weakattr_class_access"
+    ],
+    "ground_truth_file": "bidict/_orderedbase.py",
+    "ground_truth_line": 57,
+    "issue": "Something in bidict is broken on the current checkout.\n\nAn input that used to be rejected early now falls through into the main path, so instead of the expected early return there is either a crash or a nonsense result.\n\nRunning the test suite shows these failing:\n\n- test_orderedbidict_weakattr_class_access\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "pass",
+      "before": "if instance is None:\n            return self",
+      "column": 8,
+      "description": "a guard clause was removed",
+      "end_column": 23,
+      "end_line": 58,
+      "file": "_orderedbase.py",
+      "line": 57,
+      "operator": "deleted_guard"
+    },
+    "operator": "deleted_guard",
+    "repo": "bidict",
+    "task_id": "bidict-deleted_guard-3"
+  },
+  {
+    "baseline_summary": "125 passed in 1.77s",
+    "broken_summary": "3 failed, 122 passed in 7.63s",
+    "broken_tests": [
+      "tests/test_bidict.py::BidictStateMachineTest::runTest",
+      "tests/test_bidict.py::test_move_to_end_missing_key[OrderedBidict]",
+      "tests/test_bidict.py::test_move_to_end_missing_key[UserOrderedBi]"
+    ],
+    "ground_truth_file": "bidict/_orderedbidict.py",
+    "ground_truth_line": 85,
+    "issue": "Something in bidict is broken on the current checkout.\n\nThe output is off by one element. Sequences come back one item short or one item long, and the edges are what go wrong first.\n\nRunning the test suite shows these failing:\n\n- BidictStateMachineTest::runTest\n- test_move_to_end_missing_key[OrderedBidict]\n- test_move_to_end_missing_key[UserOrderedBi]\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "korv + 1",
+      "before": "korv",
+      "column": 34,
+      "description": "bound korv became korv + 1",
+      "end_column": 38,
+      "end_line": 85,
+      "file": "_orderedbidict.py",
+      "line": 85,
+      "operator": "off_by_one"
+    },
+    "operator": "off_by_one",
+    "repo": "bidict",
+    "task_id": "bidict-off_by_one-8"
+  },
+  {
+    "baseline_summary": "125 passed in 1.77s",
+    "broken_summary": "2 failed, 123 passed in 6.63s",
+    "broken_tests": [
+      "tests/test_bidict.py::BidictStateMachineTest::runTest",
+      "tests/test_bidict.py::test_orderedbidict_cross_view_set_operations"
+    ],
+    "ground_truth_file": "bidict/_orderedbidict.py",
+    "ground_truth_line": 181,
+    "issue": "Something in bidict is broken on the current checkout.\n\nThe behaviour looks inverted: what should be applied to one value is being applied to the other, so results come back transposed.\n\nRunning the test suite shows these failing:\n\n- BidictStateMachineTest::runTest\n- test_orderedbidict_cross_view_set_operations\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "arg._viewname, arg._mapping._fwdm",
+      "before": "arg._mapping._fwdm, arg._viewname",
+      "column": 40,
+      "description": "the first two arguments to this call were swapped",
+      "end_column": 73,
+      "end_line": 181,
+      "file": "_orderedbidict.py",
+      "line": 181,
+      "operator": "argument_swap"
+    },
+    "operator": "argument_swap",
+    "repo": "bidict",
+    "task_id": "bidict-argument_swap-9"
+  },
+  {
+    "baseline_summary": "125 passed in 1.77s",
+    "broken_summary": "1 failed, 124 passed in 1.89s",
+    "broken_tests": [
+      "tests/test_bidict.py::BidictStateMachineTest::runTest"
+    ],
+    "ground_truth_file": "bidict/_base.py",
+    "ground_truth_line": 518,
+    "issue": "Something in bidict is broken on the current checkout.\n\nThe behaviour looks inverted: what should be applied to one value is being applied to the other, so results come back transposed.\n\nRunning the test suite shows these failing:\n\n- BidictStateMachineTest::runTest\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "Mapping, other",
+      "before": "other, Mapping",
+      "column": 26,
+      "description": "the first two arguments to this call were swapped",
+      "end_column": 40,
+      "end_line": 518,
+      "file": "_base.py",
+      "line": 518,
+      "operator": "argument_swap"
+    },
+    "operator": "argument_swap",
+    "repo": "bidict",
+    "task_id": "bidict-argument_swap-13"
+  },
+  {
+    "baseline_summary": "445 passed in 1.72s",
+    "broken_summary": "5 failed, 440 passed in 1.72s",
+    "broken_tests": [
+      "tests/test_tbutils_parsed_exc.py::test_parsed_exc_basic",
+      "tests/test_tbutils_parsed_exc.py::test_parsed_exc_nosrcline",
+      "tests/test_tbutils_parsed_exc.py::test_parsed_exc_with_anchor",
+      "tests/test_tbutils_parsed_exc.py::test_parsed_exc_with_anchor_indented",
+      "tests/test_tbutils_parsed_exc.py::test_parsed_exc_truncated"
+    ],
+    "ground_truth_file": "boltons/tbutils.py",
+    "ground_truth_line": 770,
+    "issue": "Something in boltons is broken on the current checkout.\n\nThe output is off by one element. Sequences come back one item short or one item long, and the edges are what go wrong first.\n\nRunning the test suite shows these failing:\n\n- test_parsed_exc_basic\n- test_parsed_exc_nosrcline\n- test_parsed_exc_with_anchor\n- test_parsed_exc_with_anchor_indented\n\n...and 1 further failures.\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "1",
+      "before": "0",
+      "column": 33,
+      "description": "bound 0 became 1",
+      "end_column": 34,
+      "end_line": 770,
+      "file": "tbutils.py",
+      "line": 770,
+      "operator": "off_by_one"
+    },
+    "operator": "off_by_one",
+    "repo": "boltons",
+    "task_id": "boltons-off_by_one-4"
+  },
+  {
+    "baseline_summary": "445 passed in 1.72s",
+    "broken_summary": "1 failed, 444 passed in 1.69s",
+    "broken_tests": [
+      "tests/test_strutils.py::test_format_int_list"
+    ],
+    "ground_truth_file": "boltons/strutils.py",
+    "ground_truth_line": 971,
+    "issue": "Something in boltons is broken on the current checkout.\n\nThe results come back wrong at the boundary. Values that sit exactly on the edge of the condition are handled as though they were on the other side of it.\n\nRunning the test suite shows these failing:\n\n- test_format_int_list\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "x + contig_range[0]",
+      "before": "x - contig_range[0]",
+      "column": 20,
+      "description": "arithmetic - became +",
+      "end_column": 39,
+      "end_line": 971,
+      "file": "strutils.py",
+      "line": 971,
+      "operator": "operator_swap"
+    },
+    "operator": "operator_swap",
+    "repo": "boltons",
+    "task_id": "boltons-operator_swap-6"
+  },
+  {
+    "baseline_summary": "445 passed in 1.72s",
+    "broken_summary": "1 failed, 444 passed in 1.71s",
+    "broken_tests": [
+      "tests/test_cacheutils.py::test_cachedmethod"
+    ],
+    "ground_truth_file": "boltons/cacheutils.py",
+    "ground_truth_line": 240,
+    "issue": "Something in boltons is broken on the current checkout.\n\nAn input that used to be rejected early now falls through into the main path, so instead of the expected early return there is either a crash or a nonsense result.\n\nRunning the test suite shows these failing:\n\n- test_cachedmethod\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "pass",
+      "before": "if not self.on_miss:\n                    raise",
+      "column": 16,
+      "description": "a guard clause was removed",
+      "end_column": 25,
+      "end_line": 241,
+      "file": "cacheutils.py",
+      "line": 240,
+      "operator": "deleted_guard"
+    },
+    "operator": "deleted_guard",
+    "repo": "boltons",
+    "task_id": "boltons-deleted_guard-11"
+  },
+  {
+    "baseline_summary": "445 passed in 1.72s",
+    "broken_summary": "1 failed, 444 passed in 1.72s",
+    "broken_tests": [
+      "tests/test_formatutils.py::test_pos_infer"
+    ],
+    "ground_truth_file": "boltons/formatutils.py",
+    "ground_truth_line": 136,
+    "issue": "Something in boltons is broken on the current checkout.\n\nThe output is off by one element. Sequences come back one item short or one item long, and the edges are what go wrong first.\n\nRunning the test suite shows these failing:\n\n- test_pos_infer\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "prev_end + 1",
+      "before": "prev_end",
+      "column": 16,
+      "description": "bound prev_end became prev_end + 1",
+      "end_column": 24,
+      "end_line": 136,
+      "file": "formatutils.py",
+      "line": 136,
+      "operator": "off_by_one"
+    },
+    "operator": "off_by_one",
+    "repo": "boltons",
+    "task_id": "boltons-off_by_one-16"
+  },
+  {
+    "baseline_summary": "291 passed in 4.23s",
+    "broken_summary": "1 failed, 290 passed in 4.23s",
+    "broken_tests": [
+      "tests/test_ttl.py::TTLCacheTest::test_ttl"
+    ],
+    "ground_truth_file": "src/cachetools/__init__.py",
+    "ground_truth_line": 511,
+    "issue": "Something in cachetools is broken on the current checkout.\n\nThe results come back wrong at the boundary. Values that sit exactly on the edge of the condition are handled as though they were on the other side of it.\n\nRunning the test suite shows these failing:\n\n- TTLCacheTest::test_ttl\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "self.timer() <= link.expires",
+      "before": "self.timer() < link.expires",
+      "column": 16,
+      "description": "comparison < became <=",
+      "end_column": 43,
+      "end_line": 511,
+      "file": "__init__.py",
+      "line": 511,
+      "operator": "operator_swap"
+    },
+    "operator": "operator_swap",
+    "repo": "cachetools",
+    "task_id": "cachetools-operator_swap-2"
+  },
+  {
+    "baseline_summary": "291 passed in 4.23s",
+    "broken_summary": "9 failed, 282 passed in 4.22s",
+    "broken_tests": [
+      "tests/test_cachedmethod.py::CacheMethodTest::test_cond_nospace",
+      "tests/test_cachedmethod.py::CacheMethodTest::test_decorator_attributes",
+      "tests/test_cachedmethod.py::CacheMethodTest::test_decorator_cond",
+      "tests/test_cachedmethod.py::CacheMethodTest::test_decorator_cond_clear",
+      "tests/test_cachedmethod.py::CacheMethodTest::test_decorator_cond_error",
+      "tests/test_cachedmethod.py::DictMethodTest::test_decorator_attributes",
+      "tests/test_cachedmethod.py::DictMethodTest::test_decorator_cond",
+      "tests/test_cachedmethod.py::DictMethodTest::test_decorator_cond_clear",
+      "tests/test_cachedmethod.py::DictMethodTest::test_decorator_cond_error"
+    ],
+    "ground_truth_file": "src/cachetools/_cachedmethod.py",
+    "ground_truth_line": 307,
+    "issue": "Something in cachetools is broken on the current checkout.\n\nThe behaviour looks inverted: what should be applied to one value is being applied to the other, so results come back transposed.\n\nRunning the test suite shows these failing:\n\n- CacheMethodTest::test_cond_nospace\n- CacheMethodTest::test_decorator_attributes\n- CacheMethodTest::test_decorator_cond\n- CacheMethodTest::test_decorator_cond_clear\n\n...and 5 further failures.\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "method, obj",
+      "before": "obj, method",
+      "column": 33,
+      "description": "the first two arguments to this call were swapped",
+      "end_column": 44,
+      "end_line": 307,
+      "file": "_cachedmethod.py",
+      "line": 307,
+      "operator": "argument_swap"
+    },
+    "operator": "argument_swap",
+    "repo": "cachetools",
+    "task_id": "cachetools-argument_swap-4"
+  },
+  {
+    "baseline_summary": "291 passed in 4.23s",
+    "broken_summary": "2 failed, 289 passed in 4.23s",
+    "broken_tests": [
+      "tests/test_tlru.py::TLRUCacheTest::test_ttu",
+      "tests/test_tlru.py::TLRUCacheTest::test_ttu_tuple_key"
+    ],
+    "ground_truth_file": "src/cachetools/__init__.py",
+    "ground_truth_line": 616,
+    "issue": "Something in cachetools is broken on the current checkout.\n\nThe results come back wrong at the boundary. Values that sit exactly on the edge of the condition are handled as though they were on the other side of it.\n\nRunning the test suite shows these failing:\n\n- TLRUCacheTest::test_ttu\n- TLRUCacheTest::test_ttu_tuple_key\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "self.timer() <= item.expires",
+      "before": "self.timer() < item.expires",
+      "column": 19,
+      "description": "comparison < became <=",
+      "end_column": 46,
+      "end_line": 616,
+      "file": "__init__.py",
+      "line": 616,
+      "operator": "operator_swap"
+    },
+    "operator": "operator_swap",
+    "repo": "cachetools",
+    "task_id": "cachetools-operator_swap-6"
+  },
+  {
+    "baseline_summary": "291 passed in 4.23s",
+    "broken_summary": "2 failed, 289 passed in 4.23s",
+    "broken_tests": [
+      "tests/test_lfu.py::LFUCacheTest::test_popitem",
+      "tests/test_lfu.py::LFUCacheTest::test_popitem_exception_context"
+    ],
+    "ground_truth_file": "src/cachetools/__init__.py",
+    "ground_truth_line": 252,
+    "issue": "Something in cachetools is broken on the current checkout.\n\nAn input that used to be rejected early now falls through into the main path, so instead of the expected early return there is either a crash or a nonsense result.\n\nRunning the test suite shows these failing:\n\n- LFUCacheTest::test_popitem\n- LFUCacheTest::test_popitem_exception_context\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "pass",
+      "before": "if curr is root:\n            raise KeyError(\"%s is empty\" % type(self).__name__) from None",
+      "column": 8,
+      "description": "a guard clause was removed",
+      "end_column": 73,
+      "end_line": 253,
+      "file": "__init__.py",
+      "line": 252,
+      "operator": "deleted_guard"
+    },
+    "operator": "deleted_guard",
+    "repo": "cachetools",
+    "task_id": "cachetools-deleted_guard-7"
+  },
+  {
+    "baseline_summary": "205 passed in 0.24s",
+    "broken_summary": "1 failed, 204 passed in 0.24s",
+    "broken_tests": [
+      "tests/test_strings.py::test_cut_prefix"
+    ],
+    "ground_truth_file": "funcy/strings.py",
+    "ground_truth_line": 74,
+    "issue": "Something in funcy is broken on the current checkout.\n\nThe output is off by one element. Sequences come back one item short or one item long, and the edges are what go wrong first.\n\nRunning the test suite shows these failing:\n\n- test_cut_prefix\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "len(prefix) + 1",
+      "before": "len(prefix)",
+      "column": 13,
+      "description": "bound len(prefix) became len(prefix) + 1",
+      "end_column": 24,
+      "end_line": 74,
+      "file": "strings.py",
+      "line": 74,
+      "operator": "off_by_one"
+    },
+    "operator": "off_by_one",
+    "repo": "funcy",
+    "task_id": "funcy-off_by_one-1"
+  },
+  {
+    "baseline_summary": "205 passed in 0.24s",
+    "broken_summary": "1 failed, 204 passed in 0.24s",
+    "broken_tests": [
+      "tests/test_colls.py::test_join_with"
+    ],
+    "ground_truth_file": "funcy/colls.py",
+    "ground_truth_line": 105,
+    "issue": "Something in funcy is broken on the current checkout.\n\nAn input that used to be rejected early now falls through into the main path, so instead of the expected early return there is either a crash or a nonsense result.\n\nRunning the test suite shows these failing:\n\n- test_join_with\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "pass",
+      "before": "elif not strict and len(dicts) == 1:\n        return dicts[0]",
+      "column": 4,
+      "description": "a guard clause was removed",
+      "end_column": 23,
+      "end_line": 106,
+      "file": "colls.py",
+      "line": 105,
+      "operator": "deleted_guard"
+    },
+    "operator": "deleted_guard",
+    "repo": "funcy",
+    "task_id": "funcy-deleted_guard-3"
+  },
+  {
+    "baseline_summary": "205 passed in 0.24s",
+    "broken_summary": "1 failed, 204 passed in 0.24s",
+    "broken_tests": [
+      "tests/test_colls.py::test_is_distinct"
+    ],
+    "ground_truth_file": "funcy/colls.py",
+    "ground_truth_line": 196,
+    "issue": "Something in funcy is broken on the current checkout.\n\nThe output is off by one element. Sequences come back one item short or one item long, and the edges are what go wrong first.\n\nRunning the test suite shows these failing:\n\n- test_is_distinct\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "set(xmap(key, coll)) - 1",
+      "before": "set(xmap(key, coll))",
+      "column": 32,
+      "description": "bound set(xmap(key, coll)) became set(xmap(key, coll)) - 1",
+      "end_column": 52,
+      "end_line": 196,
+      "file": "colls.py",
+      "line": 196,
+      "operator": "off_by_one"
+    },
+    "operator": "off_by_one",
+    "repo": "funcy",
+    "task_id": "funcy-off_by_one-5"
+  },
+  {
+    "baseline_summary": "205 passed in 0.24s",
+    "broken_summary": "6 failed, 199 passed in 0.24s",
+    "broken_tests": [
+      "tests/test_decorators.py::test_decorator_access_args",
+      "tests/test_decorators.py::test_double_decorator_defaults",
+      "tests/test_decorators.py::test_chain_arg_access",
+      "tests/test_flow.py::test_once",
+      "tests/test_flow.py::test_once_per",
+      "tests/test_flow.py::test_once_per_args"
+    ],
+    "ground_truth_file": "funcy/decorators.py",
+    "ground_truth_line": 122,
+    "issue": "Something in funcy is broken on the current checkout.\n\nThe results come back wrong at the boundary. Values that sit exactly on the edge of the condition are handled as though they were on the other side of it.\n\nRunning the test suite shows these failing:\n\n- test_decorator_access_args\n- test_double_decorator_defaults\n- test_chain_arg_access\n- test_once\n\n...and 2 further failures.\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "posnames[code.co_posonlyargcount:] - kwonlynames",
+      "before": "posnames[code.co_posonlyargcount:] + kwonlynames",
+      "column": 18,
+      "description": "arithmetic + became -",
+      "end_column": 66,
+      "end_line": 122,
+      "file": "decorators.py",
+      "line": 122,
+      "operator": "operator_swap"
+    },
+    "operator": "operator_swap",
+    "repo": "funcy",
+    "task_id": "funcy-operator_swap-6"
+  },
+  {
+    "baseline_summary": "455 passed in 0.17s",
+    "broken_summary": "6 failed, 449 passed in 0.17s",
+    "broken_tests": [
+      "test_inflection.py::test_uncountability[species]",
+      "test_inflection.py::test_uncountability[jeans]",
+      "test_inflection.py::test_uncountable_word_is_not_greedy",
+      "test_inflection.py::test_singularize_plural[jeans-jeans]",
+      "test_inflection.py::test_singularize_plural[funky",
+      "test_inflection.py::test_singularize_plural[species-species]"
+    ],
+    "ground_truth_file": "inflection/__init__.py",
+    "ground_truth_line": 331,
+    "issue": "Something in inflection is broken on the current checkout.\n\nAn input that used to be rejected early now falls through into the main path, so instead of the expected early return there is either a crash or a nonsense result.\n\nRunning the test suite shows these failing:\n\n- test_uncountability[species]\n- test_uncountability[jeans]\n- test_uncountable_word_is_not_greedy\n- test_singularize_plural[jeans-jeans]\n\n...and 2 further failures.\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "pass",
+      "before": "if re.search(r'(?i)\\b(%s)\\Z' % inflection, word):\n            return word",
+      "column": 8,
+      "description": "a guard clause was removed",
+      "end_column": 23,
+      "end_line": 332,
+      "file": "__init__.py",
+      "line": 331,
+      "operator": "deleted_guard"
+    },
+    "operator": "deleted_guard",
+    "repo": "inflection",
+    "task_id": "inflection-deleted_guard-1"
+  },
+  {
+    "baseline_summary": "455 passed in 0.17s",
+    "broken_summary": "1 failed, 454 passed in 0.17s",
+    "broken_tests": [
+      "test_inflection.py::test_singularize_plural[cow-kine]"
+    ],
+    "ground_truth_file": "inflection/__init__.py",
+    "ground_truth_line": 143,
+    "issue": "Something in inflection is broken on the current checkout.\n\nThe output is off by one element. Sequences come back one item short or one item long, and the edges are what go wrong first.\n\nRunning the test suite shows these failing:\n\n- test_singularize_plural[cow-kine]\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "1",
+      "before": "0",
+      "column": 21,
+      "description": "bound 0 became 1",
+      "end_column": 22,
+      "end_line": 143,
+      "file": "__init__.py",
+      "line": 143,
+      "operator": "off_by_one"
+    },
+    "operator": "off_by_one",
+    "repo": "inflection",
+    "task_id": "inflection-off_by_one-4"
+  },
+  {
+    "baseline_summary": "455 passed in 0.17s",
+    "broken_summary": "9 failed, 446 passed in 0.17s",
+    "broken_tests": [
+      "test_inflection.py::test_singularize_plural[move-moves]",
+      "test_inflection.py::test_singularize_plural[salesperson-salespeople]",
+      "test_inflection.py::test_singularize_plural[person-people]",
+      "test_inflection.py::test_singularize_plural[spokesman-spokesmen]",
+      "test_inflection.py::test_singularize_plural[man-men]",
+      "test_inflection.py::test_singularize_plural[woman-women]",
+      "test_inflection.py::test_singularize_plural[node_child-node_children]",
+      "test_inflection.py::test_singularize_plural[child-children]",
+      "test_inflection.py::test_singularize_plural[human-humans]"
+    ],
+    "ground_truth_file": "inflection/__init__.py",
+    "ground_truth_line": 116,
+    "issue": "Something in inflection is broken on the current checkout.\n\nThe output is off by one element. Sequences come back one item short or one item long, and the edges are what go wrong first.\n\nRunning the test suite shows these failing:\n\n- test_singularize_plural[move-moves]\n- test_singularize_plural[salesperson-salespeople]\n- test_singularize_plural[person-people]\n- test_singularize_plural[spokesman-spokesmen]\n\n...and 5 further failures.\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "2",
+      "before": "1",
+      "column": 29,
+      "description": "bound 1 became 2",
+      "end_column": 30,
+      "end_line": 116,
+      "file": "__init__.py",
+      "line": 116,
+      "operator": "off_by_one"
+    },
+    "operator": "off_by_one",
+    "repo": "inflection",
+    "task_id": "inflection-off_by_one-8"
+  },
+  {
+    "baseline_summary": "455 passed in 0.17s",
+    "broken_summary": "2 failed, 453 passed in 0.17s",
+    "broken_tests": [
+      "test_inflection.py::test_pluralize_singular[human-humans]",
+      "test_inflection.py::test_pluralize_plural[human-humans]"
+    ],
+    "ground_truth_file": "inflection/__init__.py",
+    "ground_truth_line": 424,
+    "issue": "Something in inflection is broken on the current checkout.\n\nThe behaviour looks inverted: what should be applied to one value is being applied to the other, so results come back transposed.\n\nRunning the test suite shows these failing:\n\n- test_pluralize_singular[human-humans]\n- test_pluralize_plural[human-humans]\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "'humans', 'human'",
+      "before": "'human', 'humans'",
+      "column": 11,
+      "description": "the first two arguments to this call were swapped",
+      "end_column": 28,
+      "end_line": 424,
+      "file": "__init__.py",
+      "line": 424,
+      "operator": "argument_swap"
+    },
+    "operator": "argument_swap",
+    "repo": "inflection",
+    "task_id": "inflection-argument_swap-11"
+  },
+  {
+    "baseline_summary": "49 passed in 0.07s",
+    "broken_summary": "11 failed, 38 passed in 0.08s",
+    "broken_tests": [
+      "testing/test_iniconfig.py::test_section_getitem",
+      "testing/test_iniconfig.py::test_section_iter",
+      "testing/test_iniconfig.py::test_config_iter",
+      "testing/test_iniconfig.py::test_example_pypirc",
+      "testing/test_iniconfig.py::test_parse_strips_inline_comments",
+      "testing/test_iniconfig.py::test_parse_strips_inline_comments_from_continuations",
+      "testing/test_iniconfig.py::test_parse_preserves_inline_comments_when_disabled",
+      "testing/test_iniconfig.py::test_constructor_preserves_inline_comments_for_backward_compatibility",
+      "testing/test_iniconfig.py::test_unicode_whitespace_stripped",
+      "testing/test_iniconfig.py::test_unicode_whitespace_in_section_names_with_opt_in",
+      "testing/test_iniconfig.py::test_unicode_whitespace_in_key_names"
+    ],
+    "ground_truth_file": "src/iniconfig/__init__.py",
+    "ground_truth_line": 74,
+    "issue": "Something in iniconfig is broken on the current checkout.\n\nThe output is off by one element. Sequences come back one item short or one item long, and the edges are what go wrong first.\n\nRunning the test suite shows these failing:\n\n- test_section_getitem\n- test_section_iter\n- test_config_iter\n- test_example_pypirc\n\n...and 7 further failures.\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "self.name - 1",
+      "before": "self.name",
+      "column": 36,
+      "description": "bound self.name became self.name - 1",
+      "end_column": 45,
+      "end_line": 74,
+      "file": "__init__.py",
+      "line": 74,
+      "operator": "off_by_one"
+    },
+    "operator": "off_by_one",
+    "repo": "iniconfig",
+    "task_id": "iniconfig-off_by_one-1"
+  },
+  {
+    "baseline_summary": "49 passed in 0.07s",
+    "broken_summary": "1 failed, 48 passed in 0.08s",
+    "broken_tests": [
+      "testing/test_iniconfig.py::test_tokenize[use"
+    ],
+    "ground_truth_file": "src/iniconfig/_parse.py",
+    "ground_truth_line": 132,
+    "issue": "Something in iniconfig is broken on the current checkout.\n\nAn input that used to be rejected early now falls through into the main path, so instead of the expected early return there is either a crash or a nonsense result.\n\nRunning the test suite shows these failing:\n\n- test_tokenize[use\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "pass",
+      "before": "if \":\" in name:\n                raise ValueError()",
+      "column": 12,
+      "description": "a guard clause was removed",
+      "end_column": 34,
+      "end_line": 133,
+      "file": "_parse.py",
+      "line": 132,
+      "operator": "deleted_guard"
+    },
+    "operator": "deleted_guard",
+    "repo": "iniconfig",
+    "task_id": "iniconfig-deleted_guard-2"
+  },
+  {
+    "baseline_summary": "49 passed in 0.07s",
+    "broken_summary": "12 failed, 37 passed in 0.08s",
+    "broken_tests": [
+      "testing/test_iniconfig.py::test_tokenize[blank",
+      "testing/test_iniconfig.py::test_tokenize[comment]",
+      "testing/test_iniconfig.py::test_tokenize[comment2]",
+      "testing/test_iniconfig.py::test_iniconfig_lineof",
+      "testing/test_iniconfig.py::test_config_iter",
+      "testing/test_iniconfig.py::test_config_contains",
+      "testing/test_iniconfig.py::test_iter_file_order",
+      "testing/test_iniconfig.py::test_example_pypirc",
+      "testing/test_iniconfig.py::test_parse_strips_inline_comments",
+      "testing/test_iniconfig.py::test_parse_strips_inline_comments_from_continuations",
+      "testing/test_iniconfig.py::test_parse_preserves_inline_comments_when_disabled",
+      "testing/test_iniconfig.py::test_constructor_preserves_inline_comments_for_backward_compatibility"
+    ],
+    "ground_truth_file": "src/iniconfig/_parse.py",
+    "ground_truth_line": 87,
+    "issue": "Something in iniconfig is broken on the current checkout.\n\nThe results come back wrong at the boundary. Values that sit exactly on the edge of the condition are handled as though they were on the other side of it.\n\nRunning the test suite shows these failing:\n\n- test_tokenize[blank\n- test_tokenize[comment]\n- test_tokenize[comment2]\n- test_iniconfig_lineof\n\n...and 8 further failures.\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "name is None or data is not None",
+      "before": "name is None and data is not None",
+      "column": 13,
+      "description": "and became or",
+      "end_column": 46,
+      "end_line": 87,
+      "file": "_parse.py",
+      "line": 87,
+      "operator": "operator_swap"
+    },
+    "operator": "operator_swap",
+    "repo": "iniconfig",
+    "task_id": "iniconfig-operator_swap-3"
+  },
+  {
+    "baseline_summary": "49 passed in 0.07s",
+    "broken_summary": "12 failed, 37 passed in 0.08s",
+    "broken_tests": [
+      "testing/test_iniconfig.py::test_iniconfig_lineof",
+      "testing/test_iniconfig.py::test_section_get",
+      "testing/test_iniconfig.py::test_section_getitem",
+      "testing/test_iniconfig.py::test_section_iter",
+      "testing/test_iniconfig.py::test_iter_file_order",
+      "testing/test_iniconfig.py::test_parse_strips_inline_comments",
+      "testing/test_iniconfig.py::test_parse_strips_inline_comments_from_continuations",
+      "testing/test_iniconfig.py::test_parse_preserves_inline_comments_when_disabled",
+      "testing/test_iniconfig.py::test_constructor_preserves_inline_comments_for_backward_compatibility",
+      "testing/test_iniconfig.py::test_unicode_whitespace_stripped",
+      "testing/test_iniconfig.py::test_unicode_whitespace_in_section_names_with_opt_in",
+      "testing/test_iniconfig.py::test_unicode_whitespace_in_key_names"
+    ],
+    "ground_truth_file": "src/iniconfig/__init__.py",
+    "ground_truth_line": 242,
+    "issue": "Something in iniconfig is broken on the current checkout.\n\nThe behaviour looks inverted: what should be applied to one value is being applied to the other, so results come back transposed.\n\nRunning the test suite shows these failing:\n\n- test_iniconfig_lineof\n- test_section_get\n- test_section_getitem\n- test_section_iter\n\n...and 8 further failures.\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "name, self",
+      "before": "self, name",
+      "column": 30,
+      "description": "the first two arguments to this call were swapped",
+      "end_column": 40,
+      "end_line": 242,
+      "file": "__init__.py",
+      "line": 242,
+      "operator": "argument_swap"
+    },
+    "operator": "argument_swap",
+    "repo": "iniconfig",
+    "task_id": "iniconfig-argument_swap-4"
+  },
+  {
+    "baseline_summary": "344 passed in 1.83s",
+    "broken_summary": "10 failed, 334 passed in 2.57s",
+    "broken_tests": [
+      "tests/test_final_data_transform_factory.py::test_final_data_transform_factory_default[512]",
+      "tests/test_final_data_transform_factory.py::test_final_data_transform_factory_default[48]",
+      "tests/test_natsort_keygen.py::test_natsort_keygen_with_locale[48-expected0-False]",
+      "tests/test_natsort_keygen.py::test_natsort_keygen_with_locale[48-expected1-True]",
+      "tests/test_natsorted.py::test_natsorted_can_sort_using_locale[0-expected0]",
+      "tests/test_natsorted.py::test_natsorted_can_sort_using_locale[128-expected2]",
+      "tests/test_natsorted.py::test_natsorted_handles_mixed_types_with_locale[0-expected0]",
+      "tests/test_natsorted.py::test_natsorted_handles_mixed_types_with_locale[4096-expected1]",
+      "tests/test_natsorted.py::test_natsorted_handles_mixed_types_with_locale[8-expected4]",
+      "tests/test_natsorted.py::test_natsorted_handles_mixed_types_with_locale[4104-expected5]"
+    ],
+    "ground_truth_file": "natsort/utils.py",
+    "ground_truth_line": 740,
+    "issue": "Something in natsort is broken on the current checkout.\n\nThe results come back wrong at the boundary. Values that sit exactly on the edge of the condition are handled as though they were on the other side of it.\n\nRunning the test suite shows these failing:\n\n- test_final_data_transform_factory_default[512]\n- test_final_data_transform_factory_default[48]\n- test_natsort_keygen_with_locale[48-expected0-False]\n- test_natsort_keygen_with_locale[48-expected1-True]\n\n...and 6 further failures.\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "alg & ns.UNGROUPLETTERS or alg & ns.LOCALEALPHA",
+      "before": "alg & ns.UNGROUPLETTERS and alg & ns.LOCALEALPHA",
+      "column": 7,
+      "description": "and became or",
+      "end_column": 55,
+      "end_line": 740,
+      "file": "utils.py",
+      "line": 740,
+      "operator": "operator_swap"
+    },
+    "operator": "operator_swap",
+    "repo": "natsort",
+    "task_id": "natsort-operator_swap-8"
+  },
+  {
+    "baseline_summary": "344 passed in 1.83s",
+    "broken_summary": "3 failed, 341 passed in 2.05s",
+    "broken_tests": [
+      "tests/test_natsorted.py::test_natsorted_handles_mixed_types_with_locale[520-expected6]",
+      "tests/test_natsorted.py::test_natsorted_handles_mixed_types_with_locale[4616-expected7]",
+      "tests/test_parse_number_function.py::test_parse_number_factory_makes_function_that_returns_tuple[568-<lambda>]"
+    ],
+    "ground_truth_file": "natsort/utils.py",
+    "ground_truth_line": 435,
+    "issue": "Something in natsort is broken on the current checkout.\n\nAn input that used to be rejected early now falls through into the main path, so instead of the expected early return there is either a crash or a nonsense result.\n\nRunning the test suite shows these failing:\n\n- test_natsorted_handles_mixed_types_with_locale[520-expected6]\n- test_natsorted_handles_mixed_types_with_locale[4616-expected7]\n- test_parse_number_factory_makes_function_that_returns_tuple[568-<lambda>]\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "pass",
+      "before": "if alg & ns.PATH and alg & ns.UNGROUPLETTERS and alg & ns.LOCALEALPHA:\n        return lambda x: (((pre_sep,), func(x)),)",
+      "column": 4,
+      "description": "a guard clause was removed",
+      "end_column": 49,
+      "end_line": 436,
+      "file": "utils.py",
+      "line": 435,
+      "operator": "deleted_guard"
+    },
+    "operator": "deleted_guard",
+    "repo": "natsort",
+    "task_id": "natsort-deleted_guard-10"
+  },
+  {
+    "baseline_summary": "344 passed in 1.83s",
+    "broken_summary": "8 failed, 336 passed in 2.14s",
+    "broken_tests": [
+      "tests/test_input_string_transform_factory.py::test_input_string_transform_factory[192-<lambda>]",
+      "tests/test_input_string_transform_factory.py::test_input_string_transform_factory_handles_german_locale[49-1543.753]",
+      "tests/test_natsort_keygen.py::test_natsort_keygen_with_locale[48-expected1-True]",
+      "tests/test_natsorted.py::test_natsorted_can_sort_locale_specific_numbers_de",
+      "tests/test_string_component_transform_factory.py::test_string_component_transform_factory[304-example_func6]",
+      "tests/test_string_component_transform_factory.py::test_string_component_transform_factory[2147483696-example_func7]",
+      "tests/test_string_component_transform_factory.py::test_string_component_transform_factory[1329-example_func8]",
+      "tests/test_utils.py::test_chain_functions_combines_functions_in_given_order"
+    ],
+    "ground_truth_file": "natsort/utils.py",
+    "ground_truth_line": 832,
+    "issue": "Something in natsort is broken on the current checkout.\n\nThe results come back wrong at the boundary. Values that sit exactly on the edge of the condition are handled as though they were on the other side of it.\n\nRunning the test suite shows these failing:\n\n- test_input_string_transform_factory[192-<lambda>]\n- test_input_string_transform_factory_handles_german_locale[49-1543.753]\n- test_natsort_keygen_with_locale[48-expected1-True]\n- test_natsorted_can_sort_locale_specific_numbers_de\n\n...and 4 further failures.\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "len(functions) != 1",
+      "before": "len(functions) == 1",
+      "column": 7,
+      "description": "comparison == became !=",
+      "end_column": 26,
+      "end_line": 832,
+      "file": "utils.py",
+      "line": 832,
+      "operator": "operator_swap"
+    },
+    "operator": "operator_swap",
+    "repo": "natsort",
+    "task_id": "natsort-operator_swap-12"
+  },
+  {
+    "baseline_summary": "344 passed in 1.83s",
+    "broken_summary": "1 failed, 343 passed in 2.04s",
+    "broken_tests": [
+      "tests/test_parse_bytes_function.py::test_parse_bytest_factory_makes_function_that_returns_tuple[72-<lambda>]"
+    ],
+    "ground_truth_file": "natsort/utils.py",
+    "ground_truth_line": 371,
+    "issue": "Something in natsort is broken on the current checkout.\n\nAn input that used to be rejected early now falls through into the main path, so instead of the expected early return there is either a crash or a nonsense result.\n\nRunning the test suite shows these failing:\n\n- test_parse_bytest_factory_makes_function_that_returns_tuple[72-<lambda>]\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "pass",
+      "before": "if alg & ns.PATH and alg & ns.IGNORECASE:\n        return lambda x: ((x.lower(),),)",
+      "column": 4,
+      "description": "a guard clause was removed",
+      "end_column": 40,
+      "end_line": 372,
+      "file": "utils.py",
+      "line": 371,
+      "operator": "deleted_guard"
+    },
+    "operator": "deleted_guard",
+    "repo": "natsort",
+    "task_id": "natsort-deleted_guard-14"
+  },
+  {
+    "baseline_summary": "97 passed, 1 skipped in 0.13s",
+    "broken_summary": "3 failed, 94 passed, 1 skipped in 0.13s",
+    "broken_tests": [
+      "tests/test_parse.py::test_datetimes",
+      "tests/test_parse.py::test_mixed_types",
+      "tests/test_parse.py::test_mixed_type_variant"
+    ],
+    "ground_truth_file": "parse/__init__.py",
+    "ground_truth_line": 202,
+    "issue": "Something in parse is broken on the current checkout.\n\nThe output is off by one element. Sequences come back one item short or one item long, and the edges are what go wrong first.\n\nRunning the test suite shows these failing:\n\n- test_datetimes\n- test_mixed_types\n- test_mixed_type_variant\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "mdy - 1",
+      "before": "mdy",
+      "column": 45,
+      "description": "bound mdy became mdy - 1",
+      "end_column": 48,
+      "end_line": 202,
+      "file": "__init__.py",
+      "line": 202,
+      "operator": "off_by_one"
+    },
+    "operator": "off_by_one",
+    "repo": "parse",
+    "task_id": "parse-off_by_one-4"
+  },
+  {
+    "baseline_summary": "97 passed, 1 skipped in 0.13s",
+    "broken_summary": "4 failed, 93 passed, 1 skipped in 0.13s",
+    "broken_tests": [
+      "tests/test_parse.py::test_datetimes",
+      "tests/test_parse.py::test_datetime_group_count",
+      "tests/test_parse.py::test_mixed_types",
+      "tests/test_parse.py::test_mixed_type_variant"
+    ],
+    "ground_truth_file": "parse/__init__.py",
+    "ground_truth_line": 260,
+    "issue": "Something in parse is broken on the current checkout.\n\nThe behaviour looks inverted: what should be applied to one value is being applied to the other, so results come back transposed.\n\nRunning the test suite shows these failing:\n\n- test_datetimes\n- test_datetime_group_count\n- test_mixed_types\n- test_mixed_type_variant\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "tz, offset",
+      "before": "offset, tz",
+      "column": 31,
+      "description": "the first two arguments to this call were swapped",
+      "end_column": 41,
+      "end_line": 260,
+      "file": "__init__.py",
+      "line": 260,
+      "operator": "argument_swap"
+    },
+    "operator": "argument_swap",
+    "repo": "parse",
+    "task_id": "parse-argument_swap-5"
+  },
+  {
+    "baseline_summary": "97 passed, 1 skipped in 0.13s",
+    "broken_summary": "4 failed, 93 passed, 1 skipped in 0.13s",
+    "broken_tests": [
+      "tests/test_bugs.py::test_pm_handling_issue57",
+      "tests/test_parse.py::test_datetimes",
+      "tests/test_parse.py::test_mixed_types",
+      "tests/test_parse.py::test_mixed_type_variant"
+    ],
+    "ground_truth_file": "parse/__init__.py",
+    "ground_truth_line": 231,
+    "issue": "Something in parse is broken on the current checkout.\n\nThe results come back wrong at the boundary. Values that sit exactly on the edge of the condition are handled as though they were on the other side of it.\n\nRunning the test suite shows these failing:\n\n- test_pm_handling_issue57\n- test_datetimes\n- test_mixed_types\n- test_mixed_type_variant\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "H != 12",
+      "before": "H == 12",
+      "column": 26,
+      "description": "comparison == became !=",
+      "end_column": 33,
+      "end_line": 231,
+      "file": "__init__.py",
+      "line": 231,
+      "operator": "operator_swap"
+    },
+    "operator": "operator_swap",
+    "repo": "parse",
+    "task_id": "parse-operator_swap-6"
+  },
+  {
+    "baseline_summary": "97 passed, 1 skipped in 0.13s",
+    "broken_summary": "4 failed, 93 passed, 1 skipped in 0.13s",
+    "broken_tests": [
+      "tests/test_parse.py::test_sign",
+      "tests/test_parse.py::test_precision",
+      "tests/test_parse.py::test_numbers",
+      "tests/test_pattern.py::test_format_variety"
+    ],
+    "ground_truth_file": "parse/__init__.py",
+    "ground_truth_line": 391,
+    "issue": "Something in parse is broken on the current checkout.\n\nAn input that used to be rejected early now falls through into the main path, so instead of the expected early return there is either a crash or a nonsense result.\n\nRunning the test suite shows these failing:\n\n- test_sign\n- test_precision\n- test_numbers\n- test_format_variety\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "pass",
+      "before": "if not format[0].isdigit():\n                break",
+      "column": 12,
+      "description": "a guard clause was removed",
+      "end_column": 21,
+      "end_line": 392,
+      "file": "__init__.py",
+      "line": 391,
+      "operator": "deleted_guard"
+    },
+    "operator": "deleted_guard",
+    "repo": "parse",
+    "task_id": "parse-deleted_guard-7"
+  },
+  {
+    "baseline_summary": "197 passed, 276 skipped, 142 subtests passed in 0.20s",
+    "broken_summary": "2 failed, 195 passed, 276 skipped, 142 subtests passed in 0.19s",
+    "broken_tests": [
+      "tests/test_05_pathspec.py::PathSpecTest::test_03_add_1_simple",
+      "tests/test_05_pathspec.py::PathSpecTest::test_03_add_2_mixed"
+    ],
+    "ground_truth_file": "pathspec/pathspec.py",
+    "ground_truth_line": 122,
+    "issue": "Something in pathspec is broken on the current checkout.\n\nThe behaviour looks inverted: what should be applied to one value is being applied to the other, so results come back transposed.\n\nRunning the test suite shows these failing:\n\n- PathSpecTest::test_03_add_1_simple\n- PathSpecTest::test_03_add_2_mixed\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "PathSpec, other",
+      "before": "other, PathSpec",
+      "column": 16,
+      "description": "the first two arguments to this call were swapped",
+      "end_column": 31,
+      "end_line": 122,
+      "file": "pathspec.py",
+      "line": 122,
+      "operator": "argument_swap"
+    },
+    "operator": "argument_swap",
+    "repo": "pathspec",
+    "task_id": "pathspec-argument_swap-5"
+  },
+  {
+    "baseline_summary": "197 passed, 276 skipped, 142 subtests passed in 0.20s",
+    "broken_summary": "2 failed, 195 passed, 276 skipped, 142 subtests passed in 0.19s",
+    "broken_tests": [
+      "tests/test_05_pathspec.py::PathSpecTest::test_02_eq",
+      "tests/test_05_pathspec.py::PathSpecTest::test_02_ne"
+    ],
+    "ground_truth_file": "pathspec/pathspec.py",
+    "ground_truth_line": 132,
+    "issue": "Something in pathspec is broken on the current checkout.\n\nThe behaviour looks inverted: what should be applied to one value is being applied to the other, so results come back transposed.\n\nRunning the test suite shows these failing:\n\n- PathSpecTest::test_02_eq\n- PathSpecTest::test_02_ne\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "PathSpec, other",
+      "before": "other, PathSpec",
+      "column": 16,
+      "description": "the first two arguments to this call were swapped",
+      "end_column": 31,
+      "end_line": 132,
+      "file": "pathspec.py",
+      "line": 132,
+      "operator": "argument_swap"
+    },
+    "operator": "argument_swap",
+    "repo": "pathspec",
+    "task_id": "pathspec-argument_swap-9"
+  },
+  {
+    "baseline_summary": "197 passed, 276 skipped, 142 subtests passed in 0.20s",
+    "broken_summary": "12 failed, 189 passed, 276 skipped, 138 subtests passed in 0.20s",
+    "broken_tests": [
+      "tests/test_01_util.py::IterTreeTest::test_01_files_1_entries",
+      "tests/test_01_util.py::IterTreeTest::test_02_link_2_links_1_entries",
+      "tests/test_01_util.py::IterTreeTest::test_02_link_3_sideways_links_1_entries",
+      "tests/test_01_util.py::IterTreeTest::test_02_link_4_recursive_links_1_entries",
+      "tests/test_01_util.py::IterTreeTest::test_02_link_5_recursive_circular_links_1_entries",
+      "tests/test_01_util.py::IterTreeTest::test_02_link_6_detect_broken_links_1_entries",
+      "tests/test_01_util.py::IterTreeTest::test_02_link_7_ignore_broken_links_1_entries",
+      "tests/test_01_util.py::IterTreeTest::test_02_link_8_no_follow_links_1_entries"
+    ],
+    "ground_truth_file": "pathspec/util.py",
+    "ground_truth_line": 245,
+    "issue": "Something in pathspec is broken on the current checkout.\n\nThe results come back wrong at the boundary. Values that sit exactly on the edge of the condition are handled as though they were on the other side of it.\n\nRunning the test suite shows these failing:\n\n- IterTreeTest::test_01_files_1_entries\n- IterTreeTest::test_02_link_2_links_1_entries\n- IterTreeTest::test_02_link_3_sideways_links_1_entries\n- IterTreeTest::test_02_link_4_recursive_links_1_entries\n\n...and 4 further failures.\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "on_error is not None or not callable(on_error)",
+      "before": "on_error is not None and not callable(on_error)",
+      "column": 4,
+      "description": "and became or",
+      "end_column": 51,
+      "end_line": 245,
+      "file": "util.py",
+      "line": 245,
+      "operator": "operator_swap"
+    },
+    "operator": "operator_swap",
+    "repo": "pathspec",
+    "task_id": "pathspec-operator_swap-14"
+  },
+  {
+    "baseline_summary": "197 passed, 276 skipped, 142 subtests passed in 0.20s",
+    "broken_summary": "24 failed, 193 passed, 276 skipped, 122 subtests passed in 0.20s",
+    "broken_tests": [
+      "tests/test_05_pathspec.py::PathSpecTest::test_03_add_1_simple",
+      "tests/test_05_pathspec.py::PathSpecTest::test_03_add_2_mixed",
+      "tests/test_05_pathspec.py::PathSpecTest::test_03_iadd_1_simple",
+      "tests/test_05_pathspec.py::PathSpecTest::test_03_iadd_2_mixed"
+    ],
+    "ground_truth_file": "pathspec/util.py",
+    "ground_truth_line": 115,
+    "issue": "Something in pathspec is broken on the current checkout.\n\nAn input that used to be rejected early now falls through into the main path, so instead of the expected early return there is either a crash or a nonsense result.\n\nRunning the test suite shows these failing:\n\n- PathSpecTest::test_03_add_1_simple\n- PathSpecTest::test_03_add_2_mixed\n- PathSpecTest::test_03_iadd_1_simple\n- PathSpecTest::test_03_iadd_2_mixed\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "pass",
+      "before": "if pattern.include is not None and pattern.match_file(file) is not None:\n\t\t\t\treturn pattern.include, index",
+      "column": 3,
+      "description": "a guard clause was removed",
+      "end_column": 33,
+      "end_line": 116,
+      "file": "util.py",
+      "line": 115,
+      "operator": "deleted_guard"
+    },
+    "operator": "deleted_guard",
+    "repo": "pathspec",
+    "task_id": "pathspec-deleted_guard-15"
+  },
+  {
+    "baseline_summary": "120 passed, 4 skipped in 0.16s",
+    "broken_summary": "1 failed, 119 passed, 4 skipped in 0.16s",
+    "broken_tests": [
+      "test_schema.py::test_json_schema_title_and_description"
+    ],
+    "ground_truth_file": "schema/__init__.py",
+    "ground_truth_line": 686,
+    "issue": "Something in schema is broken on the current checkout.\n\nThe output is off by one element. Sequences come back one item short or one item long, and the edges are what go wrong first.\n\nRunning the test suite shows these failing:\n\n- test_json_schema_title_and_description\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "\"title\" - 1",
+      "before": "\"title\"",
+      "column": 30,
+      "description": "bound \"title\" became \"title\" - 1",
+      "end_column": 37,
+      "end_line": 686,
+      "file": "__init__.py",
+      "line": 686,
+      "operator": "off_by_one"
+    },
+    "operator": "off_by_one",
+    "repo": "schema",
+    "task_id": "schema-off_by_one-1"
+  },
+  {
+    "baseline_summary": "120 passed, 4 skipped in 0.16s",
+    "broken_summary": "5 failed, 115 passed, 4 skipped in 0.16s",
+    "broken_tests": [
+      "test_schema.py::test_json_schema_and_types",
+      "test_schema.py::test_json_schema_and_simple",
+      "test_schema.py::test_json_schema_and_list",
+      "test_schema.py::test_json_schema_root_not_dict[input_schema8-allOf-expected_value8]",
+      "test_schema.py::test_json_schema_description_and_nested"
+    ],
+    "ground_truth_file": "schema/__init__.py",
+    "ground_truth_line": 760,
+    "issue": "Something in schema is broken on the current checkout.\n\nThe results come back wrong at the boundary. Values that sit exactly on the edge of the condition are handled as though they were on the other side of it.\n\nRunning the test suite shows these failing:\n\n- test_json_schema_and_types\n- test_json_schema_and_simple\n- test_json_schema_and_list\n- test_json_schema_root_not_dict[input_schema8-allOf-expected_value8]\n\n...and 1 further failures.\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "new_value == {}",
+      "before": "new_value != {}",
+      "column": 27,
+      "description": "comparison != became ==",
+      "end_column": 42,
+      "end_line": 760,
+      "file": "__init__.py",
+      "line": 760,
+      "operator": "operator_swap"
+    },
+    "operator": "operator_swap",
+    "repo": "schema",
+    "task_id": "schema-operator_swap-2"
+  },
+  {
+    "baseline_summary": "120 passed, 4 skipped in 0.16s",
+    "broken_summary": "3 failed, 117 passed, 4 skipped in 0.16s",
+    "broken_tests": [
+      "test_schema.py::test_dict_forbidden_keys",
+      "test_schema.py::test_dict_hook",
+      "test_schema.py::test_json_schema_forbidden_key_ignored"
+    ],
+    "ground_truth_file": "schema/__init__.py",
+    "ground_truth_line": 928,
+    "issue": "Something in schema is broken on the current checkout.\n\nThe behaviour looks inverted: what should be applied to one value is being applied to the other, so results come back transposed.\n\nRunning the test suite shows these failing:\n\n- test_dict_forbidden_keys\n- test_dict_hook\n- test_json_schema_forbidden_key_ignored\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "lambda *args: None, \"handler\"",
+      "before": "\"handler\", lambda *args: None",
+      "column": 54,
+      "description": "the first two arguments to this call were swapped",
+      "end_column": 83,
+      "end_line": 928,
+      "file": "__init__.py",
+      "line": 928,
+      "operator": "argument_swap"
+    },
+    "operator": "argument_swap",
+    "repo": "schema",
+    "task_id": "schema-argument_swap-4"
+  },
+  {
+    "baseline_summary": "120 passed, 4 skipped in 0.16s",
+    "broken_summary": "5 failed, 115 passed, 4 skipped in 0.16s",
+    "broken_tests": [
+      "test_schema.py::test_json_schema_ref_in_list",
+      "test_schema.py::test_json_schema_definitions",
+      "test_schema.py::test_json_schema_definitions_and_literals",
+      "test_schema.py::test_json_schema_definitions_nested",
+      "test_schema.py::test_json_schema_definitions_recursive"
+    ],
+    "ground_truth_file": "schema/__init__.py",
+    "ground_truth_line": 693,
+    "issue": "Something in schema is broken on the current checkout.\n\nThe output is off by one element. Sequences come back one item short or one item long, and the edges are what go wrong first.\n\nRunning the test suite shows these failing:\n\n- test_json_schema_ref_in_list\n- test_json_schema_definitions\n- test_json_schema_definitions_and_literals\n- test_json_schema_definitions_nested\n\n...and 1 further failures.\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "cast(str, schema.name) + 1",
+      "before": "cast(str, schema.name)",
+      "column": 24,
+      "description": "bound cast(str, schema.name) became cast(str, schema.name) + 1",
+      "end_column": 46,
+      "end_line": 693,
+      "file": "__init__.py",
+      "line": 693,
+      "operator": "off_by_one"
+    },
+    "operator": "off_by_one",
+    "repo": "schema",
+    "task_id": "schema-off_by_one-5"
+  },
+  {
+    "baseline_summary": "340 passed, 57 warnings in 0.21s",
+    "broken_summary": "2 failed, 338 passed, 57 warnings in 0.21s",
+    "broken_tests": [
+      "tests/test_semver.py::test_should_succeed_compatible_match[old4-new4]",
+      "tests/test_semver.py::test_should_fail_compatible_match[old4-new4]"
+    ],
+    "ground_truth_file": "src/semver/version.py",
+    "ground_truth_line": 751,
+    "issue": "Something in semver is broken on the current checkout.\n\nThe results come back wrong at the boundary. Values that sit exactly on the edge of the condition are handled as though they were on the other side of it.\n\nRunning the test suite shows these failing:\n\n- test_should_succeed_compatible_match[old4-new4]\n- test_should_fail_compatible_match[old4-new4]\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "self[:4] == other[:4]",
+      "before": "self[:4] != other[:4]",
+      "column": 49,
+      "description": "comparison != became ==",
+      "end_column": 70,
+      "end_line": 751,
+      "file": "version.py",
+      "line": 751,
+      "operator": "operator_swap"
+    },
+    "operator": "operator_swap",
+    "repo": "semver",
+    "task_id": "semver-operator_swap-2"
+  },
+  {
+    "baseline_summary": "340 passed, 57 warnings in 0.21s",
+    "broken_summary": "6 failed, 334 passed, 53 warnings in 0.21s",
+    "broken_tests": [
+      "tests/test_compare.py::test_should_get_less[1.0.0-rc.1-1.0.0]",
+      "tests/test_compare.py::test_should_follow_specification_comparison",
+      "tests/test_compare.py::test_should_compare_release_candidate_with_release[1.0.0-rc.1-1.0.0]",
+      "tests/test_compare.py::test_should_compare_release_candidate_with_release[1.0.0-rc.1+build.1-1.0.0]",
+      "tests/test_compare.py::test_should_compare_versions_with_build_and_release[1.1.9-rc.1-1.1.9+build.1--1]",
+      "tests/test_compare.py::test_should_compare_prerelease_with_numbers_and_letters"
+    ],
+    "ground_truth_file": "src/semver/version.py",
+    "ground_truth_line": 442,
+    "issue": "Something in semver is broken on the current checkout.\n\nAn input that used to be rejected early now falls through into the main path, so instead of the expected early return there is either a crash or a nonsense result.\n\nRunning the test suite shows these failing:\n\n- test_should_get_less[1.0.0-rc.1-1.0.0]\n- test_should_follow_specification_comparison\n- test_should_compare_release_candidate_with_release[1.0.0-rc.1-1.0.0]\n- test_should_compare_release_candidate_with_release[1.0.0-rc.1+build.1-1.0.0]\n\n...and 2 further failures.\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "pass",
+      "before": "elif not rc2:\n            return -1",
+      "column": 8,
+      "description": "a guard clause was removed",
+      "end_column": 21,
+      "end_line": 443,
+      "file": "version.py",
+      "line": 442,
+      "operator": "deleted_guard"
+    },
+    "operator": "deleted_guard",
+    "repo": "semver",
+    "task_id": "semver-deleted_guard-3"
+  },
+  {
+    "baseline_summary": "340 passed, 57 warnings in 0.21s",
+    "broken_summary": "6 failed, 334 passed, 57 warnings in 0.21s",
+    "broken_tests": [
+      "tests/test_format.py::test_should_finalize_version[1.2.3-1.2.3]",
+      "tests/test_format.py::test_should_finalize_version[1.2.3-rc.5-1.2.3]",
+      "tests/test_format.py::test_should_finalize_version[1.2.3+build.2-1.2.3]",
+      "tests/test_format.py::test_should_finalize_version[1.2.3-rc.1+build.5-1.2.3]",
+      "tests/test_format.py::test_should_finalize_version[1.2.3-alpha-1.2.3]",
+      "tests/test_format.py::test_should_finalize_version[1.2.0-1.2.0]"
+    ],
+    "ground_truth_file": "src/semver/version.py",
+    "ground_truth_line": 576,
+    "issue": "Something in semver is broken on the current checkout.\n\nThe behaviour looks inverted: what should be applied to one value is being applied to the other, so results come back transposed.\n\nRunning the test suite shows these failing:\n\n- test_should_finalize_version[1.2.3-1.2.3]\n- test_should_finalize_version[1.2.3-rc.5-1.2.3]\n- test_should_finalize_version[1.2.3+build.2-1.2.3]\n- test_should_finalize_version[1.2.3-rc.1+build.5-1.2.3]\n\n...and 2 further failures.\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "self.minor, self.major",
+      "before": "self.major, self.minor",
+      "column": 19,
+      "description": "the first two arguments to this call were swapped",
+      "end_column": 41,
+      "end_line": 576,
+      "file": "version.py",
+      "line": 576,
+      "operator": "argument_swap"
+    },
+    "operator": "argument_swap",
+    "repo": "semver",
+    "task_id": "semver-argument_swap-4"
+  },
+  {
+    "baseline_summary": "340 passed, 57 warnings in 0.21s",
+    "broken_summary": "5 failed, 335 passed, 57 warnings in 0.21s",
+    "broken_tests": [
+      "tests/test_parsing.py::test_should_parse_version_with_optional_minor_and_patch[1.2-alpha.1.2+build.11.e0f985a-expected0]",
+      "tests/test_parsing.py::test_should_parse_version_with_optional_minor_and_patch[1-alpha-1+build.11.e0f985a-expected1]",
+      "tests/test_parsing.py::test_should_parse_version_with_optional_minor_and_patch[0.1-0f-expected2]",
+      "tests/test_parsing.py::test_should_parse_version_with_optional_minor_and_patch[0-0foo.1-expected3]",
+      "tests/test_parsing.py::test_should_parse_version_with_optional_minor_and_patch[0-0foo.1+build.1-expected4]"
+    ],
+    "ground_truth_file": "src/semver/version.py",
+    "ground_truth_line": 672,
+    "issue": "Something in semver is broken on the current checkout.\n\nThe output is off by one element. Sequences come back one item short or one item long, and the edges are what go wrong first.\n\nRunning the test suite shows these failing:\n\n- test_should_parse_version_with_optional_minor_and_patch[1.2-alpha.1.2+build.11.e0f985a-expected0]\n- test_should_parse_version_with_optional_minor_and_patch[1-alpha-1+build.11.e0f985a-expected1]\n- test_should_parse_version_with_optional_minor_and_patch[0.1-0f-expected2]\n- test_should_parse_version_with_optional_minor_and_patch[0-0foo.1-expected3]\n\n...and 1 further failures.\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "\"patch\" + 1",
+      "before": "\"patch\"",
+      "column": 34,
+      "description": "bound \"patch\" became \"patch\" + 1",
+      "end_column": 41,
+      "end_line": 672,
+      "file": "version.py",
+      "line": 672,
+      "operator": "off_by_one"
+    },
+    "operator": "off_by_one",
+    "repo": "semver",
+    "task_id": "semver-off_by_one-5"
+  },
+  {
+    "baseline_summary": "82 passed in 0.08s",
+    "broken_summary": "2 failed, 80 passed in 0.08s",
+    "broken_tests": [
+      "test.py::TestSlugify::test_max_length",
+      "test.py::TestSlugifyUnicode::test_max_length"
+    ],
+    "ground_truth_file": "slugify/slugify.py",
+    "ground_truth_line": 52,
+    "issue": "Something in slugify is broken on the current checkout.\n\nAn input that used to be rejected early now falls through into the main path, so instead of the expected early return there is either a crash or a nonsense result.\n\nRunning the test suite shows these failing:\n\n- TestSlugify::test_max_length\n- TestSlugifyUnicode::test_max_length\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "pass",
+      "before": "if not word_boundary:\n        return string[:max_length].strip(separator)",
+      "column": 4,
+      "description": "a guard clause was removed",
+      "end_column": 51,
+      "end_line": 53,
+      "file": "slugify.py",
+      "line": 52,
+      "operator": "deleted_guard"
+    },
+    "operator": "deleted_guard",
+    "repo": "slugify",
+    "task_id": "slugify-deleted_guard-3"
+  },
+  {
+    "baseline_summary": "82 passed in 0.08s",
+    "broken_summary": "10 failed, 72 passed in 0.08s",
+    "broken_tests": [
+      "test.py::TestCommandParams::test_affirmative_flags",
+      "test.py::TestCommandParams::test_multivalued_options_with_text",
+      "test.py::TestCommandParams::test_negative_flags",
+      "test.py::TestCommandParams::test_replacements_right",
+      "test.py::TestCommandParams::test_replacements_wrong",
+      "test.py::TestCommandParams::test_text_in_cli",
+      "test.py::TestCommandParams::test_text_in_cli_multi",
+      "test.py::TestCommandParams::test_text_in_stdin",
+      "test.py::TestCommandParams::test_two_text_sources_fails",
+      "test.py::TestCommandParams::test_valued_arguments"
+    ],
+    "ground_truth_file": "slugify/__main__.py",
+    "ground_truth_line": 44,
+    "issue": "Something in slugify is broken on the current checkout.\n\nThe output is off by one element. Sequences come back one item short or one item long, and the edges are what go wrong first.\n\nRunning the test suite shows these failing:\n\n- TestCommandParams::test_affirmative_flags\n- TestCommandParams::test_multivalued_options_with_text\n- TestCommandParams::test_negative_flags\n- TestCommandParams::test_replacements_right\n\n...and 6 further failures.\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "2",
+      "before": "1",
+      "column": 34,
+      "description": "bound 1 became 2",
+      "end_column": 35,
+      "end_line": 44,
+      "file": "__main__.py",
+      "line": 44,
+      "operator": "off_by_one"
+    },
+    "operator": "off_by_one",
+    "repo": "slugify",
+    "task_id": "slugify-off_by_one-4"
+  },
+  {
+    "baseline_summary": "82 passed in 0.08s",
+    "broken_summary": "3 failed, 79 passed in 0.08s",
+    "broken_tests": [
+      "test.py::TestSlugify::test_save_order",
+      "test.py::TestSlugifyUnicode::test_save_order",
+      "test.py::TestSlugifyUnicode::test_save_order_rtl"
+    ],
+    "ground_truth_file": "slugify/slugify.py",
+    "ground_truth_line": 68,
+    "issue": "Something in slugify is broken on the current checkout.\n\nAn input that used to be rejected early now falls through into the main path, so instead of the expected early return there is either a crash or a nonsense result.\n\nRunning the test suite shows these failing:\n\n- TestSlugify::test_save_order\n- TestSlugifyUnicode::test_save_order\n- TestSlugifyUnicode::test_save_order_rtl\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "pass",
+      "before": "if save_order:\n                    break",
+      "column": 16,
+      "description": "a guard clause was removed",
+      "end_column": 25,
+      "end_line": 69,
+      "file": "slugify.py",
+      "line": 68,
+      "operator": "deleted_guard"
+    },
+    "operator": "deleted_guard",
+    "repo": "slugify",
+    "task_id": "slugify-deleted_guard-7"
+  },
+  {
+    "baseline_summary": "82 passed in 0.08s",
+    "broken_summary": "5 failed, 77 passed in 0.08s",
+    "broken_tests": [
+      "test.py::TestSlugify::test_save_order",
+      "test.py::TestSlugify::test_word_boundary",
+      "test.py::TestSlugifyUnicode::test_save_order",
+      "test.py::TestSlugifyUnicode::test_save_order_rtl",
+      "test.py::TestSlugifyUnicode::test_word_boundary"
+    ],
+    "ground_truth_file": "slugify/slugify.py",
+    "ground_truth_line": 63,
+    "issue": "Something in slugify is broken on the current checkout.\n\nThe behaviour looks inverted: what should be applied to one value is being applied to the other, so results come back transposed.\n\nRunning the test suite shows these failing:\n\n- TestSlugify::test_save_order\n- TestSlugify::test_word_boundary\n- TestSlugifyUnicode::test_save_order\n- TestSlugifyUnicode::test_save_order_rtl\n\n...and 1 further failures.\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "separator, word",
+      "before": "word, separator",
+      "column": 43,
+      "description": "the first two arguments to this call were swapped",
+      "end_column": 58,
+      "end_line": 63,
+      "file": "slugify.py",
+      "line": 63,
+      "operator": "argument_swap"
+    },
+    "operator": "argument_swap",
+    "repo": "slugify",
+    "task_id": "slugify-argument_swap-9"
+  },
+  {
+    "baseline_summary": "296 passed in 2.41s",
+    "broken_summary": "3 failed, 293 passed in 2.08s",
+    "broken_tests": [
+      "tests/test_coverage_sortedkeylist_modulo.py::test_count",
+      "tests/test_coverage_sortedkeylist_negate.py::test_count",
+      "tests/test_stress_sortedkeylist.py::test_stress"
+    ],
+    "ground_truth_file": "src/sortedcontainers/sortedlist.py",
+    "ground_truth_line": 2267,
+    "issue": "Something in sortedcontainers is broken on the current checkout.\n\nThe results come back wrong at the boundary. Values that sit exactly on the edge of the condition are handled as though they were on the other side of it.\n\nRunning the test suite shows these failing:\n\n- test_count\n- test_stress\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "pos != len(_maxes)",
+      "before": "pos == len(_maxes)",
+      "column": 11,
+      "description": "comparison == became !=",
+      "end_column": 29,
+      "end_line": 2267,
+      "file": "sortedlist.py",
+      "line": 2267,
+      "operator": "operator_swap"
+    },
+    "operator": "operator_swap",
+    "repo": "sortedcontainers",
+    "task_id": "sortedcontainers-operator_swap-1"
+  },
+  {
+    "baseline_summary": "296 passed in 2.41s",
+    "broken_summary": "1 failed, 295 passed in 2.34s",
+    "broken_tests": [
+      "tests/test_coverage_sorteddict.py::test_or_not_implemented"
+    ],
+    "ground_truth_file": "src/sortedcontainers/sorteddict.py",
+    "ground_truth_line": 280,
+    "issue": "Something in sortedcontainers is broken on the current checkout.\n\nAn input that used to be rejected early now falls through into the main path, so instead of the expected early return there is either a crash or a nonsense result.\n\nRunning the test suite shows these failing:\n\n- test_or_not_implemented\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "pass",
+      "before": "if not isinstance(other, Mapping):\n            return NotImplemented",
+      "column": 8,
+      "description": "a guard clause was removed",
+      "end_column": 33,
+      "end_line": 281,
+      "file": "sorteddict.py",
+      "line": 280,
+      "operator": "deleted_guard"
+    },
+    "operator": "deleted_guard",
+    "repo": "sortedcontainers",
+    "task_id": "sortedcontainers-deleted_guard-3"
+  },
+  {
+    "baseline_summary": "296 passed in 2.41s",
+    "broken_summary": "5 failed, 291 passed in 1.68s",
+    "broken_tests": [
+      "tests/test_coverage_sortedkeylist_modulo.py::test_delitem",
+      "tests/test_coverage_sortedkeylist_modulo.py::test_pop",
+      "tests/test_coverage_sortedkeylist_negate.py::test_delitem",
+      "tests/test_coverage_sortedkeylist_negate.py::test_pop",
+      "tests/test_stress_sortedkeylist.py::test_stress"
+    ],
+    "ground_truth_file": "src/sortedcontainers/sortedlist.py",
+    "ground_truth_line": 2506,
+    "issue": "Something in sortedcontainers is broken on the current checkout.\n\nThe output is off by one element. Sequences come back one item short or one item long, and the edges are what go wrong first.\n\nRunning the test suite shows these failing:\n\n- test_delitem\n- test_pop\n- test_stress\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "self._index - 1",
+      "before": "self._index",
+      "column": 36,
+      "description": "bound self._index became self._index - 1",
+      "end_column": 47,
+      "end_line": 2506,
+      "file": "sortedlist.py",
+      "line": 2506,
+      "operator": "off_by_one"
+    },
+    "operator": "off_by_one",
+    "repo": "sortedcontainers",
+    "task_id": "sortedcontainers-off_by_one-4"
+  },
+  {
+    "baseline_summary": "296 passed in 2.41s",
+    "broken_summary": "5 failed, 291 passed in 2.32s",
+    "broken_tests": [
+      "tests/test_coverage_sorteddict.py::test_irange_key",
+      "tests/test_coverage_sortedkeylist_modulo.py::test_irange",
+      "tests/test_coverage_sortedkeylist_modulo.py::test_irange_key",
+      "tests/test_coverage_sortedkeylist_negate.py::test_irange",
+      "tests/test_coverage_sortedset.py::test_irange_key"
+    ],
+    "ground_truth_file": "src/sortedcontainers/sortedlist.py",
+    "ground_truth_line": 2116,
+    "issue": "Something in sortedcontainers is broken on the current checkout.\n\nThe behaviour looks inverted: what should be applied to one value is being applied to the other, so results come back transposed.\n\nRunning the test suite shows these failing:\n\n- test_irange_key\n- test_irange\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "max_key, _keys[max_pos]",
+      "before": "_keys[max_pos], max_key",
+      "column": 43,
+      "description": "the first two arguments to this call were swapped",
+      "end_column": 66,
+      "end_line": 2116,
+      "file": "sortedlist.py",
+      "line": 2116,
+      "operator": "argument_swap"
+    },
+    "operator": "argument_swap",
+    "repo": "sortedcontainers",
+    "task_id": "sortedcontainers-argument_swap-6"
+  },
+  {
+    "baseline_summary": "315 passed, 51 skipped in 0.91s",
+    "broken_summary": "2 failed, 313 passed, 51 skipped in 0.88s",
+    "broken_tests": [
+      "test/test_output.py::test_moinmoin",
+      "test/test_output.py::test_moinmoin_headerless"
+    ],
+    "ground_truth_file": "tabulate/__init__.py",
+    "ground_truth_line": 240,
+    "issue": "Something in tabulate is broken on the current checkout.\n\nThe behaviour looks inverted: what should be applied to one value is being applied to the other, so results come back transposed.\n\nRunning the test suite shows these failing:\n\n- test_moinmoin\n- test_moinmoin_headerless\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "colaligns, cell_values",
+      "before": "cell_values, colaligns",
+      "column": 24,
+      "description": "the first two arguments to this call were swapped",
+      "end_column": 46,
+      "end_line": 240,
+      "file": "__init__.py",
+      "line": 240,
+      "operator": "argument_swap"
+    },
+    "operator": "argument_swap",
+    "repo": "tabulate",
+    "task_id": "tabulate-argument_swap-1"
+  },
+  {
+    "baseline_summary": "315 passed, 51 skipped in 0.91s",
+    "broken_summary": "12 failed, 303 passed, 51 skipped in 0.89s",
+    "broken_tests": [
+      "test/test_output.py::test_simple_headerless_with_sep_line_with_padding_in_tablefmt",
+      "test/test_output.py::test_github",
+      "test/test_output.py::test_github_multiline",
+      "test/test_output.py::test_github_with_colalign",
+      "test/test_output.py::test_github_no_alignment",
+      "test/test_output.py::test_pipe",
+      "test/test_output.py::test_pipe_headerless",
+      "test/test_regression.py::test_ansi_color_in_table_cells",
+      "test/test_regression.py::test_88_256_ANSI_color_codes",
+      "test/test_regression.py::test_empty_pipe_table_with_columns",
+      "test/test_regression.py::test_numpy_int64_as_integer",
+      "test/test_regression.py::test_github_escape_pipe_character"
+    ],
+    "ground_truth_file": "tabulate/__init__.py",
+    "ground_truth_line": 153,
+    "issue": "Something in tabulate is broken on the current checkout.\n\nThe behaviour looks inverted: what should be applied to one value is being applied to the other, so results come back transposed.\n\nRunning the test suite shows these failing:\n\n- test_simple_headerless_with_sep_line_with_padding_in_tablefmt\n- test_github\n- test_github_multiline\n- test_github_with_colalign\n\n...and 8 further failures.\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "w, a",
+      "before": "a, w",
+      "column": 50,
+      "description": "the first two arguments to this call were swapped",
+      "end_column": 54,
+      "end_line": 153,
+      "file": "__init__.py",
+      "line": 153,
+      "operator": "argument_swap"
+    },
+    "operator": "argument_swap",
+    "repo": "tabulate",
+    "task_id": "tabulate-argument_swap-9"
+  },
+  {
+    "baseline_summary": "315 passed, 51 skipped in 0.91s",
+    "broken_summary": "2 failed, 313 passed, 51 skipped in 0.88s",
+    "broken_tests": [
+      "test/test_output.py::test_mediawiki",
+      "test/test_output.py::test_mediawiki_headerless"
+    ],
+    "ground_truth_file": "tabulate/__init__.py",
+    "ground_truth_line": 192,
+    "issue": "Something in tabulate is broken on the current checkout.\n\nThe results come back wrong at the boundary. Values that sit exactly on the edge of the condition are handled as though they were on the other side of it.\n\nRunning the test suite shows these failing:\n\n- test_mediawiki\n- test_mediawiki_headerless\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "separator // 2",
+      "before": "separator * 2",
+      "column": 13,
+      "description": "arithmetic * became //",
+      "end_column": 26,
+      "end_line": 192,
+      "file": "__init__.py",
+      "line": 192,
+      "operator": "operator_swap"
+    },
+    "operator": "operator_swap",
+    "repo": "tabulate",
+    "task_id": "tabulate-operator_swap-10"
+  },
+  {
+    "baseline_summary": "315 passed, 51 skipped in 0.91s",
+    "broken_summary": "1 failed, 314 passed, 51 skipped in 0.88s",
+    "broken_tests": [
+      "test/test_input.py::test_sqlite3_keys"
+    ],
+    "ground_truth_file": "tabulate/__init__.py",
+    "ground_truth_line": 1560,
+    "issue": "Something in tabulate is broken on the current checkout.\n\nThe output is off by one element. Sequences come back one item short or one item long, and the edges are what go wrong first.\n\nRunning the test suite shows these failing:\n\n- test_sqlite3_keys\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "-1",
+      "before": "0",
+      "column": 30,
+      "description": "bound 0 became -1",
+      "end_column": 31,
+      "end_line": 1560,
+      "file": "__init__.py",
+      "line": 1560,
+      "operator": "off_by_one"
+    },
+    "operator": "off_by_one",
+    "repo": "tabulate",
+    "task_id": "tabulate-off_by_one-15"
+  },
+  {
+    "baseline_summary": "185 passed, 1 deselected in 0.41s",
+    "broken_summary": "1 failed, 184 passed, 1 deselected in 0.40s",
+    "broken_tests": [
+      "toolz/tests/test_itertoolz.py::test_interleave"
+    ],
+    "ground_truth_file": "toolz/itertoolz.py",
+    "ground_truth_line": 231,
+    "issue": "Something in toolz is broken on the current checkout.\n\nThe behaviour looks inverted: what should be applied to one value is being applied to the other, so results come back transposed.\n\nRunning the test suite shows these failing:\n\n- test_interleave\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "seqs, iter",
+      "before": "iter, seqs",
+      "column": 32,
+      "description": "the first two arguments to this call were swapped",
+      "end_column": 42,
+      "end_line": 231,
+      "file": "itertoolz.py",
+      "line": 231,
+      "operator": "argument_swap"
+    },
+    "operator": "argument_swap",
+    "repo": "toolz",
+    "task_id": "toolz-argument_swap-1"
+  },
+  {
+    "baseline_summary": "185 passed, 1 deselected in 0.41s",
+    "broken_summary": "1 failed, 184 passed, 1 deselected in 0.41s",
+    "broken_tests": [
+      "toolz/tests/test_itertoolz.py::test_diff"
+    ],
+    "ground_truth_file": "toolz/itertoolz.py",
+    "ground_truth_line": 942,
+    "issue": "Something in toolz is broken on the current checkout.\n\nThe results come back wrong at the boundary. Values that sit exactly on the edge of the condition are handled as though they were on the other side of it.\n\nRunning the test suite shows these failing:\n\n- test_diff\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "N != 1",
+      "before": "N == 1",
+      "column": 7,
+      "description": "comparison == became !=",
+      "end_column": 13,
+      "end_line": 942,
+      "file": "itertoolz.py",
+      "line": 942,
+      "operator": "operator_swap"
+    },
+    "operator": "operator_swap",
+    "repo": "toolz",
+    "task_id": "toolz-operator_swap-2"
+  },
+  {
+    "baseline_summary": "185 passed, 1 deselected in 0.41s",
+    "broken_summary": "3 failed, 182 passed, 1 deselected in 0.41s",
+    "broken_tests": [
+      "toolz/tests/test_functoolz.py::test_compose_metadata",
+      "toolz/tests/test_functoolz.py::test_excepts",
+      "toolz/tests/test_serialization.py::test_instanceproperty"
+    ],
+    "ground_truth_file": "toolz/functoolz.py",
+    "ground_truth_line": 159,
+    "issue": "Something in toolz is broken on the current checkout.\n\nAn input that used to be rejected early now falls through into the main path, so instead of the expected early return there is either a crash or a nonsense result.\n\nRunning the test suite shows these failing:\n\n- test_compose_metadata\n- test_excepts\n- test_instanceproperty\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "pass",
+      "before": "if obj is None:\n            return self.classval",
+      "column": 8,
+      "description": "a guard clause was removed",
+      "end_column": 32,
+      "end_line": 160,
+      "file": "functoolz.py",
+      "line": 159,
+      "operator": "deleted_guard"
+    },
+    "operator": "deleted_guard",
+    "repo": "toolz",
+    "task_id": "toolz-deleted_guard-4"
+  },
+  {
+    "baseline_summary": "185 passed, 1 deselected in 0.41s",
+    "broken_summary": "2 failed, 183 passed, 1 deselected in 0.40s",
+    "broken_tests": [
+      "toolz/tests/test_itertoolz.py::test_sliding_window",
+      "toolz/tests/test_itertoolz.py::test_sliding_window_of_short_iterator"
+    ],
+    "ground_truth_file": "toolz/itertoolz.py",
+    "ground_truth_line": 670,
+    "issue": "Something in toolz is broken on the current checkout.\n\nThe behaviour looks inverted: what should be applied to one value is being applied to the other, so results come back transposed.\n\nRunning the test suite shows these failing:\n\n- test_sliding_window\n- test_sliding_window_of_short_iterator\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "0, itertools.islice(it, i)",
+      "before": "itertools.islice(it, i), 0",
+      "column": 35,
+      "description": "the first two arguments to this call were swapped",
+      "end_column": 61,
+      "end_line": 670,
+      "file": "itertoolz.py",
+      "line": 670,
+      "operator": "argument_swap"
+    },
+    "operator": "argument_swap",
+    "repo": "toolz",
+    "task_id": "toolz-argument_swap-5"
+  },
+  {
+    "baseline_summary": "181 passed in 0.18s",
+    "broken_summary": "1 failed, 180 passed in 0.17s",
+    "broken_tests": [
+      "voluptuous/tests/tests.py::test_email_validation"
+    ],
+    "ground_truth_file": "voluptuous/validators.py",
+    "ground_truth_line": 506,
+    "issue": "Something in voluptuous is broken on the current checkout.\n\nThe behaviour looks inverted: what should be applied to one value is being applied to the other, so results come back transposed.\n\nRunning the test suite shows these failing:\n\n- test_email_validation\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "1, '@'",
+      "before": "'@', 1",
+      "column": 42,
+      "description": "the first two arguments to this call were swapped",
+      "end_column": 48,
+      "end_line": 506,
+      "file": "validators.py",
+      "line": 506,
+      "operator": "argument_swap"
+    },
+    "operator": "argument_swap",
+    "repo": "voluptuous",
+    "task_id": "voluptuous-argument_swap-2"
+  },
+  {
+    "baseline_summary": "181 passed in 0.18s",
+    "broken_summary": "1 failed, 180 passed in 0.18s",
+    "broken_tests": [
+      "voluptuous/tests/tests.py::test_schema_infer_scalar"
+    ],
+    "ground_truth_file": "voluptuous/schema_builder.py",
+    "ground_truth_line": 171,
+    "issue": "Something in voluptuous is broken on the current checkout.\n\nAn input that used to be rejected early now falls through into the main path, so instead of the expected early return there is either a crash or a nonsense result.\n\nRunning the test suite shows these failing:\n\n- test_schema_infer_scalar\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "pass",
+      "before": "if len(value) == 0:\n                    return dict",
+      "column": 16,
+      "description": "a guard clause was removed",
+      "end_column": 31,
+      "end_line": 172,
+      "file": "schema_builder.py",
+      "line": 171,
+      "operator": "deleted_guard"
+    },
+    "operator": "deleted_guard",
+    "repo": "voluptuous",
+    "task_id": "voluptuous-deleted_guard-3"
+  },
+  {
+    "baseline_summary": "181 passed in 0.18s",
+    "broken_summary": "12 failed, 169 passed in 0.18s",
+    "broken_tests": [
+      "voluptuous/tests/tests.py::test_schema_empty_dict",
+      "voluptuous/tests/tests.py::test_schema_decorator_partial_match_called_with_args",
+      "voluptuous/tests/tests.py::test_schema_decorator_partial_match_called_with_kwargs",
+      "voluptuous/tests/tests.py::test_schema_infer_accepts_kwargs",
+      "voluptuous/tests/tests.py::test_validation_performance",
+      "voluptuous/tests/tests.py::test_self_all",
+      "voluptuous/tests/tests.py::test_key1",
+      "voluptuous/tests/tests.py::test_key2",
+      "voluptuous/tests/tests.py::test_any_with_extra_allow",
+      "voluptuous/tests/tests.py::test_any_with_extra_remove",
+      "voluptuous/tests/tests.py::test_any_with_extra_prevent",
+      "voluptuous/tests/tests.py::test_any_with_extra_none"
+    ],
+    "ground_truth_file": "voluptuous/schema_builder.py",
+    "ground_truth_line": 390,
+    "issue": "Something in voluptuous is broken on the current checkout.\n\nThe results come back wrong at the boundary. Values that sit exactly on the edge of the condition are handled as though they were on the other side of it.\n\nRunning the test suite shows these failing:\n\n- test_schema_empty_dict\n- test_schema_decorator_partial_match_called_with_args\n- test_schema_decorator_partial_match_called_with_kwargs\n- test_schema_infer_accepts_kwargs\n\n...and 8 further failures.\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "self.extra != ALLOW_EXTRA",
+      "before": "self.extra == ALLOW_EXTRA",
+      "column": 25,
+      "description": "comparison == became !=",
+      "end_column": 50,
+      "end_line": 390,
+      "file": "schema_builder.py",
+      "line": 390,
+      "operator": "operator_swap"
+    },
+    "operator": "operator_swap",
+    "repo": "voluptuous",
+    "task_id": "voluptuous-operator_swap-4"
+  },
+  {
+    "baseline_summary": "181 passed in 0.18s",
+    "broken_summary": "8 failed, 173 passed in 0.18s",
+    "broken_tests": [
+      "voluptuous/tests/tests.py::test_schema_extend_with_schema_instance",
+      "voluptuous/tests/tests.py::test_schema_extend_with_required_schema_instance",
+      "voluptuous/tests/tests.py::test_schema_extend_with_optional_schema_instance_required_base",
+      "voluptuous/tests/tests.py::test_schema_extend_with_schema_instance_preserves_markers",
+      "voluptuous/tests/tests.py::test_schema_extend_with_schema_instance_preserves_nested_required",
+      "voluptuous/tests/tests.py::test_schema_extend_with_schema_instance_preserves_nested_optional",
+      "voluptuous/tests/tests.py::test_schema_extend_with_non_dictionary_schema_instance_fails",
+      "voluptuous/tests/tests.py::test_schema_extend_with_schema_instance_handles_schema_subclass"
+    ],
+    "ground_truth_file": "voluptuous/schema_builder.py",
+    "ground_truth_line": 792,
+    "issue": "Something in voluptuous is broken on the current checkout.\n\nAn input that used to be rejected early now falls through into the main path, so instead of the expected early return there is either a crash or a nonsense result.\n\nRunning the test suite shows these failing:\n\n- test_schema_extend_with_schema_instance\n- test_schema_extend_with_required_schema_instance\n- test_schema_extend_with_optional_schema_instance_required_base\n- test_schema_extend_with_schema_instance_preserves_markers\n\n...and 4 further failures.\n\nThe suite was green before this regression, so the change is somewhere in the library itself rather than in the tests. Please track it down and fix it.",
+    "mutation": {
+      "after": "pass",
+      "before": "if not isinstance(schema, dict):\n            return schema",
+      "column": 8,
+      "description": "a guard clause was removed",
+      "end_column": 25,
+      "end_line": 793,
+      "file": "schema_builder.py",
+      "line": 792,
+      "operator": "deleted_guard"
+    },
+    "operator": "deleted_guard",
+    "repo": "voluptuous",
+    "task_id": "voluptuous-deleted_guard-7"
+  }
+]

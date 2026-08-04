@@ -4,5 +4,13 @@ __pycache__/
 .pytest_cache/
 .venv/
 dist/
-corpus/
+# The recorded runs are large and regenerable-in-principle, but the hand labels
+# and the sheets derived from them are neither, and every published number
+# traces back to them. Those ship; the stores do not.
+corpus/*
+!corpus/labels/
+!corpus/alignment/
+!corpus/runs.jsonl
+!corpus/tasks.json
+!corpus/README.txt
 .DS_Store

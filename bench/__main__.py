@@ -51,10 +51,6 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Present packets in a different order — use this for a second pass.",
     )
-    lab.add_argument(
-        "--web", action="store_true", help="Label in a browser instead of the terminal."
-    )
-    lab.add_argument("--port", type=int, default=8765)
     replay = sub.add_parser(
         "replay-fidelity",
         help="Record fresh runs and replay them to measure cassette fidelity.",
@@ -166,12 +162,7 @@ def main(argv: list[str] | None = None) -> int:
             n = len(list((dest / "packets").glob("*.md")))
             print(f"{n} blinded packets written under {dest}")
         case "label":
-            if args.web:
-                from . import labelui
-
-                print(labelui.serve(sheet=args.sheet, port=args.port))
-            else:
-                print(label.label_interactively(sheet=args.sheet, shuffle=args.shuffle))
+            print(label.label_interactively(sheet=args.sheet, shuffle=args.shuffle))
         case "replay-fidelity":
             match args.replay_command:
                 case "record":
