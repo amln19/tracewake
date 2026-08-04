@@ -13,6 +13,43 @@ context removed to see what changes. No harness adapter yet — the recorder is
 library-first, and wrapping a third-party harness is the next thing rather than
 a done thing.
 
+```
+$ locus diff 16ccfac0 45af6f8f
+
+divergence at BAD 45af6f8f step 9
+alignment score -2.260  length ratio 1.07
+
+      GOOD 16ccfac0                             BAD 45af6f8f
+------------------------------------------------------------
+   =  1. run_tests                              1. run_tests
+   =  2. read_file → bidict/_orderedbase.py     2. read_file → bidict/_orderedbase.py
+      3. read_file → bidict/_orderedbase.py     —
+   =  4. edit_file → bidict/_orderedbase.py     3. edit_file → bidict/_orderedbase.py
+   |  5. run_tests                              4. read_file → tests/test_bidict.py
+   |  6. search → WeakAttr                      5. search → test_orderedbidict_weakattr_
+   |  7. read_file → bidict/_orderedbase.py     6. read_file → tests/test_bidict.py
+   =  8. read_file → bidict/_orderedbase.py     7. read_file → bidict/_orderedbase.py
+   =  9. edit_file → bidict/_orderedbase.py     8. edit_file → bidict/_orderedbase.py
+      10. run_tests                             —
+      11. search → WeakAttr                     —
+      12. edit_file → bidict/_orderedbase.py    —
+      13. run_tests                             —
+      14. edit_file → bidict/_orderedbase.py    —
+      15. run_tests                             —
+   |  16. read_file → bidict/_orderedbase.py    >>> 9. read_file → tests/test_bidict.py
+      —                                         10. read_file → tests/test_bidict.py
+      —                                         11. read_file → tests/test_bidict.py
+      —                                         12. read_file → tests/test_bidict.py
+```
+
+`=` the two runs agree, `|` they differ, `—` one of them did something the other
+skipped, `>>>` the divergence. Note step 4 of the failing run lining up with step
+3 of the passing one: the extra read at good-3 shifts everything after it, which
+is why comparing position by position does not work. Both runs edit the same file
+twice and stay together through step 8. At step 9 the failing run stops touching
+the library and spends the rest of its budget re-reading the test file, while the
+passing run keeps cycling edit-and-test until it lands the fix.
+
 On 41 blinded hand-labeled pairs (single annotator, one pass, synthetic injected
 bugs), the aligner lands within two steps of the label on 32/41, against 12/41
 for first target-width difference (what simple session-diff tools do), 6/41 for
@@ -314,7 +351,8 @@ not because they moved the headline here.
 ## The HTML report
 
 ```
-locus view <good-run> <bad-run> -o report.html
+$ locus view 16ccfac0 45af6f8f -o report.html
+wrote report.html (0.21 MB) — divergence at failing step 9
 ```
 
 One file, no server, no network. The comparison travels inside the page as JSON,
@@ -343,6 +381,25 @@ in the store. No pair in that set reached the cap.
 locus pprof <run> --view tokens -o run.pb.gz
 locus pprof <run> --view tokens --top 20
 ```
+
+```
+run 16ccfac03ddc  bidict-deleted_guard-3#1
+total  input=117033  output=1886
+leaf                              input     output    share
+file_read                         47095          0   39.6%
+assistant_reasoning               30821          0   25.9%
+tool_schema                       12825          0   10.8%
+test_output                        5801          0    4.9%
+tool_output                        5544          0    4.7%
+system_prompt                      5394          0    4.5%
+error_feedback                     4644          0    3.9%
+task_issue                         3285          0    2.8%
+```
+
+Two-thirds of everything this run paid for was files it had read and its own
+earlier reasoning being handed back to it. That breakdown is only possible
+because the provenance of each block was recorded at the time; it cannot be
+recovered from a finished transcript.
 
 Token spend is exported as a standard gzipped pprof profile, so Speedscope,
 `go tool pprof`, and Pyroscope can open it without a custom renderer. The stack
