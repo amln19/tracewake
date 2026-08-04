@@ -43,12 +43,33 @@ class HashSeedError(LocusError):
 
 _STDLIB = Path(sysconfig.get_paths()["stdlib"]).resolve()
 _LOCUS = Path(__file__).parent.resolve()
+def _frame_files(*functions: Any) -> frozenset[str]:
+    """The filenames these functions' frames will actually carry.
+
+    Asked of the code objects rather than assumed from `__file__`. Several
+    stdlib modules are frozen into the interpreter, and a frozen module's
+    frames report `<frozen os>` while its `__file__` still points at the source
+    — so a forwarder set built from `__file__` silently matches nothing.
+    """
+    files: set[str] = set()
+    for function in functions:
+        code = getattr(getattr(function, "__func__", function), "__code__", None)
+        if code is not None:
+            files.add(code.co_filename)
+    return frozenset(files)
+
+
 # Modules that only forward a call to the function actually being intercepted:
 # `os.getenv` and `Mapping.get` reach `__getitem__`, and `randint`/`choice`/
 # `shuffle` reach `getrandbits`. The frame that decides whether a call is worth
 # recording is the one above the forwarding layer, not the layer itself.
-_ENV_FORWARDERS = frozenset({os.__file__, sys.modules["_collections_abc"].__file__})
-_RANDOM_FORWARDERS = frozenset({random.__file__})
+_Mapping = sys.modules["_collections_abc"].Mapping
+_ENV_FORWARDERS = _frame_files(
+    os.getenv, _Mapping.get, _Mapping.__contains__
+) | frozenset({os.__file__, sys.modules["_collections_abc"].__file__})
+_RANDOM_FORWARDERS = _frame_files(
+    random.randint, random.choice, random.shuffle, random.sample
+) | frozenset({random.__file__})
 
 _instrumented: dict[CodeType, bool] = {}
 _reentrant = threading.local()

@@ -90,6 +90,42 @@ def test_the_environment_the_agent_sees_is_the_recorded_one(tmp_path: Path) -> N
         rep.outcome(status="ok")
 
 
+@pytest.mark.parametrize(
+    "read",
+    [
+        pytest.param(lambda: os.environ["LOCUS_PATCH_TEST"], id="subscript"),
+        pytest.param(lambda: os.getenv("LOCUS_PATCH_TEST"), id="os.getenv"),
+        pytest.param(lambda: os.environ.get("LOCUS_PATCH_TEST"), id="mapping.get"),
+    ],
+)
+def test_every_way_of_reading_a_variable_replays_the_recorded_value(
+    tmp_path: Path, read
+) -> None:
+    """Reading env through a forwarder must come from the log, not the machine.
+
+    `os.getenv` and `Mapping.get` reach the patched `__getitem__` through a
+    stdlib frame, and the walk that skips such a frame matches it by filename.
+    Several stdlib modules are frozen into the interpreter, and a frozen
+    module's frames report `<frozen os>` while its `__file__` still points at
+    the source — so a forwarder set built from `__file__` matches nothing and
+    those reads silently bypass the recorder.
+
+    The value has to change between record and replay to catch it: if the
+    machine still holds what was recorded, a read that never consulted the log
+    returns the right answer anyway and the bug hides.
+    """
+    with locus.record("patched", store=tmp_path) as rec:
+        recorded = read()
+        rec.outcome(status="ok")
+        run_id = rec.run_id
+    assert recorded == "recorded-value"
+
+    os.environ["LOCUS_PATCH_TEST"] = "changed-since"
+    with locus.replay(run_id, store=tmp_path) as rep:
+        assert read() == "recorded-value"
+        rep.outcome(status="ok")
+
+
 def test_a_variable_the_run_never_read_is_divergence(tmp_path: Path) -> None:
     with locus.record("patched", store=tmp_path) as rec:
         os.environ["LOCUS_PATCH_TEST"]
