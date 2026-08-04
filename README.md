@@ -306,14 +306,21 @@ excursion is charged once rather than per step, and the divergence point is the
 first step on the failing side after the traces stop re-aligning.
 
 **The divergence rule needs the two runs to end differently.** It walks backward
-to the last column where the runs still agree. If a harness ends every run with
-the same terminal action — SWE-agent always finishes with `submit` — then that
-column always agrees, every pair reports "no standing divergence", and the index
-collapses onto the last step. This corpus never showed it, because it recorded a
-terminal step only for runs that actually submitted and most failing runs simply
-ran out of budget. Two runs that disagree at every single step still report "no
-standing divergence" if they share a final action. If you point `locus diff` at a
-harness with a fixed ending, strip it first.
+to the last column where the runs still agree, so an agreement at the very end
+is indistinguishable from real recovery — even a single coincidental one. If a
+harness ends every run with the same terminal action, that column always
+agrees and every pair reports "no standing divergence." If you point `locus
+diff` at a harness with a fixed ending, strip it first. This corpus mostly
+didn't show it because it recorded a terminal step only for runs that actually
+submitted, but one real case survived anyway: a failing run stuck repeating a
+bare `run_tests()` several times pairs against separate, genuine `run_tests()`
+calls on the passing side, and because there are several of them the repetition
+reads as sustained agreement rather than a stuck loop. A run-length threshold
+was tried as a general fix and made the measured accuracy worse, not better —
+the repetition itself is the artifact, not how many columns it spans, and a
+threshold big enough to catch it also discards real one-column recoveries
+elsewhere in the corpus. Left unresolved rather than patched under time
+pressure; see DECISIONS for the full measurement.
 
 Step similarity is a fixed weighted sum: tool name, argument similarity after
 path canonicalization, embedding cosine on the reasoning text, and Jaccard

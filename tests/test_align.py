@@ -116,6 +116,14 @@ def test_a_shared_final_step_hides_divergence_everywhere_before_it():
     last column agree by construction, so there is no trailing mismatch region
     and the runs read as re-aligning however far apart they actually went.
     Strip a fixed ending before diffing.
+
+    A run-length threshold (require 2+ consecutive agreeing columns before
+    accepting recovery) was tried as a general fix and reverted: on the real
+    corpus it left the motivating case unchanged — a failing run stuck
+    repeating a bare `run_tests()` pairs against several separate `run_tests()`
+    calls on the passing side, which forms a run past any small threshold
+    without being recovery — while it broke three pairs that had a genuine
+    one-column recovery. See DECISIONS.
     """
     good = [
         Step("read_file", {"path": "a.py"}, target="a.py"),
