@@ -14,30 +14,25 @@ library-first, and wrapping a third-party harness is the next thing rather than
 a done thing.
 
 On 41 blinded hand-labeled pairs (single annotator, one pass, synthetic injected
-bugs), the aligner beat the baselines that matter: within two steps of the label
-on 28/41 pairs, against 19/41 for first target-width difference (what simple
-session-diff tools do), 9/41 for last common prefix, and 13/41 for a local 7B
-judge on the same packets. On the 22 pairs where first-difference was already
-outside ±2 of the label — the only pairs where an aligner can show a distinct
-win — it hit 14/22 and first-difference hit 0/22. Transfer to real-world issue
-trajectories is untested.
+bugs), the aligner lands within two steps of the label on 32/41, against 12/41
+for first target-width difference (what simple session-diff tools do), 6/41 for
+last common prefix, and 12/41 for a local 7B judge on the same packets. On the
+29 pairs where first-difference was already outside ±2 of the label — the only
+pairs where an aligner can show a distinct win — it hit 20/29 and
+first-difference hit 0/29. No baseline beat it on a single pair in any subset.
+Transfer to real-world issue trajectories is untested.
 
-A second labeling pass over the same 41 packets agrees with the first within two
-steps on 78% of them, which is the noise floor any measured accuracy sits on —
-the aligner's 68% is below it, as it has to be. **That second pass was made by an
-LLM, not by the human annotator**, so it bounds how repeatable the *definition*
-is, not how repeatable a person is; a true test-retest ceiling is still unmeasured.
-Scored against those second-pass labels instead, the aligner gets 31/41 against
-16/41 for first-difference — the gap widens rather than closing, which is the
-point of running it.
+**The caveat that matters more than the table.** Always guessing "step 6" also
+scores 32/41. On the contestable subset a constant guess does *better* than the
+aligner, 23/29 against 20/29. The labels cluster because most of these failing
+runs did not take a wrong turn — they simply ran out of budget while still
+exploring, so the answer is usually the last step, and trajectories are short
+(median failing run: 6 steps). So the honest claim is that the aligner beats
+every *named* baseline decisively and does not beat a constant. Anyone who cites
+the 32/41 without that sentence is overselling it.
 
-The disagreement is not noise. On the 29 pairs whose failing run is under twelve
-steps the two passes agree within two steps 28 times; on the twelve longer ones
-they never agree exactly. Those are runs that spend their whole budget repeating
-one action, and the two passes read them differently: one marks the last step,
-the other the step the repetition started. That ambiguity is a property of the
-labeling definition, and it is the honest reason to distrust a headline built on
-long runs.
+Annotator self-agreement was not measured, so there is no test-retest ceiling on
+these numbers.
 
 ```python
 import locus
@@ -243,25 +238,30 @@ Reasoning embeddings use a pinned local model (`mlx-community/bge-small-en-v1.5-
 install the optional extra with `uv sync --extra embeddings`. `--lexical` skips
 the model and scores reasoning text by string similarity instead.
 
-The headline rate is not uniform across the set. Pairs kept only by the looser
-4:1 length cap (success ran to the step ceiling, failure stalled early) are
-easy; on the stricter 3:1 subset the aligner is at 17/30 against 13/30 for
-first-difference. Failure trajectories of twelve or more steps are the hard
-slice — there first-difference is slightly ahead. A constant guess of step 5
-hits 33/41 because labels cluster early on short never-edited failures, so
-within-±2 alone overstates how much signal any method has; the baseline gaps
-and the contestable subset are the load-bearing numbers. The divergence
-definition (last re-alignment, then the next failure step) also means many
-correct predictions land on the failure run's last step when that run never
-produced an edit.
+The headline rate is not uniform across the set. On the stricter 3:1 length
+subset the aligner is at 21/30 against 7/30 for first-difference; on the 29
+contestable pairs it is 20/29 against 0/29. McNemar is 20–0 against
+first-difference over all pairs (n_discordant 20) — no baseline won a single
+pair anywhere — but with a discordant count that small, read the gap rather
+than the p-value.
+
+The constant-guess diagnostic is the reason to be careful with the headline.
+Always answering "step 6" scores 32/41, the same as the aligner, and 23/29 on
+the contestable subset, which is better. Labels cluster because most failing
+runs here did not take a wrong turn — they ran out of budget while still
+exploring, so the answer is usually that run's last step, and the median failing
+trajectory is 6 steps. Within-±2 on trajectories that short cannot separate a
+method from a constant. What the numbers do support is the comparison against
+the named alternatives, which is what the baselines are for.
 
 Pre-specified ablations on the same 41 pairs: scoring arguments by target file
-or pattern alone matches the full distance (28/41); swapping Gotoh for linear
-gaps loses one pair (27/41); bag-of-words reasoning matches BGE (28/41); dropping
-the reasoning term entirely is 30/41. So on this corpus the load-bearing piece is
-target-width argument similarity, not affine gaps or embeddings — those stay in
-the default because the design is aimed at longer excursions than this set
-mostly contains, not because they moved the headline here.
+or pattern alone matches the full distance (32/41); bag-of-words reasoning
+matches BGE (32/41); swapping Gotoh for linear gaps loses three pairs (29/41);
+full-argument equality loses two (30/41); dropping the reasoning term entirely
+gains one (33/41). So on this corpus the load-bearing piece is target-width
+argument similarity, not affine gaps or embeddings — those stay in the default
+because the design is aimed at longer excursions than this set mostly contains,
+not because they moved the headline here.
 
 ## The HTML report
 
