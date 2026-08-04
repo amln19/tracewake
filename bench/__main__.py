@@ -87,10 +87,12 @@ def main(argv: list[str] | None = None) -> int:
         "init-pass2",
         help="Create a blank pass2.jsonl over the existing labeling packets.",
     )
-    sub.add_parser(
+    agree = sub.add_parser(
         "self-agreement",
-        help="Report annotator self-agreement between pass1 and pass2.",
+        help="Report label agreement between two passes.",
     )
+    agree.add_argument("--a", type=Path, default=None, help="First sheet (default pass1).")
+    agree.add_argument("--b", type=Path, default=None, help="Second sheet (default pass2).")
     judge = sub.add_parser(
         "llm-judge",
         help="Run the LLM-as-judge baseline on the blinded packets.",
@@ -183,7 +185,12 @@ def main(argv: list[str] | None = None) -> int:
             path = aligneval.init_pass_sheet("pass2")
             print(f"pass2 sheet ready at {path}")
         case "self-agreement":
-            print(aligneval.self_agreement())
+            kwargs = {}
+            if args.a is not None:
+                kwargs["pass_a"] = args.a
+            if args.b is not None:
+                kwargs["pass_b"] = args.b
+            print(aligneval.self_agreement(**kwargs))
         case "llm-judge":
             print(aligneval.run_llm_judge(model_id=args.model))
         case "ablations":
