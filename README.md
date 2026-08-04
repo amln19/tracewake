@@ -20,7 +20,6 @@ last common prefix, and 12/41 for a local 7B judge on the same packets. On the
 29 pairs where first-difference was already outside ±2 of the label — the only
 pairs where an aligner can show a distinct win — it hit 20/29 and
 first-difference hit 0/29. No baseline beat it on a single pair in any subset.
-Transfer to real-world issue trajectories is untested.
 
 **The caveat that matters more than the table.** Always guessing "step 6" also
 scores 32/41. On the contestable subset a constant guess does *better* than the
@@ -33,6 +32,16 @@ the 32/41 without that sentence is overselling it.
 
 Annotator self-agreement was not measured, so there is no test-retest ceiling on
 these numbers.
+
+Transfer to real-world issue trajectories is untested — not for want of data.
+SWE-bench's experiments repository requires every leaderboard submission to ship
+per-instance reasoning traces alongside its resolve/fail report, so an instance
+that one system solved and another did not is a real good/bad pair on a genuine
+GitHub issue; datasets built from repeated rollouts of one agent (SWE-Gym,
+SWE-smith) carry both outcomes for the same task and the same scaffold. Turning
+those formats into the step sequences this aligner consumes is the work that has
+not been done, and until it is, every number above describes mechanically
+injected bugs in small repositories.
 
 ```python
 import locus
@@ -65,6 +74,28 @@ locus replay <run-id>
 
 The wrapper injects itself before your program imports anything and stores the
 command it ran, so replaying needs nothing but the run id.
+
+## Replay as a record
+
+The reason to record at the tool boundary rather than log after the fact is that
+a cassette can be *re-derived*. Given a run id you can reconstruct exactly what
+the model was shown and what the agent did with it, offline, with the network
+switched off — and get the same bytes every time. Cassettes are JSONL, so that
+record is reviewable in a pull request rather than trapped in a vendor console.
+
+That is mostly a debugging property, and debugging is what this is for. But it
+is also what you need to answer questions after the fact: what did this agent
+actually read, which files did it touch, what was in its context when it made
+the change that broke something. Agents increasingly run with real credentials
+against real repositories, and "we think it did X" is a weaker answer than a
+log you can replay. Provenance tags make the second question — *where did that
+instruction come from* — answerable too, which is the shape of the problem when
+untrusted content reaches an agent's context.
+
+Scoped honestly: this is a recorder and a differ. It has no threat model, spots
+nothing on its own, and enforces no policy. Redaction is default-on so cassettes
+can be committed without leaking credentials, and that is the whole of its
+security posture.
 
 ## What gets recorded
 
