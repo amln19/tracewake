@@ -109,6 +109,33 @@ def test_identical_traces_have_no_divergence():
     assert divergence_step(pairs, steps, steps) is None
 
 
+def test_a_shared_final_step_hides_divergence_everywhere_before_it():
+    """The backward rule needs the two runs to end differently.
+
+    A harness that finishes every run with the same terminal action makes the
+    last column agree by construction, so there is no trailing mismatch region
+    and the runs read as re-aligning however far apart they actually went.
+    Strip a fixed ending before diffing.
+    """
+    good = [
+        Step("read_file", {"path": "a.py"}, target="a.py"),
+        Step("edit_file", {"path": "a.py"}, target="a.py"),
+        Step("submit", {}),
+    ]
+    bad = [
+        Step("read_file", {"path": "b.py"}, target="b.py"),
+        Step("search", {"query": "z"}, target="z"),
+        Step("submit", {}),
+    ]
+    embed = LexicalEmbedder()
+    _, pairs, _ = align(good, bad, embed=embed)
+    assert divergence_step(pairs, good, bad) is None
+
+    trimmed_good, trimmed_bad = good[:-1], bad[:-1]
+    _, pairs, _ = align(trimmed_good, trimmed_bad, embed=embed)
+    assert divergence_step(pairs, trimmed_good, trimmed_bad) == 1
+
+
 def test_backward_definition_beats_first_difference_after_realignment():
     """The step-unit trap: target-width re-alignment is where the aligner wins.
 

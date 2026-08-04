@@ -2,15 +2,16 @@
 
 The aligner consumes step sequences and nothing else — no cassettes, no
 provenance, no replay — so trajectories somebody else published can be read
-directly. What this checks is whether the corpus's shape, not just its numbers,
-generalises: those runs are a local 7B on small repositories with a median of
-six actions, and the design decisions the ablations could not justify (affine
-gaps, embeddings) are the ones that only pay off on longer trajectories.
+directly. That part works.
 
-Source: SWE-agent rollouts published as `SWE-bench/SWE-smith-trajectories`.
-Several rollouts of one model on one task, graded pass/fail, so a mixed-outcome
-task yields a good/bad pair from a single scaffold. Pairing across models would
-confound "where did these part" with "these agents do not share a vocabulary".
+What does not work is the source. `SWE-bench/SWE-smith-trajectories` issues one
+task id under two prompts, *fix the source* and *write a bug report*, and grades
+`resolved` on the tests — which a bug-report run can never satisfy, because it
+never edits source. A mixed-outcome task is therefore usually one run of each
+job, and aligning them measures the instruction. Pairs must share an
+instruction, and once they do this corpus yields none: the fix-the-source prompt
+was run once per task. The loader returns nothing rather than something
+comfortable, and the module is kept as the reader a usable source would need.
 """
 
 from __future__ import annotations
@@ -87,6 +88,20 @@ def _inline_calls(content: str) -> list[tuple[str, dict[str, Any]]]:
         (name, {k: v.strip() for k, v in _PARAMETER.findall(body)})
         for name, body in _FUNCTION_BLOCK.findall(content)
     ]
+
+
+def instruction_kind(messages: Sequence[dict[str, Any]]) -> str:
+    """Which job the rollout was given.
+
+    The same `instance_id` is issued under two different prompts — fix the
+    source, or write a bug report — and `resolved` is graded on the tests, which
+    a bug-report run can never make pass because it never edits source. Pairing
+    across the two compares runs asked to do different things, and every step of
+    the resulting "divergence" is an artifact of the instruction.
+    """
+    users = [m for m in messages if m.get("role") == "user"]
+    text = _text_of(users[0].get("content")) if users else ""
+    return "bug_report" if "example_bug_report" in text else "fix_source"
 
 
 def _text_of(content: Any) -> str:
@@ -186,17 +201,18 @@ def load_pairs(
     table = pq.read_table(parquet)
     columns = {name: table.column(name).to_pylist() for name in
                ("instance_id", "resolved", "model", "messages")}
-    grouped: dict[tuple[str, str], list[tuple[bool, str]]] = {}
+    grouped: dict[tuple[str, str, str], list[tuple[bool, str]]] = {}
     for instance, resolved, name, messages in zip(
         columns["instance_id"], columns["resolved"], columns["model"], columns["messages"],
         strict=True,
     ):
         if model is not None and name != model:
             continue
-        grouped.setdefault((instance, name), []).append((bool(resolved), messages))
+        kind = instruction_kind(json.loads(messages))
+        grouped.setdefault((instance, name, kind), []).append((bool(resolved), messages))
 
     pairs: list[ExternalPair] = []
-    for (instance, name), rollouts in sorted(grouped.items()):
+    for (instance, name, _kind), rollouts in sorted(grouped.items()):
         wins = [m for ok, m in rollouts if ok]
         losses = [m for ok, m in rollouts if not ok]
         if not wins or not losses:
