@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import textwrap
 from dataclasses import dataclass
 from pathlib import Path
@@ -331,3 +332,129 @@ def export_packets(
         encoding="utf-8",
     )
     return dest
+
+
+# ---------------------------------------------------------------------------
+# Interactive pass
+# ---------------------------------------------------------------------------
+
+_FAILURE_STEPS = re.compile(r"^## FAILURE .*?\((\d+) steps\)", re.MULTILINE)
+
+PROMPT_HELP = """\
+  <n>            the failing step after which the run could not recover
+  <n> <note>     same, with a note for yourself
+  s              skip this packet for now
+  ?              print the packet again
+  q              save and stop"""
+
+
+def failure_length(text: str) -> int:
+    match = _FAILURE_STEPS.search(text)
+    if match is None:
+        raise ValueError(
+            "packet has no '## FAILURE ... (N steps)' heading, so the label cannot be "
+            "range-checked. Re-export the packets."
+        )
+    return int(match.group(1))
+
+
+def _sheet_rows(path: Path, packets: Path) -> list[dict]:
+    if path.exists():
+        rows = [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        if rows:
+            return rows
+    return [
+        {"packet_id": p.stem, "label": None, "note": ""}
+        for p in sorted(packets.glob("P*.md"))
+    ]
+
+
+def _write_sheet(path: Path, rows: list[dict]) -> None:
+    path.write_text(
+        "\n".join(json.dumps(r, sort_keys=True) for r in rows) + "\n", encoding="utf-8"
+    )
+
+
+def _parse_entry(answer: str, limit: int) -> tuple[int, str] | None:
+    head, _, rest = answer.partition(" ")
+    if not head.lstrip("-").isdigit():
+        return None
+    value = int(head)
+    if not 1 <= value <= limit:
+        return None
+    return value, rest.strip()
+
+
+def label_interactively(
+    sheet: str = "pass1",
+    dest: Path = LABEL_ROOT,
+    shuffle: bool = False,
+) -> str:
+    """Walk the unlabeled packets one at a time, writing after every answer.
+
+    Nothing about the pair beyond the packet is shown — no task id, no run id,
+    no previous pass, no method prediction. Writing as it goes is what makes a
+    pass resumable across sittings, which a 41-packet pass needs to be.
+    """
+    packets = dest / "packets"
+    if not packets.is_dir():
+        raise FileNotFoundError(
+            f"no packets at {packets}. Run `python -m bench export-labels` first."
+        )
+    path = dest / f"{sheet}.jsonl"
+    rows = _sheet_rows(path, packets)
+    by_id = {r["packet_id"]: r for r in rows}
+
+    pending = [r for r in rows if r["label"] is None]
+    if not pending:
+        return f"{sheet}: all {len(rows)} packets already labeled. Nothing to do."
+    if shuffle:
+        # A second pass presented in the first pass's order cues recall of the
+        # first pass, which is the one thing it must not measure.
+        random.Random(f"{SHUFFLE_SEED}:{sheet}").shuffle(pending)
+
+    print(f"{sheet}: {len(rows) - len(pending)}/{len(rows)} done, {len(pending)} to go")
+    print("Answer with one integer. Commands:")
+    print(PROMPT_HELP)
+
+    answered = 0
+    for row in pending:
+        text = (packets / f"{row['packet_id']}.md").read_text(encoding="utf-8")
+        limit = failure_length(text)
+        print("\n" + "=" * 76)
+        print(text)
+        while True:
+            done = len(rows) - len(pending) + answered
+            try:
+                answer = input(
+                    f"[{done + 1}/{len(rows)}] {row['packet_id']} — "
+                    f"failing step 1-{limit}: "
+                ).strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                _write_sheet(path, rows)
+                return f"stopped. {done}/{len(rows)} labeled in {path}"
+            if answer == "q":
+                _write_sheet(path, rows)
+                return f"stopped. {done}/{len(rows)} labeled in {path}"
+            if answer == "s":
+                break
+            if answer == "?":
+                print(text)
+                continue
+            parsed = _parse_entry(answer, limit)
+            if parsed is None:
+                print(f"  need an integer from 1 to {limit}, or s / ? / q")
+                continue
+            by_id[row["packet_id"]]["label"] = parsed[0]
+            by_id[row["packet_id"]]["note"] = parsed[1]
+            _write_sheet(path, rows)
+            answered += 1
+            break
+
+    remaining = sum(1 for r in rows if r["label"] is None)
+    return f"{sheet}: {len(rows) - remaining}/{len(rows)} labeled in {path}"

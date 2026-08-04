@@ -42,6 +42,15 @@ def main(argv: list[str] | None = None) -> int:
         "export-labels",
         help="Write blinded divergence-labeling packets for the evaluation set.",
     )
+    lab = sub.add_parser(
+        "label", help="Label the blinded packets one at a time, resumable."
+    )
+    lab.add_argument("--sheet", default="pass1", help="Sheet to fill (default: pass1).")
+    lab.add_argument(
+        "--shuffle",
+        action="store_true",
+        help="Present packets in a different order — use this for a second pass.",
+    )
     replay = sub.add_parser(
         "replay-fidelity",
         help="Record fresh runs and replay them to measure cassette fidelity.",
@@ -150,6 +159,8 @@ def main(argv: list[str] | None = None) -> int:
             dest = label.export_packets()
             n = len(list((dest / "packets").glob("*.md")))
             print(f"{n} blinded packets written under {dest}")
+        case "label":
+            print(label.label_interactively(sheet=args.sheet, shuffle=args.shuffle))
         case "replay-fidelity":
             match args.replay_command:
                 case "record":
