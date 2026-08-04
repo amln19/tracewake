@@ -119,6 +119,13 @@ def main(argv: list[str] | None = None) -> int:
     cf.add_argument("--temperature", type=float, default=0.7)
     cf.add_argument("--model", default=backend.DEFAULT_MODEL)
 
+    ext = sub.add_parser(
+        "external",
+        help="Align published SWE-agent rollouts to see what the corpus's shape hides.",
+    )
+    ext.add_argument("shard", type=Path, help="A SWE-smith-trajectories parquet shard.")
+    ext.add_argument("--model", default="claude-3-5-sonnet-20241022")
+
     cfd = sub.add_parser(
         "fork-diff", help="Align a forked run against the run it was forked from."
     )
@@ -206,6 +213,10 @@ def main(argv: list[str] | None = None) -> int:
                     temperature=args.temperature,
                 ).format()
             )
+        case "external":
+            from . import external
+
+            print(external.report(args.shard, model=args.model))
         case "fork-diff":
             print(counterfactual.fork_diff(args.run, lexical=args.lexical))
     return 0

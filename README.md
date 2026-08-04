@@ -33,15 +33,30 @@ the 32/41 without that sentence is overselling it.
 Annotator self-agreement was not measured, so there is no test-retest ceiling on
 these numbers.
 
-Transfer to real-world issue trajectories is untested — not for want of data.
-SWE-bench's experiments repository requires every leaderboard submission to ship
-per-instance reasoning traces alongside its resolve/fail report, so an instance
-that one system solved and another did not is a real good/bad pair on a genuine
-GitHub issue; datasets built from repeated rollouts of one agent (SWE-Gym,
-SWE-smith) carry both outcomes for the same task and the same scaffold. Turning
-those formats into the step sequences this aligner consumes is the work that has
-not been done, and until it is, every number above describes mechanically
-injected bugs in small repositories.
+**Accuracy has not been measured outside this corpus**, but the aligner has been
+run outside it. `bench external` reads published SWE-agent rollouts
+(`SWE-bench/SWE-smith-trajectories`) — several attempts by one model at one task,
+graded pass/fail — and takes 66 mixed-outcome pairs from a single scaffold, so
+nothing is confounded by two agents disagreeing about how to phrase an action.
+There are no divergence labels for those pairs, so nothing below is an accuracy
+number. What it does show is which parts of the result above are properties of
+the method and which are properties of the corpus:
+
+- **First-difference collapses.** On real rollouts it answers "step 1" on 66/66
+  pairs (46/66 if shell commands are pooled under one name), because a strong
+  model varies its opening move. The corpus agent almost always opened by running
+  the tests, which is what made that baseline look like a contest at all.
+- **The pull toward the last step mostly goes away** — the aligner lands there on
+  8% of real pairs against 80% of corpus labels. The constant-guess tie above is
+  very likely an artifact of short runs that ran out of budget, not something
+  that follows the method.
+- **Affine gaps still do not earn their place.** Swapping Gotoh for linear gaps
+  changes the answer on 5–11% of real pairs, against 12% on the corpus. Longer
+  trajectories were the reason to expect otherwise, and they did not deliver it.
+
+Running it also found a real defect, described under "Diffing two runs" below.
+The step unit is a modelling choice, so both readings are reported rather than
+whichever is more flattering.
 
 ```python
 import locus
@@ -260,6 +275,16 @@ far. Parallel tool batches from one model call count as a single step. The two
 sequences are aligned with Gotoh's affine-gap algorithm so a multi-step
 excursion is charged once rather than per step, and the divergence point is the
 first step on the failing side after the traces stop re-aligning.
+
+**The divergence rule needs the two runs to end differently.** It walks backward
+to the last column where the runs still agree. If a harness ends every run with
+the same terminal action — SWE-agent always finishes with `submit` — then that
+column always agrees, every pair reports "no standing divergence", and the index
+collapses onto the last step. This corpus never showed it, because it recorded a
+terminal step only for runs that actually submitted and most failing runs simply
+ran out of budget. On published rollouts it hit 87% of pairs until the terminal
+action was dropped. If you point `locus diff` at a harness with a fixed ending,
+strip it first.
 
 Step similarity is a fixed weighted sum: tool name, argument similarity after
 path canonicalization, embedding cosine on the reasoning text, and Jaccard
