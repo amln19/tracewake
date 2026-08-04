@@ -9,5 +9,5 @@ Selection seed 20260730; shuffle seed 20260771.
 41 pairs. The operational definition is at the top of every packet, including
 the rule for a run that ends by repeating an action it already took.
 
-Label:  python -m bench label --web        (or without --web for the terminal)
+Label:  python -m bench label
 Score:  python -m bench align-eval --score
