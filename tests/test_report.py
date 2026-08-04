@@ -148,6 +148,28 @@ def test_recorded_content_cannot_close_the_data_island(pair: tuple[Store, str, s
     assert _island(html)["blocks"][0]["text"] == "</script><script>alert(1)</script>"
 
 
+def test_the_page_never_builds_markup_out_of_recorded_text() -> None:
+    """Step names and targets are agent input, so they must never reach innerHTML.
+
+    A tool's target is whatever the agent put in `path` or `query` — a search
+    string is arbitrary text it chose. The JSON escaping in `render` stops the
+    data island being closed early, but it decodes back to markup on
+    `JSON.parse`, so anything interpolated into an HTML string afterwards is
+    live. Assembling nodes and assigning `textContent` is what actually makes
+    the value inert; this asserts the template keeps doing that.
+    """
+    template = (Path(__file__).parent.parent / "locus" / "report.html").read_text(
+        encoding="utf-8"
+    )
+    script = template.split('<script type="application/json"', 1)[1]
+    assigns = re.findall(r"\.innerHTML\s*=\s*([^\n;]+)", script)
+    for expression in assigns:
+        assert "D." not in expression and "b." not in expression, (
+            f"innerHTML is assigned an expression built from payload data: "
+            f"{expression.strip()!r}. Build the node and set textContent instead."
+        )
+
+
 def test_the_report_and_the_diff_name_the_same_divergence(
     pair: tuple[Store, str, str],
 ) -> None:

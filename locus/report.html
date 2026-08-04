@@ -265,11 +265,20 @@ function renderHead() {
   const banner = el("div", "banner");
   if (D.divergence === null) {
     banner.className = "banner none";
-    banner.innerHTML = "The two runs re-align through the end. No standing divergence.";
+    banner.appendChild(document.createTextNode(
+      "The two runs re-align through the end. No standing divergence."));
   } else {
+    // Built node by node rather than as an HTML string. A step's name and
+    // target are recorded agent input — a search query, a filename — so they
+    // are attacker-shaped text, and the JSON escaping upstream only stops the
+    // data island being closed early; it decodes back to markup on parse.
     const b = stepLabel("bad", D.divergence - 1);
-    banner.innerHTML = "Diverged at <b>failing step " + D.divergence + "</b>" +
-      (b ? " — <span class='mono'>" + b.name + (b.target ? " → " + b.target : "") + "</span>" : "");
+    banner.appendChild(document.createTextNode("Diverged at "));
+    banner.appendChild(el("b", null, "failing step " + D.divergence));
+    if (b) {
+      banner.appendChild(document.createTextNode(" — "));
+      banner.appendChild(el("span", "mono", b.name + (b.target ? " → " + b.target : "")));
+    }
   }
   document.getElementById("banner").appendChild(banner);
 
