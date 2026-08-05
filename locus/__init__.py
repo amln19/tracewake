@@ -172,6 +172,14 @@ def open_session(
     db = Store(store)
     stack = ExitStack()
     try:
+        redactor = Redactor(cfg)
+        # Scrub before the header hits the store. Every other sink goes through
+        # the redactor; the command is what `locus export` puts in a cassette
+        # that is meant to be committed. Secrets stay gone; home paths restore
+        # on replay so the recorded argv is still runnable.
+        scrubbed = (
+            [redactor.text(part) for part in command] if command is not None else None
+        )
         if intervention is not None:
             # A fork only ever reads the source's events: it serves no recorded
             # tool result and no recorded file read, so the source can live in a
@@ -181,12 +189,18 @@ def open_session(
             # The source governs redaction the same way replaying it would, and
             # the fork inherits its task and command so the two stay comparable.
             cfg = replace(cfg, redact=source.redacted)
+            redactor = Redactor(cfg)
+            scrubbed = (
+                [redactor.text(part) for part in command]
+                if command is not None
+                else source.command
+            )
             header = RunHeader(
                 run_id=real_uuid4().hex,
                 name=run_or_name or f"{source.name}+{intervention.label()}",
                 started_at=real_time(),
                 status="running",
-                command=command or source.command,
+                command=scrubbed,
                 redacted=cfg.redact,
                 task_id=task_id or source.task_id,
             )
@@ -201,7 +215,7 @@ def open_session(
                     name=run_or_name,
                     started_at=real_time(),
                     status="running",
-                    command=command,
+                    command=scrubbed,
                     redacted=cfg.redact,
                     task_id=task_id,
                 )

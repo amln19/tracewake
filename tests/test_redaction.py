@@ -206,6 +206,26 @@ def test_before_record_can_drop_an_event(tmp_path: Path) -> None:
     assert "environment" not in kinds and "outcome" in kinds
 
 
+def test_the_run_header_command_is_scrubbed(tmp_path: Path) -> None:
+    home = str(Path.home())
+    secret = "sk-live-9d2f4a7b1c8e0356"
+    command = ["python", f"{home}/work/agent.py", "--api-key", secret]
+
+    with locus.open_session(
+        "demo", store=tmp_path / "s", mode="all", command=command, filter_values=(secret,)
+    ) as s:
+        s.outcome(status="ok")
+        run_id = s.run_id
+
+    db = Store(tmp_path / "s")
+    header = db.run(run_id)
+    db.close()
+    assert home not in (header.command or [])
+    assert secret not in (header.command or [])
+    assert any("<HOME>" in part for part in header.command or [])
+    assert locus.REDACTED in (header.command or [])
+
+
 def test_an_env_var_named_like_a_secret_is_redacted_by_name(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

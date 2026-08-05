@@ -6,6 +6,13 @@ from pathlib import Path
 
 import locus
 from locus import DecodeParams, Message, ModelResponse, Store, Usage
+from locus.config import Config
+from locus.redaction import Redactor
+
+
+def _scrubbed(parts: list[str]) -> list[str]:
+    redactor = Redactor(Config(redact=True))
+    return [redactor.text(part) for part in parts]
 
 SCRIPT = """\
 import locus
@@ -144,7 +151,7 @@ def test_the_wrapper_records_a_script_that_opens_its_own_session(tmp_path: Path)
     header = db.latest_named("wrapped")
     # The wrapper owns the run, so the script's own cassette name is not used.
     assert header.name == "wrapped"
-    assert header.command == [sys.executable, str(script)]
+    assert header.command == _scrubbed([sys.executable, str(script)])
     assert len(db.runs()) == 1
     db.close()
 

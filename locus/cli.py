@@ -16,10 +16,11 @@ import typer
 
 from .align import DiffResult, LexicalEmbedder, MlxEmbedder, diff_runs, format_diff
 from .cassette import export_cassette, import_cassette, read_header
-from .config import RECORD_MODES, RecordMode
+from .config import RECORD_MODES, Config, RecordMode
 from .events import RunHeader, StoredEvent
 from .matching import ReplayReport
 from .patches import LocusError
+from .redaction import Redactor
 from .report import PAYLOAD_BUDGET, write_report
 from .session import Intervention
 from .store import Store
@@ -86,6 +87,18 @@ def bootstrap_from_env() -> None:
         report_path.write_text(json.dumps(asdict(session.report)), encoding="utf-8")
 
     atexit.register(finish)
+
+
+def _restore_command(command: list[str], *, redacted: bool) -> list[str]:
+    """Put local home paths back into a recorded argv before exec.
+
+    The header stores a scrubbed command so cassettes are safe to commit.
+    Secrets stay scrubbed; only path placeholders are restored.
+    """
+    if not redacted:
+        return command
+    redactor = Redactor(Config(redact=True))
+    return [redactor.restore_path(part) for part in command]
 
 
 def _run_child(
@@ -207,7 +220,11 @@ def replay(
     db = Store(store)
     header = db.resolve(run)
     db.close()
-    target = command or header.command
+    target = command or (
+        _restore_command(header.command, redacted=header.redacted)
+        if header.command is not None
+        else None
+    )
     if not target:
         raise typer.BadParameter(
             f"run {header.run_id} was not recorded through `locus record`, so it has no "
@@ -255,7 +272,11 @@ def intervene_(
     # Fails here rather than after the inference it would have taken to find out.
     plan = locus.plan_intervention(run, drop_tags=drop_tag, from_turn=from_step, store=origin)
 
-    target = command or header.command
+    target = command or (
+        _restore_command(header.command, redacted=header.redacted)
+        if header.command is not None
+        else None
+    )
     if not target:
         raise typer.BadParameter(
             f"run {header.run_id[:12]} was not recorded through `locus record`, so it has no "

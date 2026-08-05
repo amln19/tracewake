@@ -19,6 +19,13 @@ import pytest
 
 import locus
 from locus import Store
+from locus.config import Config
+from locus.redaction import Redactor
+
+
+def _scrubbed(parts: list[str]) -> list[str]:
+    redactor = Redactor(Config(redact=True))
+    return [redactor.text(part) for part in parts]
 
 AGENT = Path(__file__).parent / "net_agent.py"
 
@@ -230,5 +237,5 @@ def test_recording_through_the_cli_captures_the_whole_environment(
 
     assert {"model_call", "tool_call", "environment", "fs_read", "outcome"} <= kinds
     assert {"clock", "random", "uuid", "env"} <= sources
-    assert header.command == [sys.executable, str(AGENT)]
+    assert header.command == _scrubbed([sys.executable, str(AGENT)])
     assert [m.model_id for m in header.models] == ["testnet-1"]
