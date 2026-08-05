@@ -63,11 +63,12 @@ pairs where an aligner can show a distinct win — it hit 20/29 and
 first-difference hit 0/29. No baseline beat it on a single pair in any subset.
 
 **The caveat that matters more than the table.** Always guessing "step 6" also
-scores 32/41. On the contestable subset a constant guess does *better* than the
-aligner, 23/29 against 20/29. The labels cluster because most of these failing
-runs did not take a wrong turn — they simply ran out of budget while still
-exploring, so the answer is usually the last step, and trajectories are short
-(median failing run: 6 steps). So the honest claim is that the aligner beats
+scores 32/41. On the contestable subset a constant does *better* than the
+aligner: step 6 gets 22/29 and the best constant, step 7, gets 23/29, against
+the aligner's 20/29. The labels cluster because most of these failing runs did
+not take a wrong turn — they simply ran out of budget while still exploring, so
+the answer is usually the last step, and trajectories are short (median failing
+run: 6 steps). So the honest claim is that the aligner beats
 every *named* baseline decisively and does not beat a constant. Anyone who cites
 the 32/41 without that sentence is overselling it.
 
@@ -342,11 +343,12 @@ pair anywhere — but with a discordant count that small, read the gap rather
 than the p-value.
 
 The constant-guess diagnostic is the reason to be careful with the headline.
-Always answering "step 6" scores 32/41, the same as the aligner, and 23/29 on
-the contestable subset, which is better. Labels cluster because most failing
-runs here did not take a wrong turn — they ran out of budget while still
-exploring, so the answer is usually that run's last step, and the median failing
-trajectory is 6 steps. Within-±2 on trajectories that short cannot separate a
+Always answering "step 6" scores 32/41, the same as the aligner, and 22/29 on
+the contestable subset; the best constant there is step 7 at 23/29. Both beat
+the aligner's 20/29. Labels cluster because most failing runs here did not take
+a wrong turn — they ran out of budget while still exploring, so the answer is
+usually that run's last step, and the median failing trajectory is 6 steps.
+Within-±2 on trajectories that short cannot separate a
 method from a constant. What the numbers do support is the comparison against
 the named alternatives, which is what the baselines are for.
 
