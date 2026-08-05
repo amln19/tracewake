@@ -1,8 +1,8 @@
 What is in here (all git-excluded).
 
   store/              the corpus: 192 recorded runs over 64 injected bugs. CLOSED
-                      — the agent changed after these were recorded, so do not
-                      append. See DECISIONS.md "The corpus is closed".
+                      — the agent changed after these were recorded, so appending
+                      would mix runs from two different agents under one label.
   runs.jsonl          one line per attempt: labels, trajectory shape, timing.
                       This is what `python -m bench status` reads.
   tasks.json          the 64-bug manifest. Rebuilt with `bench build-tasks`.

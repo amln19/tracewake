@@ -325,7 +325,7 @@ was tried as a general fix and made the measured accuracy worse, not better —
 the repetition itself is the artifact, not how many columns it spans, and a
 threshold big enough to catch it also discards real one-column recoveries
 elsewhere in the corpus. Left unresolved rather than patched under time
-pressure; see DECISIONS for the full measurement.
+pressure.
 
 Step similarity is a fixed weighted sum: tool name, argument similarity after
 path canonicalization, embedding cosine on the reasoning text, and Jaccard

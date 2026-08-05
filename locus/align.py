@@ -635,11 +635,11 @@ def divergence_step(
 
     A single coincidental agreement at the tail (two unrelated runs both ending
     on a bare `run_tests()`) is indistinguishable from real recovery under this
-    rule, and requiring a longer trailing run does not reliably fix it — see
-    DECISIONS. A real one-column recovery exists in this corpus and requiring
-    two loses it; a repeated identical action pads a "run" without being
-    recovery. Left as documented, unresolved behavior rather than a rule that
-    trades one failure mode for a worse one.
+    rule, and requiring a longer trailing run does not reliably fix it. A real
+    one-column recovery exists in this corpus and requiring two loses it; a
+    repeated identical action pads a "run" without being recovery. Left as
+    documented, unresolved behavior rather than a rule that trades one failure
+    mode for a worse one.
     """
     if not bad:
         raise ValueError("the failure run has no steps to locate a divergence in")

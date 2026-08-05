@@ -123,7 +123,7 @@ def test_a_shared_final_step_hides_divergence_everywhere_before_it():
     repeating a bare `run_tests()` pairs against several separate `run_tests()`
     calls on the passing side, which forms a run past any small threshold
     without being recovery — while it broke three pairs that had a genuine
-    one-column recovery. See DECISIONS.
+    one-column recovery.
     """
     good = [
         Step("read_file", {"path": "a.py"}, target="a.py"),
