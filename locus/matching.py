@@ -44,7 +44,8 @@ class ReplayReport:
         if self.recorded_new:
             parts.append(f"{self.recorded_new} newly recorded")
         if self.unconsumed:
-            parts.append(f"{self.unconsumed} recorded calls unused")
+            plural = "" if self.unconsumed == 1 else "s"
+            parts.append(f"{self.unconsumed} recorded call{plural} unused")
         return ", ".join(parts)
 
 

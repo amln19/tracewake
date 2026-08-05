@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 from contextlib import ExitStack
+from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated
 
@@ -17,6 +18,7 @@ from .align import DiffResult, LexicalEmbedder, MlxEmbedder, diff_runs, format_d
 from .cassette import export_cassette, import_cassette, read_header
 from .config import RECORD_MODES, RecordMode
 from .events import RunHeader, StoredEvent
+from .matching import ReplayReport
 from .patches import LocusError
 from .report import PAYLOAD_BUDGET, write_report
 from .session import Intervention
@@ -72,7 +74,18 @@ def bootstrap_from_env() -> None:
     )
     locus._adopt(session)
     Path(os.environ["LOCUS_RUN_ID_FILE"]).write_text(session.run_id, encoding="utf-8")
-    atexit.register(stack.close)
+    # Read now, not at exit: the recorded program owns os.environ in between and
+    # is free to clear it.
+    report_path = Path(os.environ["LOCUS_REPORT_FILE"])
+
+    def finish() -> None:
+        # The counts only settle once the session closes, and the parent cannot
+        # see them at all — the run happens in this process. Hand them back over
+        # the same file channel that carries the run id.
+        stack.close()
+        report_path.write_text(json.dumps(asdict(session.report)), encoding="utf-8")
+
+    atexit.register(finish)
 
 
 def _run_child(
@@ -83,10 +96,11 @@ def _run_child(
     redact: bool = True,
     intervention: Intervention | None = None,
     source_store: Path | None = None,
-) -> tuple[int, str]:
+) -> tuple[int, str, ReplayReport | None]:
     with tempfile.TemporaryDirectory(prefix="locus-bootstrap-") as tmp:
         Path(tmp, "sitecustomize.py").write_text(BOOTSTRAP, encoding="utf-8")
         id_file = Path(tmp, "run-id")
+        report_file = Path(tmp, "replay-report")
         env = dict(os.environ)
         env["PYTHONPATH"] = os.pathsep.join([tmp, *filter(None, [env.get("PYTHONPATH")])])
         # Set here rather than checked, because the interpreter fixes hash
@@ -99,6 +113,7 @@ def _run_child(
             LOCUS_MODE=mode,
             LOCUS_COMMAND=json.dumps(command),
             LOCUS_RUN_ID_FILE=str(id_file),
+            LOCUS_REPORT_FILE=str(report_file),
             LOCUS_REDACT="1" if redact else "0",
         )
         if intervention is not None:
@@ -113,20 +128,38 @@ def _run_child(
                 env["LOCUS_SOURCE_STORE"] = str(source_store)
         completed = subprocess.run(command, env=env, check=False)
         run_id = id_file.read_text(encoding="utf-8").strip() if id_file.exists() else ""
+        # Absent when the child died before its atexit hooks ran. The counts are
+        # then unknown, which is not the same as zero, so say nothing about them.
+        raw = report_file.read_text(encoding="utf-8") if report_file.exists() else ""
     if not run_id:
         raise typer.BadParameter(
             f"{command[0]!r} exited without opening a locus session. The wrapper injects "
             f"itself through sitecustomize, which only applies to Python programs."
         )
-    return completed.returncode, run_id
+    report = ReplayReport(**json.loads(raw)) if raw else None
+    return completed.returncode, run_id, report
 
 
-def _report(store: Store, run_id: str, code: int) -> None:
+def _report(store: Store, run_id: str, code: int, replay: ReplayReport | None = None) -> None:
     header = store.run(run_id)
     models = ", ".join(f"{m.provider}/{m.model_id}" for m in header.models) or "no model calls"
     typer.echo(f"run {run_id}  cassette {header.name!r}  {models}")
+    _echo_replay(replay)
     if code != 0:
         typer.echo(f"the recorded program exited {code}", err=True)
+
+
+def _echo_replay(replay: ReplayReport | None) -> None:
+    """Say how much of the log the run answered from, and how surely.
+
+    `degraded` is the one to read: those calls matched without `messages_hash`,
+    so the request was accepted without proving it is the one that was recorded.
+    The individual misses are left out — in `none` mode ReplayMiss has already
+    described the one that stopped the run, and in `new_episodes` a miss is the
+    branch the caller asked for, not a fault.
+    """
+    if replay is not None and replay.recorded_calls:
+        typer.echo(replay.summary())
 
 
 @app.command()
@@ -147,10 +180,12 @@ def record(
     if mode not in RECORD_MODES:
         raise typer.BadParameter(f"unknown mode {mode!r}; choose from {', '.join(RECORD_MODES)}.")
     target = name or Path(command[0]).name
-    code, run_id = _run_child(target, command, store, mode, redact=not no_redact)  # type: ignore[arg-type]
+    code, run_id, replay = _run_child(
+        target, command, store, mode, redact=not no_redact  # type: ignore[arg-type]
+    )
     db = Store(store)
     db.finish_run(run_id, "ok" if code == 0 else "error", time.time())
-    _report(db, run_id, code)
+    _report(db, run_id, code, replay)
     db.close()
     raise typer.Exit(code)
 
@@ -171,7 +206,8 @@ def replay(
             f"run {header.run_id} was not recorded through `locus record`, so it has no "
             f"command to re-run. Pass the program after the run id."
         )
-    code, _ = _run_child(header.run_id, target, store, "none")
+    code, _, replay = _run_child(header.run_id, target, store, "none")
+    _echo_replay(replay)
     raise typer.Exit(code)
 
 
@@ -219,7 +255,7 @@ def intervene_(
             f"command to re-run. Pass the program after the run id."
         )
     typer.echo(f"forking {header.run_id[:12]} — {plan.describe()}")
-    code, forked = _run_child(
+    code, forked, replay = _run_child(
         name or f"{header.name}+{plan.label()}",
         target,
         store,
@@ -229,6 +265,7 @@ def intervene_(
     )
     db = Store(store)
     db.finish_run(forked, "ok" if code == 0 else "error", time.time())
+    _echo_replay(replay)
     typer.echo(f"recorded {forked}  —  compare with: locus diff {run} {forked}")
     db.close()
     raise typer.Exit(code)

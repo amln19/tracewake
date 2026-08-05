@@ -121,7 +121,7 @@ def test_the_report_counts_what_the_replay_left_unused(tmp_path: Path) -> None:
         )
         assert rep.report.matched == 1
         assert rep.report.unconsumed == 1
-        assert "1 recorded calls unused" in rep.report.summary()
+        assert "1 recorded call unused" in rep.report.summary()
 
 
 def test_an_unknown_matcher_names_the_ones_that_exist() -> None:

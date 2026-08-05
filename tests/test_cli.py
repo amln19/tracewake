@@ -155,6 +155,46 @@ def test_replay_reruns_the_recorded_command_without_being_told_it(tmp_path: Path
     assert "from the script" in result.stdout
 
 
+def test_replay_says_how_many_calls_it_answered_from_the_log(tmp_path: Path) -> None:
+    script = tmp_path / "agent.py"
+    script.write_text(SCRIPT)
+    store = tmp_path / "store"
+    _locus("record", "--store", str(store), "--name", "wrapped", "--", sys.executable, str(script))
+    run_id = Store(store).latest_named("wrapped").run_id
+
+    result = _locus("replay", run_id, "--store", str(store))
+    assert result.returncode == 0, result.stderr
+    assert "1 matched, 0 degraded, 0 missed" in result.stdout
+
+
+def test_recording_afresh_reports_no_replay_counts(tmp_path: Path) -> None:
+    script = tmp_path / "agent.py"
+    script.write_text(SCRIPT)
+    store = tmp_path / "store"
+    result = _locus(
+        "record", "--store", str(store), "--name", "wrapped", "--", sys.executable, str(script)
+    )
+    assert result.returncode == 0, result.stderr
+    assert "matched" not in result.stdout
+
+
+def test_a_replay_the_agent_walked_away_from_reports_the_miss(tmp_path: Path) -> None:
+    script = tmp_path / "agent.py"
+    script.write_text(SCRIPT)
+    store = tmp_path / "store"
+    _locus("record", "--store", str(store), "--name", "wrapped", "--", sys.executable, str(script))
+    run_id = Store(store).latest_named("wrapped").run_id
+
+    # Same shape, different prompt: the request no longer hashes to a recorded
+    # one. The child dies on the miss, so this also proves the counts survive a
+    # child that exits non-zero.
+    drifted = tmp_path / "drifted.py"
+    drifted.write_text(SCRIPT.replace('content="hi"', 'content="different"'))
+    result = _locus("replay", run_id, "--store", str(store), "--", sys.executable, str(drifted))
+    assert result.returncode != 0
+    assert "0 matched, 0 degraded, 1 missed, 1 recorded call unused" in result.stdout
+
+
 def test_replay_needs_a_command_when_the_run_was_recorded_from_the_library(
     tmp_path: Path,
 ) -> None:
