@@ -38,7 +38,13 @@ def _visible(text: str) -> tuple[str, bool]:
 
 @lru_cache(maxsize=2)
 def _load(model_id: str) -> tuple[Any, Any]:
-    from mlx_lm import load
+    try:
+        from mlx_lm import load
+    except ImportError as exc:
+        raise ImportError(
+            "the corpus agent needs a local model. Install it with "
+            "`uv sync --group corpus`. MLX is Apple silicon only."
+        ) from exc
 
     return load(model_id)
 

@@ -223,4 +223,11 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # These say which corpus artifact or dependency group is missing and how to
+    # get it. A traceback through that message helps nobody; anything else
+    # still raises.
+    try:
+        sys.exit(main())
+    except (FileNotFoundError, ImportError) as exc:
+        print(f"bench: {exc}", file=sys.stderr)
+        sys.exit(1)
