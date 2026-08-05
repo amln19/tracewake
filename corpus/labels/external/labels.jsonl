@@ -1,30 +1,80 @@
-{"packet_id": "E01", "label": 5, "note": "shared root views 1-4; fail stays in view-root loop while success ls"}
-{"packet_id": "E02", "label": 3, "note": "shared root views 1-2; fail never leaves workspace root"}
-{"packet_id": "E03", "label": 3, "note": "shared root views 1-2; fail never reaches monai/"}
-{"packet_id": "E04", "label": 18, "note": "last new work before terminal file_e view loop"}
-{"packet_id": "E05", "label": 3, "note": "fail greps batch/ while success greps the fix file"}
-{"packet_id": "E06", "label": 8, "note": "shared through file_g views; fail greps instead of writing a test"}
-{"packet_id": "E07", "label": 17, "note": "shared exploration of file_b; insert/undo spiral starts here"}
-{"packet_id": "E08", "label": 7, "note": "shared through grep/view file_a; fail loops viewing file_a"}
-{"packet_id": "E09", "label": 7, "note": "fail edits file_c before establishing a working repro"}
-{"packet_id": "E10", "label": 4, "note": "fail enters cognitoidentity while success still maps the package"}
-{"packet_id": "E11", "label": 9, "note": "after one str_replace on file_b, fail thrash-edits and never builds a test"}
-{"packet_id": "E12", "label": 4, "note": "fail greps awslambda; success builds a repro first"}
-{"packet_id": "E13", "label": 2, "note": "fail creates a test file immediately; success still exploring"}
-{"packet_id": "E14", "label": 2, "note": "fail stays on workspace root; success enters mypy/"}
-{"packet_id": "E15", "label": 10, "note": "after first test run, undo/wrong-edit spiral"}
-{"packet_id": "E16", "label": 8, "note": "last distinct target before long file_c view loop"}
-{"packet_id": "E17", "label": 6, "note": "target-width agree on str_replace file_a; fail then adds a failing create/test path"}
-{"packet_id": "E18", "label": 3, "note": "shared root views 1-2; fail never leaves root"}
-{"packet_id": "E19", "label": 9, "note": "reconnects at file_a then applies a wrong str_replace"}
-{"packet_id": "E20", "label": 3, "note": "shared root views 1-2; fail never leaves root"}
-{"packet_id": "E21", "label": 8, "note": "edits file_b then creates file_g; never reaches success's file_a fix"}
-{"packet_id": "E22", "label": 7, "note": "creates/edits the test file before fixing file_a; later edits file_b"}
-{"packet_id": "E23", "label": 3, "note": "fail jumps to file_b; success still opens monai/"}
-{"packet_id": "E24", "label": 5, "note": "shared root views 1-4; fail continues viewing root while success ls"}
-{"packet_id": "E25", "label": 4, "note": "brief bokeh view then terminal root-view loop"}
-{"packet_id": "E26", "label": 3, "note": "fail keeps viewing root/changelog; success ls then builds repro"}
-{"packet_id": "E27", "label": 3, "note": "shared root views 1-2; fail never greps or opens the fix file"}
-{"packet_id": "E28", "label": 3, "note": "reaches dataframe/io then stops — doomed at end with no edit"}
-{"packet_id": "E29", "label": 2, "note": "fail stays on workspace root; success opens file_a"}
-{"packet_id": "E30", "label": 8, "note": "edits file_c but creates wrong test file_e and thrash-edits"}
+{"label": 5, "note": "shared root views 1-4; fail stays in view-root loop while success ls", "packet_id": "E01"}
+{"label": 3, "note": "shared root views 1-2; fail never leaves workspace root", "packet_id": "E02"}
+{"label": 3, "note": "shared root views 1-2; fail never reaches monai/", "packet_id": "E03"}
+{"label": 18, "note": "last new work before terminal file_e view loop", "packet_id": "E04"}
+{"label": 3, "note": "fail greps batch/ while success greps the fix file", "packet_id": "E05"}
+{"label": 8, "note": "shared through file_g views; fail greps instead of writing a test", "packet_id": "E06"}
+{"label": 17, "note": "shared exploration of file_b; insert/undo spiral starts here", "packet_id": "E07"}
+{"label": 7, "note": "shared through grep/view file_a; fail loops viewing file_a", "packet_id": "E08"}
+{"label": 7, "note": "fail edits file_c before establishing a working repro", "packet_id": "E09"}
+{"label": 4, "note": "fail enters cognitoidentity while success still maps the package", "packet_id": "E10"}
+{"label": 9, "note": "after one str_replace on file_b, fail thrash-edits and never builds a test", "packet_id": "E11"}
+{"label": 4, "note": "fail greps awslambda; success builds a repro first", "packet_id": "E12"}
+{"label": 2, "note": "fail creates a test file immediately; success still exploring", "packet_id": "E13"}
+{"label": 2, "note": "fail stays on workspace root; success enters mypy/", "packet_id": "E14"}
+{"label": 10, "note": "after first test run, undo/wrong-edit spiral", "packet_id": "E15"}
+{"label": 8, "note": "last distinct target before long file_c view loop", "packet_id": "E16"}
+{"label": 6, "note": "target-width agree on str_replace file_a; fail then adds a failing create/test path", "packet_id": "E17"}
+{"label": 3, "note": "shared root views 1-2; fail never leaves root", "packet_id": "E18"}
+{"label": 9, "note": "reconnects at file_a then applies a wrong str_replace", "packet_id": "E19"}
+{"label": 3, "note": "shared root views 1-2; fail never leaves root", "packet_id": "E20"}
+{"label": 8, "note": "edits file_b then creates file_g; never reaches success's file_a fix", "packet_id": "E21"}
+{"label": 7, "note": "creates/edits the test file before fixing file_a; later edits file_b", "packet_id": "E22"}
+{"label": 3, "note": "fail jumps to file_b; success still opens monai/", "packet_id": "E23"}
+{"label": 5, "note": "shared root views 1-4; fail continues viewing root while success ls", "packet_id": "E24"}
+{"label": 4, "note": "brief bokeh view then terminal root-view loop", "packet_id": "E25"}
+{"label": 3, "note": "fail keeps viewing root/changelog; success ls then builds repro", "packet_id": "E26"}
+{"label": 3, "note": "shared root views 1-2; fail never greps or opens the fix file", "packet_id": "E27"}
+{"label": 3, "note": "reaches dataframe/io then stops \u2014 doomed at end with no edit", "packet_id": "E28"}
+{"label": 2, "note": "fail stays on workspace root; success opens file_a", "packet_id": "E29"}
+{"label": 8, "note": "edits file_c but creates wrong test file_e and thrash-edits", "packet_id": "E30"}
+{"label": 9, "note": "wrong-target edit at 8, then goes off-task cloning an unrelated external repo", "packet_id": "E31"}
+{"label": 9, "note": "reproduces the bug like success, then 9-16 stuck re-viewing the tree, never finds the parser", "packet_id": "E32"}
+{"label": 16, "note": "8-15 varied thrashing on the precision kwarg; 16 on repeats one add/remove/run cycle verbatim", "packet_id": "E33"}
+{"label": 7, "note": "insert lands outside the class (success inserts inside PythonRequireInfo); 10-18 indentation thrash", "packet_id": "E34"}
+{"label": 18, "note": "insert at 219 duplicates the branch; 19-50 is an unbroken indentation-fix loop", "packet_id": "E35"}
+{"label": 3, "note": "gives up exploring and guesses module paths where success escaped with ls -R", "packet_id": "E36"}
+{"label": 21, "note": "21-48 is a strict insert/run/undo cycle on the same regex block", "packet_id": "E37"}
+{"label": 9, "note": "single shallow edit; never touches the _skip helpers success needed, ends after one test", "packet_id": "E38"}
+{"label": 4, "note": "success leaves the root at 4; failure keeps re-viewing root to the end", "packet_id": "E39"}
+{"label": 16, "note": "16 onward repeats the same four view windows nine times; never edits anything", "packet_id": "E40"}
+{"label": 10, "note": "inserts a warning instead of implementing the BCE path success added", "packet_id": "E41"}
+{"label": 32, "note": "edits the wrong file with a nonexistent import; 36-41 only writes wrapper scripts", "packet_id": "E42"}
+{"label": 31, "note": "starts editing library internals for debug prints; never returns to a working harness", "packet_id": "E43"}
+{"label": 3, "note": "success leaves the root at 3; failure only re-views root", "packet_id": "E44"}
+{"label": 23, "note": "23-50 repeats one view/edit/mypy cycle verbatim four times", "packet_id": "E45"}
+{"label": 26, "note": "tracks success through the mock harness, then 26-30 repeats one delete/insert pair verbatim", "packet_id": "E46"}
+{"label": 15, "note": "15-30 walks the same line one indent level deeper each time, oscillating between two", "packet_id": "E47"}
+{"label": 4, "note": "only ever views the repo root; success escapes with ls -R at 5", "packet_id": "E48"}
+{"label": 11, "note": "makes the model-side fix but never adds the kwarg at the request layer success fixed first", "packet_id": "E49"}
+{"label": 9, "note": "edits the concat branch but not the type-check that still rejects MetaTensor; ends unverified", "packet_id": "E50"}
+{"label": 3, "note": "success leaves the root at 3; failure only re-views root", "packet_id": "E51"}
+{"label": 26, "note": "last edit is 24; 26-38 is views and reruns with no further change", "packet_id": "E52"}
+{"label": 3, "note": "success leaves the root at 3; failure only re-views root", "packet_id": "E53"}
+{"label": 13, "note": "gives up on reproducing and applies the same failing edit four times", "packet_id": "E54"}
+{"label": 8, "note": "fixes the backend dict instead of the XML template; never touches source again", "packet_id": "E55"}
+{"label": 26, "note": "8-21 mirrors the successful edits; 26 on cycles through permute forms already tried", "packet_id": "E56"}
+{"label": 12, "note": "reruns mypy unchanged and switches to proposing a strategy; never edits anything", "packet_id": "E57"}
+{"label": 3, "note": "success leaves the root at 3; failure only re-views root", "packet_id": "E58"}
+{"label": 11, "note": "repeats the identical indentation replace four times after the run at 10", "packet_id": "E59"}
+{"label": 10, "note": "replace fails on a non-unique string; 10-49 scans the file in windows without editing", "packet_id": "E60"}
+{"label": 6, "note": "edits only the gcc branch it never exercised; its repro tests the other flag function", "packet_id": "E61"}
+{"label": 11, "note": "inserts the import unindented inside the method; 14-48 is fallout, including overwriting the file", "packet_id": "E62"}
+{"label": 14, "note": "invents an identifier-normalizing helper instead of the one-line replace fix; never reconsiders", "packet_id": "E63"}
+{"label": 10, "note": "renames the import to a class that does not exist, then invents it rather than renaming", "packet_id": "E64"}
+{"label": 7, "note": "adds overwrite logic beyond the limit change success made, and mangles the block doing it", "packet_id": "E65"}
+{"label": 10, "note": "after the failing test it inserts a comment, then rewrites empty_like eagerly and ends weakening its own assertions", "packet_id": "E66"}
+{"label": 10, "note": "makes types.py depend on TypeJoinVisitor, forcing the circular import the rest of the run fights", "packet_id": "E67"}
+{"label": 3, "note": "success leaves the root at 3; failure only re-views root", "packet_id": "E68"}
+{"label": 17, "note": "only patches the configuration default; never fixes get_work_group returning None", "packet_id": "E69"}
+{"label": 21, "note": "adds the field to the JSON template; success added it to to_xml, which is what both responses render", "packet_id": "E70"}
+{"label": 8, "note": "same torch.where rewrite but reduces over dim=1 instead of the last axis", "packet_id": "E71"}
+{"label": 4, "note": "writes a repro against a function that is not importable and never edits the check itself", "packet_id": "E72"}
+{"label": 3, "note": "initializes the operator to None so the branch is skipped, rather than assigning it before the test", "packet_id": "E73"}
+{"label": 3, "note": "success descends into moto at 3; failure re-views root 13 times and edits nothing", "packet_id": "E74"}
+{"label": 3, "note": "success descends into moto at 3; failure only re-views root", "packet_id": "E75"}
+{"label": 13, "note": "pip-installs a release over the editable checkout before editing it, so later source edits cannot take effect", "packet_id": "E76"}
+{"label": 8, "note": "edits the repro to pass a region instead of registering the per-region backends", "packet_id": "E77"}
+{"label": 12, "note": "routes through message_registry, which changes the text but not the code, so mypy still reports misc", "packet_id": "E78"}
+{"label": 12, "note": "patches the missing-params check to tolerate negatives instead of teaching the AST reader about unary minus", "packet_id": "E79"}
+{"label": 7, "note": "writes the repro against a standalone motoserver; 8-23 is all server and port wrangling", "packet_id": "E80"}
