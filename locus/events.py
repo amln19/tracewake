@@ -10,11 +10,17 @@ from pydantic import (
     ConfigDict,
     Field,
     JsonValue,
+    StringConstraints,
     TypeAdapter,
     model_validator,
 )
 
 SCHEMA_VERSION = 3
+
+# Every digest locus writes comes from sha256_hex. Constraining the schema keeps
+# a cassette from smuggling a path through BlobRef and having the blob store
+# open it.
+DIGEST_PATTERN = r"^[0-9a-f]{64}$"
 
 
 def canonical_json(value: Any) -> str:
@@ -42,7 +48,7 @@ def sha256_hex(data: bytes) -> str:
 
 
 class BlobRef(BaseModel):
-    digest: str
+    digest: Annotated[str, StringConstraints(pattern=DIGEST_PATTERN)]
     size: int
 
 

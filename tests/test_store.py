@@ -45,6 +45,29 @@ def test_missing_blob_says_what_to_do(tmp_path: Path) -> None:
     store.close()
 
 
+def test_a_path_shaped_digest_is_refused(tmp_path: Path) -> None:
+    store = Store(tmp_path)
+    secret = tmp_path / "secret.txt"
+    secret.write_text("TOP SECRET\n")
+    evil = "../../../.." + str(secret)
+    with pytest.raises(ValueError, match="64-character lowercase hex"):
+        store.blobs.has(evil)
+    with pytest.raises(ValueError, match="64-character lowercase hex"):
+        store.blobs.get(evil)
+    store.close()
+
+
+def test_blob_ref_rejects_a_non_digest_string() -> None:
+    from pydantic import ValidationError
+
+    from locus.events import BlobRef
+
+    with pytest.raises(ValidationError):
+        BlobRef(digest="../../../etc/passwd", size=1)
+    with pytest.raises(ValidationError):
+        BlobRef(digest="abcd", size=1)
+
+
 def test_sequence_numbers_are_dense_under_concurrent_appends(tmp_path: Path) -> None:
     store = Store(tmp_path)
     run_id = _run(store)

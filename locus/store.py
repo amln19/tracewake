@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import tempfile
 import threading
 from pathlib import Path
 
 from .events import (
+    DIGEST_PATTERN,
     EVENT_ADAPTER,
     SCHEMA_VERSION,
     AnyEvent,
@@ -18,6 +20,8 @@ from .events import (
     ToolCallEvent,
     sha256_hex,
 )
+
+_DIGEST_RE = re.compile(DIGEST_PATTERN)
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS runs (
@@ -83,6 +87,13 @@ class BlobStore:
         return self._path(digest).exists()
 
     def _path(self, digest: str) -> Path:
+        # Schema validation catches this on import; refuse here too so a caller
+        # that builds a path from an untrusted string cannot escape the root.
+        if not _DIGEST_RE.fullmatch(digest):
+            raise ValueError(
+                f"blob digest {digest!r} is not a 64-character lowercase hex sha-256. "
+                f"Refuse to resolve it as a path under {self.root}."
+            )
         return self.root / digest[:2] / digest[2:4] / digest
 
 
