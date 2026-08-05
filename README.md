@@ -340,7 +340,9 @@ overlap of changed files. The weights were chosen before any hand labels were
 scored, so the accuracy number is not a product of tuning on the evaluation set.
 Reasoning embeddings use a pinned local model (`mlx-community/bge-small-en-v1.5-bf16`);
 install the optional extra with `uv sync --extra embeddings`. `--lexical` skips
-the model and scores reasoning text by string similarity instead.
+the model and scores reasoning text by string similarity instead. MLX is Apple
+silicon only, so `--lexical` is the path everywhere else; it scores the same
+32/41 on this corpus, and the ablations below say why that is unsurprising.
 
 The headline rate is not uniform across the set. On the stricter 3:1 length
 subset the aligner is at 21/30 against 7/30 for first-difference; on the 29
