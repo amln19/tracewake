@@ -47,11 +47,10 @@ def main(argv: list[str] | None = None) -> int:
     lab = sub.add_parser(
         "label", help="Label the blinded packets one at a time, resumable."
     )
-    lab.add_argument("--sheet", default="pass1", help="Sheet to fill (default: pass1).")
     lab.add_argument(
         "--shuffle",
         action="store_true",
-        help="Present packets in a different order — use this for a second pass.",
+        help="Present packets in shuffled order instead of sheet order.",
     )
     replay = sub.add_parser(
         "replay-fidelity",
@@ -83,18 +82,8 @@ def main(argv: list[str] | None = None) -> int:
         "--labels",
         type=Path,
         default=None,
-        help="Label JSONL (default: corpus/labels/pass1.jsonl when --score).",
+        help="Label JSONL (default: corpus/labels/labels.jsonl when --score).",
     )
-    sub.add_parser(
-        "init-pass2",
-        help="Create a blank pass2.jsonl over the existing labeling packets.",
-    )
-    agree = sub.add_parser(
-        "self-agreement",
-        help="Report label agreement between two passes.",
-    )
-    agree.add_argument("--a", type=Path, default=None, help="First sheet (default pass1).")
-    agree.add_argument("--b", type=Path, default=None, help="Second sheet (default pass2).")
     judge = sub.add_parser(
         "llm-judge",
         help="Run the LLM-as-judge baseline on the blinded packets.",
@@ -106,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     sub.add_parser(
         "ablations",
-        help="Score pre-specified aligner ablations against pass1 labels.",
+        help="Score pre-specified aligner ablations against hand labels.",
     )
     cf = sub.add_parser(
         "intervene",
@@ -171,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
             n = len(list((dest / "packets").glob("*.md")))
             print(f"{n} blinded packets written under {dest}")
         case "label":
-            print(label.label_interactively(sheet=args.sheet, shuffle=args.shuffle))
+            print(label.label_interactively(shuffle=args.shuffle))
         case "replay-fidelity":
             match args.replay_command:
                 case "record":
@@ -190,16 +179,6 @@ def main(argv: list[str] | None = None) -> int:
                     score_labels=args.score,
                 )
             )
-        case "init-pass2":
-            path = aligneval.init_pass_sheet("pass2")
-            print(f"pass2 sheet ready at {path}")
-        case "self-agreement":
-            kwargs = {}
-            if args.a is not None:
-                kwargs["pass_a"] = args.a
-            if args.b is not None:
-                kwargs["pass_b"] = args.b
-            print(aligneval.self_agreement(**kwargs))
         case "llm-judge":
             print(aligneval.run_llm_judge(model_id=args.model))
         case "ablations":

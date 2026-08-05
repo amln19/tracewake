@@ -35,7 +35,7 @@ from locus.align import (
 )
 
 from .fidelity import ledger_rows
-from .label import LABEL_ROOT, SELECT_SEED, SelectedPair, select_pairs
+from .label import LABELS_FILE, LABEL_ROOT, SELECT_SEED, SelectedPair, select_pairs
 from .repos import CORPUS_ROOT
 from .runner import LEDGER, STORE
 
@@ -364,54 +364,6 @@ def score(
     return "\n".join(lines)
 
 
-def init_pass_sheet(pass_name: str = "pass2", dest: Path = LABEL_ROOT) -> Path:
-    """Blank label sheet for a second pass over the existing packets."""
-    key = _key_by_packet(dest / "key.jsonl")
-    path = dest / f"{pass_name}.jsonl"
-    if path.exists():
-        existing = [
-            json.loads(line)
-            for line in path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
-        if existing:
-            return path
-    with path.open("w", encoding="utf-8") as fh:
-        for packet_id in sorted(key):
-            fh.write(
-                json.dumps({"packet_id": packet_id, "label": None, "note": ""}, sort_keys=True)
-                + "\n"
-            )
-    return path
-
-
-def self_agreement(
-    pass_a: Path = LABEL_ROOT / "pass1.jsonl",
-    pass_b: Path = LABEL_ROOT / "pass2.jsonl",
-    tol: int = 2,
-) -> str:
-    a = _load_labels(pass_a)
-    b = _load_labels(pass_b)
-    shared = sorted(set(a) & set(b))
-    if not shared:
-        return (
-            f"no overlapping labels between {pass_a.name} ({len(a)}) and "
-            f"{pass_b.name} ({len(b)}). Finish the second pass first."
-        )
-    exact = sum(1 for p in shared if a[p] == b[p])
-    within = sum(1 for p in shared if within_tol(a[p], b[p], tol))
-    mae = median_abs_error([a[p] for p in shared], [b[p] for p in shared])
-    return "\n".join(
-        [
-            "label agreement between two passes (floor under measured accuracy)",
-            f"  pairs labeled both passes  {len(shared)}",
-            f"  exact agreement            {exact}/{len(shared)} ({exact / len(shared):.1%})",
-            f"  within±{tol}                   {within}/{len(shared)} ({within / len(shared):.1%})",
-            f"  median |pass1 − pass2|     {mae:.1f}",
-        ]
-    )
-
-
 def _parse_judge_label(text: str, lo: int, hi: int) -> int | None:
     import re
 
@@ -522,7 +474,7 @@ def _arm_config(name: str) -> AlignConfig:
 def run_ablations(
     store: Path = STORE,
     ledger: Path = LEDGER,
-    labels_path: Path = LABEL_ROOT / "pass1.jsonl",
+    labels_path: Path = LABEL_ROOT / LABELS_FILE,
     out: Path = ABLATION_SHEET,
 ) -> str:
     """Score every pre-specified arm. Writes the sheet; returns the table."""
@@ -637,12 +589,10 @@ def predict_and_score(
     """
     label_path = labels
     if score_labels and label_path is None:
-        label_path = LABEL_ROOT / "pass1.jsonl"
-    # A sensitivity check against a second label sheet writes its own file. The
-    # sheet carries a `label` column, so scoring against pass 2 into the shared
-    # path would silently replace the evaluation of record with a variant of it.
+        label_path = LABEL_ROOT / LABELS_FILE
+    default_labels = LABEL_ROOT / LABELS_FILE
     out = PRED_SHEET
-    if label_path is not None and label_path.stem != "pass1":
+    if label_path is not None and label_path.resolve() != default_labels.resolve():
         out = PRED_ROOT / f"predictions-{label_path.stem}.jsonl"
     preds = run_predictions(
         out=out,
@@ -660,11 +610,9 @@ def predict_and_score(
     if score_labels:
         lines.append("")
         lines.append(score(preds))
-        lines.append("")
-        lines.append(self_agreement())
     else:
         lines.append(
-            "labels not scored (pass --score with a label sheet after pass 2). "
+            "labels not scored (pass --score after labeling is complete). "
             "Per-pair file is at the path above; leave it closed during labeling."
         )
     return "\n".join(lines)

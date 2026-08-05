@@ -21,6 +21,7 @@ from .repos import CORPUS_ROOT
 from .runner import LEDGER, STORE
 
 LABEL_ROOT = CORPUS_ROOT / "labels"
+LABELS_FILE = "labels.jsonl"
 SELECT_SEED = 20260730
 # Bumped once after a pre-anonymization export briefly exposed package paths on
 # the page under the previous shuffle; a fresh shuffle keeps that glimpse from
@@ -301,7 +302,7 @@ def export_packets(
         for row in key_rows:
             fh.write(json.dumps(row, sort_keys=True) + "\n")
 
-    sheet = dest / "pass1.jsonl"
+    sheet = dest / LABELS_FILE
     if not sheet.exists():
         with sheet.open("w", encoding="utf-8") as fh:
             for row in key_rows:
@@ -320,13 +321,14 @@ def export_packets(
                 "Blind divergence labels for the alignment evaluation set.",
                 "",
                 "  packets/     one markdown file per pair, anonymous ids, shuffled.",
-                "  key.jsonl    maps packet_id → task/run. Do not open during a pass.",
-                "  pass1.jsonl  labels for the first pass. Write an integer in `label`.",
-                "  pass2.jsonl  created for the second pass the same way, later.",
+                "  key.jsonl    maps packet_id → task/run. Do not open during labeling.",
+                f"  {LABELS_FILE}  hand labels — write an integer step in `label`.",
                 "",
                 f"Selection seed {select_seed}; shuffle seed {shuffle_seed}.",
                 f"{len(key_rows)} pairs. Definition is at the top of every packet.",
                 "",
+                "Label:  python -m bench label",
+                "Score:  python -m bench align-eval --score",
             ]
         ),
         encoding="utf-8",
@@ -390,34 +392,31 @@ def _parse_entry(answer: str, limit: int) -> tuple[int, str] | None:
 
 
 def label_interactively(
-    sheet: str = "pass1",
     dest: Path = LABEL_ROOT,
     shuffle: bool = False,
 ) -> str:
     """Walk the unlabeled packets one at a time, writing after every answer.
 
     Nothing about the pair beyond the packet is shown — no task id, no run id,
-    no previous pass, no method prediction. Writing as it goes is what makes a
-    pass resumable across sittings, which a 41-packet pass needs to be.
+    no method prediction. Writing as it goes is what makes labeling resumable
+    across sittings.
     """
     packets = dest / "packets"
     if not packets.is_dir():
         raise FileNotFoundError(
             f"no packets at {packets}. Run `python -m bench export-labels` first."
         )
-    path = dest / f"{sheet}.jsonl"
+    path = dest / LABELS_FILE
     rows = _sheet_rows(path, packets)
     by_id = {r["packet_id"]: r for r in rows}
 
     pending = [r for r in rows if r["label"] is None]
     if not pending:
-        return f"{sheet}: all {len(rows)} packets already labeled. Nothing to do."
+        return f"all {len(rows)} packets already labeled in {path}. Nothing to do."
     if shuffle:
-        # A second pass presented in the first pass's order cues recall of the
-        # first pass, which is the one thing it must not measure.
-        random.Random(f"{SHUFFLE_SEED}:{sheet}").shuffle(pending)
+        random.Random(SHUFFLE_SEED).shuffle(pending)
 
-    print(f"{sheet}: {len(rows) - len(pending)}/{len(rows)} done, {len(pending)} to go")
+    print(f"{len(rows) - len(pending)}/{len(rows)} done, {len(pending)} to go")
     print("Answer with one integer. Commands:")
     print(PROMPT_HELP)
 
@@ -457,4 +456,4 @@ def label_interactively(
             break
 
     remaining = sum(1 for r in rows if r["label"] is None)
-    return f"{sheet}: {len(rows) - remaining}/{len(rows)} labeled in {path}"
+    return f"{len(rows) - remaining}/{len(rows)} labeled in {path}"
