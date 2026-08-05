@@ -21,6 +21,7 @@ from .events import (
     StoredEvent,
     ToolCallEvent,
 )
+from .patches import LocusError
 
 # ---------------------------------------------------------------------------
 # Frozen a priori. Do not change after evaluation numbers are published.
@@ -453,9 +454,12 @@ class MlxEmbedder:
             from huggingface_hub import snapshot_download
             from mlx_embeddings import generate, load
         except ImportError as exc:
-            raise ImportError(
+            # LocusError rather than ImportError so the CLI prints the one line
+            # that says what to install instead of a traceback through it.
+            raise LocusError(
                 "locus alignment needs the embeddings extra. Install with "
-                "`uv sync --extra embeddings` (or `pip install 'locus[embeddings]'`)."
+                "`uv sync --extra embeddings` (or `pip install 'locus[embeddings]'`), "
+                "or pass --lexical to skip the model."
             ) from exc
 
         path = snapshot_download(model_id, revision=revision)
