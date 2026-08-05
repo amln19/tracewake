@@ -199,7 +199,9 @@ def setup(force: bool = False) -> None:
         shutil.rmtree(VENV_ROOT)
     if not VENV_ROOT.exists():
         subprocess.run(
-            ["uv", "venv", "--python", "3.13", str(VENV_ROOT)], check=True, capture_output=True
+            ["uv", "venv", "--python", sys.executable, str(VENV_ROOT)],
+            check=True,
+            capture_output=True,
         )
         subprocess.run(
             ["uv", "pip", "install", "--python", str(python()), *TEST_REQUIREMENTS],
