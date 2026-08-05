@@ -272,9 +272,15 @@ python -m bench status         # outcome rates and how many tasks came out mixed
 ```
 
 The agent runs against a local model in process, so a full corpus costs nothing
-and touches no network. It reaches the model, its tools, the filesystem and the
-clock only through a recording session, which is what makes every run replayable
-afterwards.
+and touches no network once `setup` has cloned the repos and the model is on
+disk. It reaches the model, its tools, the filesystem and the clock only through
+a recording session, which is what makes every run replayable afterwards.
+
+What ships in this repository is the labels, the scoring sheets, the task
+manifest and the per-run ledger — everything a number in this README is computed
+from, and all of it small. The recorded runs themselves are not committed, so
+the run ids in the examples above will not resolve in a fresh clone; `bench
+setup` and `bench run` rebuild a store, and `--store` points the CLI at it.
 
 Two things make the suite worth more than a pile of transcripts.
 

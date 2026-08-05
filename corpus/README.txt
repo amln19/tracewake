@@ -1,4 +1,6 @@
-What is in here (all git-excluded).
+What is in here. Only labels/, alignment/, runs.jsonl, tasks.json and this file
+are committed — every published number traces back to those, and they are
+neither large nor regenerable. The recorded stores are git-excluded.
 
   store/              the corpus: 192 recorded runs over 64 injected bugs. CLOSED
                       — the agent changed after these were recorded, so appending
