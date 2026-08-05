@@ -130,21 +130,23 @@ def _run_child(
         run_id = id_file.read_text(encoding="utf-8").strip() if id_file.exists() else ""
         # Absent when the child died before its atexit hooks ran. The counts are
         # then unknown, which is not the same as zero, so say nothing about them.
-        raw = report_file.read_text(encoding="utf-8") if report_file.exists() else ""
+        report = (
+            ReplayReport(**json.loads(report_file.read_text(encoding="utf-8")))
+            if report_file.exists()
+            else None
+        )
     if not run_id:
         raise typer.BadParameter(
             f"{command[0]!r} exited without opening a locus session. The wrapper injects "
             f"itself through sitecustomize, which only applies to Python programs."
         )
-    report = ReplayReport(**json.loads(raw)) if raw else None
     return completed.returncode, run_id, report
 
 
-def _report(store: Store, run_id: str, code: int, replay: ReplayReport | None = None) -> None:
+def _report(store: Store, run_id: str, code: int) -> None:
     header = store.run(run_id)
     models = ", ".join(f"{m.provider}/{m.model_id}" for m in header.models) or "no model calls"
     typer.echo(f"run {run_id}  cassette {header.name!r}  {models}")
-    _echo_replay(replay)
     if code != 0:
         typer.echo(f"the recorded program exited {code}", err=True)
 
@@ -185,7 +187,8 @@ def record(
     )
     db = Store(store)
     db.finish_run(run_id, "ok" if code == 0 else "error", time.time())
-    _report(db, run_id, code, replay)
+    _report(db, run_id, code)
+    _echo_replay(replay)
     db.close()
     raise typer.Exit(code)
 
