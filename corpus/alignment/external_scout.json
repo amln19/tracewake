@@ -1,0 +1,69 @@
+{
+  "scouted_at": "2026-08-05",
+  "sources": [
+    {
+      "id": "SWE-Gym/OpenHands-Sampled-Trajectories",
+      "downloadable": true,
+      "schema": ["instance_id", "run_id", "resolved", "messages", "tools", "test_result"],
+      "rollouts": 6055,
+      "instances": 2438,
+      "mixed_instances": 188,
+      "same_model_mixed_groups": 160,
+      "same_model_pairs_ratio_le_4": 129,
+      "models_in_pairs": ["gpt-4o-2024-08-06"],
+      "multi_instruction_mixed_instances": 0,
+      "median_failing_steps_after_strip": 18,
+      "terminal_action": "finish",
+      "structural": {
+        "aligner_equals_first_diff": "17/129",
+        "contestable": "112/129",
+        "aligner_on_last_step": "20/129",
+        "affine_changes_answer": "46/129"
+      },
+      "labeled_subset": {
+        "n": 30,
+        "seed": 20260805,
+        "aligner_within_2": "12/30",
+        "baseline_a_within_2": "12/30",
+        "baseline_b_within_2": "12/30"
+      },
+      "chosen": true,
+      "why": "Same OpenHands scaffold, one model, shared PR instruction per instance, 129 pairs under the corpus length gate after stripping finish."
+    },
+    {
+      "id": "SWE-Gym/MoatlessTools-Sampled-Trajectories",
+      "downloadable": true,
+      "schema": "zip archives under 7b/ and 32b/, not a tabular HF split",
+      "chosen": false,
+      "why": "Harder reader; OpenHands already supplies enough same-scaffold pairs."
+    },
+    {
+      "id": "SWE-Gym/OpenHands-Verifier-Trajectories",
+      "downloadable": true,
+      "schema": ["messages", "resolved"],
+      "chosen": false,
+      "why": "Judge/verifier prompts, not agent tool traces; no instance_id."
+    },
+    {
+      "id": "SWE-bench/SWE-smith-trajectories",
+      "downloadable": true,
+      "same_instruction_pairs": 0,
+      "chosen": false,
+      "why": "Already refused by load_pairs; fix-source vs bug-report pairing artifact."
+    },
+    {
+      "id": "SWE-bench leaderboard trajs/ (s3://swe-bench-submissions)",
+      "downloadable": true,
+      "openhands_like_verified_submissions": 11,
+      "chosen": false,
+      "why": "Usable for cross-submission pairs but typically cross-model; formats vary per submission. Same-scaffold HF dump is cleaner."
+    },
+    {
+      "id": "Who&When",
+      "chosen": false,
+      "why": "Single failing transcripts with decisive-error labels — different task from good/bad pair alignment."
+    }
+  ],
+  "decision": "SWE-Gym/OpenHands-Sampled-Trajectories",
+  "adapter_follow_on": "Thin adapter should wrap an OpenHands-style tool loop (str_replace_editor + execute_bash + finish) or a generic OpenAI-compatible client with the same tools — not mitmproxy, not a full OpenHands product dep."
+}

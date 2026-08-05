@@ -1,0 +1,30 @@
+{"packet_id": "E01", "label": 5, "note": "shared root views 1-4; fail stays in view-root loop while success ls"}
+{"packet_id": "E02", "label": 3, "note": "shared root views 1-2; fail never leaves workspace root"}
+{"packet_id": "E03", "label": 3, "note": "shared root views 1-2; fail never reaches monai/"}
+{"packet_id": "E04", "label": 18, "note": "last new work before terminal file_e view loop"}
+{"packet_id": "E05", "label": 3, "note": "fail greps batch/ while success greps the fix file"}
+{"packet_id": "E06", "label": 8, "note": "shared through file_g views; fail greps instead of writing a test"}
+{"packet_id": "E07", "label": 17, "note": "shared exploration of file_b; insert/undo spiral starts here"}
+{"packet_id": "E08", "label": 7, "note": "shared through grep/view file_a; fail loops viewing file_a"}
+{"packet_id": "E09", "label": 7, "note": "fail edits file_c before establishing a working repro"}
+{"packet_id": "E10", "label": 4, "note": "fail enters cognitoidentity while success still maps the package"}
+{"packet_id": "E11", "label": 9, "note": "after one str_replace on file_b, fail thrash-edits and never builds a test"}
+{"packet_id": "E12", "label": 4, "note": "fail greps awslambda; success builds a repro first"}
+{"packet_id": "E13", "label": 2, "note": "fail creates a test file immediately; success still exploring"}
+{"packet_id": "E14", "label": 2, "note": "fail stays on workspace root; success enters mypy/"}
+{"packet_id": "E15", "label": 10, "note": "after first test run, undo/wrong-edit spiral"}
+{"packet_id": "E16", "label": 8, "note": "last distinct target before long file_c view loop"}
+{"packet_id": "E17", "label": 6, "note": "target-width agree on str_replace file_a; fail then adds a failing create/test path"}
+{"packet_id": "E18", "label": 3, "note": "shared root views 1-2; fail never leaves root"}
+{"packet_id": "E19", "label": 9, "note": "reconnects at file_a then applies a wrong str_replace"}
+{"packet_id": "E20", "label": 3, "note": "shared root views 1-2; fail never leaves root"}
+{"packet_id": "E21", "label": 8, "note": "edits file_b then creates file_g; never reaches success's file_a fix"}
+{"packet_id": "E22", "label": 7, "note": "creates/edits the test file before fixing file_a; later edits file_b"}
+{"packet_id": "E23", "label": 3, "note": "fail jumps to file_b; success still opens monai/"}
+{"packet_id": "E24", "label": 5, "note": "shared root views 1-4; fail continues viewing root while success ls"}
+{"packet_id": "E25", "label": 4, "note": "brief bokeh view then terminal root-view loop"}
+{"packet_id": "E26", "label": 3, "note": "fail keeps viewing root/changelog; success ls then builds repro"}
+{"packet_id": "E27", "label": 3, "note": "shared root views 1-2; fail never greps or opens the fix file"}
+{"packet_id": "E28", "label": 3, "note": "reaches dataframe/io then stops — doomed at end with no edit"}
+{"packet_id": "E29", "label": 2, "note": "fail stays on workspace root; success opens file_a"}
+{"packet_id": "E30", "label": 8, "note": "edits file_c but creates wrong test file_e and thrash-edits"}

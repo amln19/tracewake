@@ -61,8 +61,15 @@ Ablations on the same 41: target-width argument similarity alone matches the
 full distance (33/41); bag-of-words reasoning matches the pinned embedder
 (33/41); linear gaps lose three pairs; dropping reasoning gains one. On this
 corpus the load-bearing piece is target-width args, not affine gaps or
-embeddings. Transfer to published SWE-agent rollouts is untested — that corpus
-yields no same-instruction pass/fail pairs.
+embeddings.
+
+Transfer: `SWE-smith-trajectories` still yields no same-instruction pairs.
+`SWE-Gym/OpenHands-Sampled-Trajectories` does — 129 same-model (gpt-4o)
+OpenHands pairs under the corpus length gate after stripping `finish`. On a
+30-pair blinded hand-labeled subset (single annotator), the aligner and both
+positional baselines each hit 12/30 within ±2 — no transfer win on this sheet.
+Scout notes and packets: `corpus/alignment/external_scout.json`,
+`corpus/labels/external/`.
 
 ## Quick start
 
@@ -167,6 +174,10 @@ python -m bench setup
 python -m bench build-tasks
 python -m bench run
 python -m bench status          # works from the committed ledger alone
+python -m bench external scout  # published-trajectory inventory
+python -m bench external openhands   # needs: pip install datasets
+python -m bench external export      # 30 blinded transfer packets
+python -m bench external score       # after filling corpus/labels/external/labels.jsonl
 ```
 
 ## Development

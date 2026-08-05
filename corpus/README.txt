@@ -18,5 +18,8 @@ neither large nor regenerable. The recorded stores are git-excluded.
                       key.jsonl maps packet ids back to runs — do not open it
                       during a labeling pass. Rebuild with
                       `python -m bench export-labels`.
+                      labels/external/ is the OpenHands transfer sheet (30
+                      packets); fill labels.jsonl then `bench external score`.
+  alignment/          prediction sheets and external_scout.json (source inventory).
   archive-prefix11/   superseded runs from earlier agent versions. Never merge
                       these with store/ — its own README says why.

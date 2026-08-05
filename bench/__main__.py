@@ -112,10 +112,25 @@ def main(argv: list[str] | None = None) -> int:
 
     ext = sub.add_parser(
         "external",
-        help="Align published SWE-agent rollouts to see what the corpus's shape hides.",
+        help="Scout / load / label published agent trajectories for transfer eval.",
     )
-    ext.add_argument("shard", type=Path, help="A SWE-smith-trajectories parquet shard.")
-    ext.add_argument("--model", default="claude-3-5-sonnet-20241022")
+    ext.add_argument(
+        "source",
+        nargs="?",
+        default="scout",
+        help="scout | openhands | export | score | or a SWE-smith parquet path",
+    )
+    ext.add_argument(
+        "--model",
+        default=None,
+        help="Model filter (OpenHands default gpt-4o-2024-08-06; SWE-smith default claude).",
+    )
+    ext.add_argument(
+        "--n",
+        type=int,
+        default=30,
+        help="How many OpenHands pairs to export for labeling.",
+    )
 
     cfd = sub.add_parser(
         "fork-diff", help="Align a forked run against the run it was forked from."
@@ -197,7 +212,28 @@ def main(argv: list[str] | None = None) -> int:
         case "external":
             from . import external
 
-            print(external.report(args.shard, model=args.model))
+            source = args.source
+            if source == "scout":
+                print(external.report_scout())
+            elif source == "openhands":
+                model = args.model or "gpt-4o-2024-08-06"
+                print(external.report_openhands(model=model))
+            elif source == "export":
+                dest = external.export_openhands_packets(
+                    n=args.n, model=args.model or "gpt-4o-2024-08-06"
+                )
+                n = len(list((dest / "packets").glob("*.md")))
+                print(f"{n} blinded external packets under {dest}")
+            elif source == "score":
+                print(
+                    external.score_openhands_labels(
+                        model=args.model or "gpt-4o-2024-08-06"
+                    )
+                )
+            else:
+                shard = Path(source)
+                model = args.model or "claude-3-5-sonnet-20241022"
+                print(external.report_swesmith(shard, model=model))
         case "fork-diff":
             print(counterfactual.fork_diff(args.run, lexical=args.lexical))
     return 0
