@@ -186,7 +186,11 @@ def record(
         target, command, store, mode, redact=not no_redact  # type: ignore[arg-type]
     )
     db = Store(store)
-    db.finish_run(run_id, "ok" if code == 0 else "error", time.time())
+    # Pure replay must not rewrite the recording. can_record comes back over the
+    # report channel because the parent cannot infer it — report is None also
+    # means the child died before atexit, in which case finish the run if we can.
+    if replay is None or replay.can_record:
+        db.finish_run(run_id, "ok" if code == 0 else "error", time.time())
     _report(db, run_id, code)
     _echo_replay(replay)
     db.close()

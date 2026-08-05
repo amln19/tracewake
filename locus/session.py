@@ -402,7 +402,6 @@ class Session:
         self.mode = mode
         self.config = config
         self.header = header
-        self.report = ReplayReport()
         self.intervention = intervention
         self.blocks_dropped = 0
         self._turn = 0
@@ -416,6 +415,7 @@ class Session:
         self.can_record = mode == "all" or mode == "new_episodes" or (
             mode == "once" and not self.can_replay
         )
+        self.report = ReplayReport(can_record=self.can_record)
         # A fork replays the model and re-executes the world. Serving a recorded
         # tool result would skip its effect on the working tree, so a run that
         # continued past the change would act on a tree the replayed prefix

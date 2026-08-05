@@ -149,6 +149,61 @@ def test_the_wrapper_records_a_script_that_opens_its_own_session(tmp_path: Path)
     db.close()
 
 
+def test_once_replay_does_not_rewrite_the_recording(tmp_path: Path) -> None:
+    store = tmp_path / "store"
+    marker = tmp_path / "second"
+    script = tmp_path / "agent.py"
+    script.write_text(
+        "import os, locus\n"
+        f"marker = {str(marker)!r}\n"
+        "s = locus.current()\n"
+        "s.clock.time()\n"
+        "if os.path.exists(marker):\n"
+        "    s.clock.time()\n"
+        "s.outcome(status='ok')\n"
+    )
+
+    first = _locus(
+        "record",
+        "--store",
+        str(store),
+        "--name",
+        "demo",
+        "--mode",
+        "once",
+        "--",
+        sys.executable,
+        str(script),
+    )
+    assert first.returncode == 0, first.stderr
+    db = Store(store)
+    recorded = db.latest_named("demo")
+    finished_at = recorded.finished_at
+    assert recorded.status == "ok"
+    db.close()
+
+    marker.write_text("x")
+    second = _locus(
+        "record",
+        "--store",
+        str(store),
+        "--name",
+        "demo",
+        "--mode",
+        "once",
+        "--",
+        sys.executable,
+        str(script),
+    )
+    assert second.returncode != 0
+
+    db = Store(store)
+    after = db.run(recorded.run_id)
+    db.close()
+    assert after.status == "ok"
+    assert after.finished_at == finished_at
+
+
 def test_replay_reruns_the_recorded_command_without_being_told_it(tmp_path: Path) -> None:
     store = tmp_path / "store"
     run_id = _record_wrapped(tmp_path, store)

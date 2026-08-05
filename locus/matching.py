@@ -21,6 +21,11 @@ class ReplayReport:
     A diagnostic, not just plumbing: `degraded` counts calls that were matched
     without `messages_hash` among the matchers, so the request was accepted
     without proving it is the request that was recorded.
+
+    `can_record` travels with the counts so the CLI parent knows whether the
+    child owned the run. A pure replay must not rewrite the recording, and the
+    parent cannot infer ownership — an absent report also means the child died
+    before atexit.
     """
 
     recorded_calls: int = 0
@@ -30,6 +35,7 @@ class ReplayReport:
     recorded_new: int = 0
     tool_calls_replayed: int = 0
     misses: list[str] = field(default_factory=list)
+    can_record: bool = True
 
     @property
     def unconsumed(self) -> int:
