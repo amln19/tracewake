@@ -95,6 +95,23 @@ locus replay <run-id>
 For CI, the pytest fixture `locus_cassette` defaults to replay-only (`none`).
 Replay needs `PYTHONHASHSEED=0` (the CLI sets it; elsewhere locus tells you).
 
+A runnable version of this, wired through the tool-calling shape most
+OpenAI-compatible clients speak rather than this repo's own agent, is in
+`examples/openai_agent.py`. `python examples/demo.py` records two variant
+runs and diffs them, no API key or network needed:
+
+```
+divergence at BAD eac669ff step 2
+alignment score 0.274  length ratio 1.50
+embeddings lexical@unpinned
+
+      GOOD 98ff2afd                             BAD eac669ff
+------------------------------------------------------------
+   =  1. get_weather → Lisbon                   1. get_weather → Lisbon
+      —                                         >>> 2. get_weather → Lisbon, Portugal
+   |  2. write_note → trip-notes.txt            3. write_note → error-log.txt
+```
+
 ## How it works
 
 - **Records** every nondeterministic input the agent consumes: model calls
