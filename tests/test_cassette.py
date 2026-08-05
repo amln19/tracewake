@@ -163,6 +163,41 @@ def test_blobs_travel_with_the_cassette(tmp_path: Path) -> None:
     assert any(b.is_file() and b.read_bytes() == b"tool output" for b in blobs)
 
 
+def test_an_outcome_patch_blob_travels_with_the_cassette(tmp_path: Path) -> None:
+    patch = "--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n"
+    source, target = tmp_path / "a", tmp_path / "b"
+    with locus.record("patched", store=source) as rec:
+        rec.outcome(status="ok", resolve=True, coverage=True, patch=patch)
+        run_id = rec.run_id
+
+    db = Store(source)
+    export_cassette(db, run_id, tmp_path / "cassette")
+    db.close()
+
+    into = Store(target)
+    import_cassette(tmp_path / "cassette", into)
+    (outcome,) = [e.event for e in into.events(run_id) if e.event.type == "outcome"]
+    assert into.blobs.get(outcome.patch.digest) == patch.encode()
+    into.close()
+
+
+def test_import_refuses_a_cassette_whose_blob_is_missing(tmp_path: Path) -> None:
+    run_id = _record(tmp_path / "a")
+    db = Store(tmp_path / "a")
+    export_cassette(db, run_id, tmp_path / "cassette")
+    db.close()
+
+    for blob in (tmp_path / "cassette" / "blobs").rglob("*"):
+        if blob.is_file():
+            blob.unlink()
+
+    into = Store(tmp_path / "b")
+    with pytest.raises(ValueError, match="references blob"):
+        import_cassette(tmp_path / "cassette", into)
+    assert into.runs() == []
+    into.close()
+
+
 def test_an_old_cassette_warns_before_it_replays(tmp_path: Path) -> None:
     run_id = _record(tmp_path / "a")
     db = Store(tmp_path / "a")

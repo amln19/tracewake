@@ -10,12 +10,10 @@ from .events import (
     EVENT_ADAPTER,
     SCHEMA_VERSION,
     AnyEvent,
-    FsReadEvent,
-    FsWriteEvent,
+    BlobRef,
     ModelIdentity,
     RunHeader,
     StoredEvent,
-    ToolCallEvent,
     run_digest,
 )
 from .store import Store
@@ -49,13 +47,27 @@ class CassetteHeader(BaseModel):
 
 
 def _blob_digests(events: list[StoredEvent]) -> set[str]:
+    """Every content-addressed blob an event points at.
+
+    Walks the event models rather than naming each field, so a new event type
+    that carries a BlobRef fails loudly on export instead of shipping without
+    its payload.
+    """
     found: set[str] = set()
+
+    def walk(value: object) -> None:
+        match value:
+            case BlobRef(digest=digest):
+                found.add(digest)
+            case BaseModel():
+                for child in value.__dict__.values():
+                    walk(child)
+            case list() | tuple():
+                for child in value:
+                    walk(child)
+
     for stored in events:
-        match stored.event:
-            case ToolCallEvent(result=ref):
-                found.add(ref.digest)
-            case FsReadEvent(content=ref) | FsWriteEvent(content=ref) if ref is not None:
-                found.add(ref.digest)
+        walk(stored.event)
     return found
 
 
@@ -166,6 +178,13 @@ def import_cassette(source: str | Path, store: Store) -> RunHeader:
     for blob in sorted(blobs.rglob("*")) if blobs.is_dir() else []:
         if blob.is_file():
             store.blobs.put(blob.read_bytes())
+
+    missing = sorted(d for d in _blob_digests(staged) if not store.blobs.has(d))
+    if missing:
+        raise ValueError(
+            f"{path} references blob {missing[0]} but that file is not under "
+            f"{blobs}. Re-export the cassette; nothing was imported."
+        )
 
     header = RunHeader(
         run_id=cassette.run_id,
