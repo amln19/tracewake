@@ -75,6 +75,13 @@ the 32/41 without that sentence is overselling it.
 Annotator self-agreement was not measured, so there is no test-retest ceiling on
 these numbers.
 
+The 41 pairs are one per task, taken from the 41 of 64 tasks that produced both
+a run with coverage and a run without, at a length ratio no worse than 4:1.
+Among a task's candidates the choice maximizes the shorter trajectory, then the
+longer, then breaks ties with a seeded shuffle. No baseline score, gap, or
+subset membership enters the selection — it is a rule about trajectory shape
+only, fixed before anything was scored.
+
 **Transfer to real-world trajectories is untested, and an attempt to test it
 failed.** `bench external` reads published SWE-agent rollouts
 (`SWE-bench/SWE-smith-trajectories`), which look ideal — many attempts per task
