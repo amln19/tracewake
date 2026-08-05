@@ -184,8 +184,23 @@ def _echo_replay(replay: ReplayReport | None) -> None:
     described the one that stopped the run, and in `new_episodes` a miss is the
     branch the caller asked for, not a fault.
     """
-    if replay is not None and replay.recorded_calls:
+    if replay is not None and (replay.recorded_calls or replay.blocks_dropped):
         typer.echo(replay.summary())
+
+
+def _diff_hint(
+    source: str,
+    forked: str,
+    store: Path,
+    source_store: Path | None,
+) -> str:
+    """Name the stores so `diff` finds both runs after a cross-store fork."""
+    cmd = f"locus diff {source} {forked}"
+    if source_store is not None and source_store.resolve() != store.resolve():
+        return f"{cmd} --store {source_store} --store-b {store}"
+    if store.resolve() != Path(".locus").resolve():
+        return f"{cmd} --store {store}"
+    return cmd
 
 
 @app.command()
@@ -261,7 +276,11 @@ def intervene_(
         typer.Option("--drop-tag", help="Provenance tag to remove from the context."),
     ] = None,
     from_step: Annotated[
-        int, typer.Option("--from-step", help="First model call to change, numbered from 0.")
+        int,
+        typer.Option(
+            "--from-step",
+            help="First model call to change, numbered from 0 (not an aligner step).",
+        ),
     ] = 0,
     name: Annotated[str, typer.Option("--name", help="Cassette name for the forked run.")] = "",
     store: StoreOption = Path(".locus"),
@@ -314,7 +333,10 @@ def intervene_(
     else:
         _finish_if_running(db, forked, code)
     _echo_replay(replay)
-    typer.echo(f"recorded {forked}  —  compare with: locus diff {run} {forked}")
+    typer.echo(
+        f"recorded {forked}  —  compare with: "
+        f"{_diff_hint(header.run_id, forked, store, source_store)}"
+    )
     db.close()
     raise typer.Exit(code)
 

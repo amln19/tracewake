@@ -132,9 +132,10 @@ locus otel <run> -o trace.json       # OTLP/JSON GenAI spans
 terminal action on every run can mask it.
 
 `intervene` replays the model and re-executes the world, so the free prefix ends
-at the first tool output that is not byte-identical to the recording. Provenance
-tags on `Message`s power both the HTML context grouping and the pprof leaves;
-untagged blocks collapse to one bucket.
+at the first tool output that is not byte-identical to the recording. The bench
+agent strips pytest wall-clock from suite output so a re-run does not break that
+prefix on timing alone. Provenance tags on `Message`s power both the HTML
+context grouping and the pprof leaves; untagged blocks collapse to one bucket.
 
 ## Evaluation
 

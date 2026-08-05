@@ -128,6 +128,9 @@ def _run_summary(
         # Per side, not one for the page: the two runs can live in different
         # stores, and a command naming the wrong one silently does nothing.
         "store": store,
+        # True when the cassette remembers how to re-exec the agent, so the
+        # neutralize command on the page can omit a placeholder `-- …`.
+        "has_command": header.command is not None,
         "task_id": header.task_id,
         "status": header.status,
         "models": [m.model_id for m in header.models],

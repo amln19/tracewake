@@ -365,9 +365,14 @@ function renderRows() {
 function neutralizeCommand(side, turn, provenance) {
   if (turn === null || turn === undefined || !provenance || provenance === "untagged") return null;
   const r = side === "good" ? D.good : D.bad;
-  return "locus intervene " + r.run_id.slice(0, 8) + " --drop-tag " + provenance +
-    " --from-step " + turn + (r.store ? " --store " + r.store : "") +
-    " -- <the command that runs your agent>";
+  // 12 chars matches the CLI's short ids; the cassette restores the agent
+  // command when has_command is set, so the placeholder is only for library
+  // recordings that never stored one.
+  let cmd = "locus intervene " + r.run_id.slice(0, 12) +
+    " --drop-tag " + provenance + " --from-step " + turn;
+  if (r.store) cmd += " --store " + r.store;
+  if (!r.has_command) cmd += " -- <the command that runs your agent>";
+  return cmd;
 }
 
 function blockNode(id, command) {

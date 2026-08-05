@@ -153,6 +153,13 @@ def test_an_intervention_that_would_change_nothing_is_refused_before_it_runs(tmp
     assert "tool_output" in message and "system_prompt" in message
 
 
+def test_plan_describe_names_how_many_blocks_the_drop_will_remove(tmp_path: Path):
+    source, _ = _record(tmp_path)
+    plan = locus.plan_intervention(source, drop_tags=["tool_output"], from_turn=1, store=tmp_path)
+    assert plan.blocks > 0
+    assert f"{plan.blocks} block" in plan.describe()
+
+
 def test_intervening_past_the_end_of_the_run_is_refused(tmp_path: Path):
     source, _ = _record(tmp_path)
 

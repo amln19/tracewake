@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+
+# Wall-clock fragments in pytest's summary. Re-running the suite on a fork
+# changes them even when the pass/fail set is identical, which breaks the
+# free intervene prefix at the first `run_tests`. Strip at the tool boundary
+# so recordings and live re-executions agree on the observation text.
+_PYTEST_DURATION = re.compile(
+    r"\s+in\s+(?:\d+:)?\d+(?:\.\d+)?s(?:\s*\([^)]*\))?"
+)
 
 # Absolute, because tests run with the working copy as the cwd and a relative
 # path would resolve against that instead.
@@ -309,15 +318,21 @@ def run_tests(repo: Repo, root: Path, timeout: float = 180.0) -> SuiteReport:
     return _parse(output, completed.returncode)
 
 
+def stabilize_pytest_output(text: str) -> str:
+    """Drop pytest wall-clock from an observation string."""
+    return _PYTEST_DURATION.sub("", text)
+
+
 def _parse(output: str, returncode: int) -> SuiteReport:
-    report = SuiteReport(returncode=returncode, output=output)
+    stable = stabilize_pytest_output(output)
+    report = SuiteReport(returncode=returncode, output=stable)
     failing = [
         line.split(" ")[1]
-        for line in output.splitlines()
+        for line in stable.splitlines()
         if line.startswith(("FAILED ", "ERROR "))
     ]
     report.failing_tests = tuple(dict.fromkeys(failing))
-    for line in reversed(output.splitlines()):
+    for line in reversed(stable.splitlines()):
         if " passed" in line or " failed" in line or " error" in line:
             report.summary = line.strip().strip("=").strip()
             break

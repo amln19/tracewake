@@ -12,7 +12,7 @@ from bench.tasks import (
     relative_source_files,
     write_issue,
 )
-from bench.repos import Repo, _parse
+from bench.repos import Repo, _parse, stabilize_pytest_output
 
 
 def _mutations(source: str, operator: str | None = None) -> list[tuple[Mutation, str]]:
@@ -167,6 +167,23 @@ def test_a_green_summary_parses_as_green() -> None:
     assert report.green
     assert report.passed == 82
     assert report.failing_tests == ()
+    assert "in " not in report.summary
+    assert "in " not in report.output
+
+
+def test_pytest_wall_clock_is_stripped_so_re_runs_agree() -> None:
+    """Intervene re-executes tools; elapsed time must not break the free prefix."""
+    left = (
+        "FAILED test.py::test_a - AssertionError\n"
+        "1 failed, 80 passed in 0.28s\n"
+    )
+    right = (
+        "FAILED test.py::test_a - AssertionError\n"
+        "1 failed, 80 passed in 1.94s\n"
+    )
+    assert stabilize_pytest_output(left) == stabilize_pytest_output(right)
+    assert _parse(left, 1).output == _parse(right, 1).output
+    assert _parse(left, 1).summary == "1 failed, 80 passed"
 
 
 def test_a_source_dir_that_does_not_exist_is_an_error_not_an_empty_list(

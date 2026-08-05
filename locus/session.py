@@ -78,6 +78,9 @@ class Intervention:
     source_run_id: str
     drop_tags: frozenset[str]
     from_turn: int = 0
+    # How many tagged messages the drop will remove — counted at plan time so
+    # the CLI can say the change will bite before any inference is spent.
+    blocks: int = 0
 
     def label(self) -> str:
         tags = "+".join(sorted(self.drop_tags))
@@ -85,7 +88,12 @@ class Intervention:
 
     def describe(self) -> str:
         tags = ", ".join(sorted(self.drop_tags))
-        return f"dropping {tags} from turn {self.from_turn} of run {self.source_run_id[:12]}"
+        unit = "block" if self.blocks == 1 else "blocks"
+        suffix = f" ({self.blocks} {unit})" if self.blocks else ""
+        return (
+            f"dropping {tags} from turn {self.from_turn} of run "
+            f"{self.source_run_id[:12]}{suffix}"
+        )
 
 
 class _GeneratorSource:
@@ -489,6 +497,7 @@ class Session:
             return list(messages)
         kept = [m for m in messages if m.provenance not in self.intervention.drop_tags]
         self.blocks_dropped += len(messages) - len(kept)
+        self.report.blocks_dropped = self.blocks_dropped
         return kept
 
     def model(
@@ -730,7 +739,10 @@ def plan_intervention(
             f"nothing. Tags in this run: {', '.join(available) or 'none'}."
         )
     return Intervention(
-        source_run_id=source.run_id, drop_tags=drop_tags, from_turn=from_turn
+        source_run_id=source.run_id,
+        drop_tags=drop_tags,
+        from_turn=from_turn,
+        blocks=hits,
     )
 
 

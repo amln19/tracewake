@@ -233,6 +233,19 @@ def test_each_run_carries_the_store_it_actually_lives_in(pair: tuple[Store, str,
     assert payload["bad"]["store"] == "corpus/counterfactual"
 
 
+def test_each_run_says_whether_the_cassette_can_re_exec_itself(
+    pair: tuple[Store, str, str],
+) -> None:
+    """The neutralize command omits `-- …` only when the header stored argv."""
+    db, good, bad = pair
+    payload = _built(db, good, bad)
+    assert payload["good"]["has_command"] is (db.run(good).command is not None)
+    assert payload["bad"]["has_command"] is (db.run(bad).command is not None)
+    html = render(payload, title="t")
+    assert "has_command" in html
+    assert "run_id.slice(0, 12)" in html
+
+
 def test_one_store_applies_to_both_runs_when_only_one_is_given(
     pair: tuple[Store, str, str],
 ) -> None:

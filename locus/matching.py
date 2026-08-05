@@ -36,6 +36,8 @@ class ReplayReport:
     tool_calls_replayed: int = 0
     misses: list[str] = field(default_factory=list)
     can_record: bool = True
+    # Set on forks: how many provenance-tagged messages the intervention removed.
+    blocks_dropped: int = 0
 
     @property
     def unconsumed(self) -> int:
@@ -52,6 +54,9 @@ class ReplayReport:
         if self.unconsumed:
             plural = "" if self.unconsumed == 1 else "s"
             parts.append(f"{self.unconsumed} recorded call{plural} unused")
+        if self.blocks_dropped:
+            unit = "block" if self.blocks_dropped == 1 else "blocks"
+            parts.append(f"{self.blocks_dropped} {unit} dropped")
         return ", ".join(parts)
 
 

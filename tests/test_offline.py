@@ -184,6 +184,10 @@ def test_an_intervention_replays_the_prefix_and_pays_only_for_the_rest(
     # Turn 0 still matched the recorded call and never left the log; only the
     # turn whose context changed reached the model.
     assert server.connections == 1
+    out = forked.stdout
+    assert "block" in out and "dropping" in out
+    assert "matched" in out
+    assert f"locus diff {source}" in out and "--store" in out
 
     db = Store(store)
     runs = {h.run_id for h in db.runs()}
@@ -201,6 +205,7 @@ def test_an_intervention_replays_the_prefix_and_pays_only_for_the_rest(
     assert declared and declared[0].source_run_id == source
     assert fork.name == "gate+drop-user_task@1"
     assert not [m for m in kept if m.provenance == "user_task"]
+    assert fork.run_id in out
 
 
 def test_an_intervention_that_changes_nothing_is_refused_by_the_cli(
