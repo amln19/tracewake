@@ -17,7 +17,8 @@ a done thing.
 $ locus diff 16ccfac0 45af6f8f
 
 divergence at BAD 45af6f8f step 9
-alignment score -2.260  length ratio 1.07
+alignment score -1.080  length ratio 1.07
+embeddings mlx-community/bge-small-en-v1.5-bf16@0e415031434cdf5f1b89d584e11be33b82abfc8d
 
       GOOD 16ccfac0                             BAD 45af6f8f
 ------------------------------------------------------------
@@ -40,6 +41,9 @@ alignment score -2.260  length ratio 1.07
       —                                         10. read_file → tests/test_bidict.py
       —                                         11. read_file → tests/test_bidict.py
       —                                         12. read_file → tests/test_bidict.py
+      —                                         13. read_file → tests/test_bidict.py
+      —                                         14. read_file → tests/test_bidict.py
+      —                                         15. read_file → tests/test_bidict.py
 ```
 
 `=` the two runs agree, `|` they differ, `—` one of them did something the other
