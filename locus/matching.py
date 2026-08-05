@@ -23,9 +23,9 @@ class ReplayReport:
     without proving it is the request that was recorded.
 
     `can_record` travels with the counts so the CLI parent knows whether the
-    child owned the run. A pure replay must not rewrite the recording, and the
-    parent cannot infer ownership — an absent report also means the child died
-    before atexit.
+    child owned the run. A pure replay must not rewrite the recording. When the
+    report is absent the child died before atexit; the parent then finishes
+    only a still-running row, never an already-finished cassette.
     """
 
     recorded_calls: int = 0

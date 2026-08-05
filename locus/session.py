@@ -164,10 +164,14 @@ class StreamHandle:
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> bool:
-        # A caller that breaks out of the loop early still made the call, and an
-        # unrecorded model call would silently break replay. Drain to record it.
+        # A caller that breaks out early, or a backend that fails mid-stream,
+        # still made a model call. An unrecorded call silently breaks replay.
+        if self._response is not None:
+            return False
         if exc_type is None:
             self.drain()
+        elif self._chunks:
+            self._response = self._finalize(self._chunks, self._offsets)
         return False
 
 
@@ -274,11 +278,29 @@ class Model:
         )
 
         def finalize(chunks: list[StreamChunk], offsets: list[float]) -> ModelResponse:
-            if source.response is None:
-                raise RuntimeError(
-                    f"the stream backend for {self._model_id} finished without returning an "
-                    f"assembled ModelResponse. A locus stream function must `return` the "
-                    f"final response after yielding its chunks."
+            response = source.response
+            if response is None:
+                # Backend raised or returned nothing after yielding chunks. Record
+                # what was delivered so replay still has the call the agent saw.
+                tool_calls: list[ToolCallRequest] = []
+                for chunk in chunks:
+                    delta = chunk.tool_call_delta
+                    if delta is None or "id" not in delta:
+                        continue
+                    args = delta.get("args")
+                    tool_calls.append(
+                        ToolCallRequest(
+                            id=str(delta["id"]),
+                            name=str(delta.get("name", "")),
+                            args=args if isinstance(args, dict) else {},
+                            batch_index=len(tool_calls),
+                        )
+                    )
+                response = ModelResponse(
+                    text="".join(c.text_delta for c in chunks),
+                    tool_calls=tool_calls,
+                    finish_reason="error",
+                    usage=Usage(),
                 )
             self._session._append_model_call(
                 provider=self._provider,
@@ -287,13 +309,13 @@ class Model:
                 params=decode,
                 tools=tools,
                 messages=messages,
-                response=source.response,
+                response=response,
                 stream=StreamRecord(chunks=chunks),
                 duration_ms=(real_perf_counter() - started) * 1000.0,
                 chunk_offsets_ms=offsets,
                 call_id=call_id,
             )
-            return source.response
+            return response
 
         return StreamHandle(call_id, iter(source), finalize)
 
@@ -502,22 +524,25 @@ class Session:
                     f"replayed run ended {status!r} but was recorded as "
                     f"{self._outcome.status!r}. The replayed agent diverged."
                 )
-            return
-        if not self.can_record:
+            if not self.can_record:
+                return
+            # new_episodes may replace outcome details (patch, coverage) on an
+            # extended run that still ends with the same status.
+        elif not self.can_record:
             raise ReplayMiss(f"run {self.run_id} has no recorded outcome to replay against.")
-        self._append(
-            OutcomeEvent(
-                status=status,
-                error=error,
-                usage=usage or Usage(),
-                coverage=coverage,
-                resolve=resolve,
-                patch=self._put_blob(patch.encode("utf-8")) if patch is not None else None,
-                test_summary=test_summary,
-                parent_call_id=self._current_call_id,
-                meta=EventMeta(recorded_at=real_time()),
-            )
+        event = OutcomeEvent(
+            status=status,
+            error=error,
+            usage=usage or Usage(),
+            coverage=coverage,
+            resolve=resolve,
+            patch=self._put_blob(patch.encode("utf-8")) if patch is not None else None,
+            test_summary=test_summary,
+            parent_call_id=self._current_call_id,
+            meta=EventMeta(recorded_at=real_time()),
         )
+        self._append(event)
+        self._outcome = event
 
     def env_value(self, source: str, key: str | None, produce: Callable[[], Any]) -> Any:
         if self.can_replay and not self.forked:

@@ -164,6 +164,17 @@ def _report(store: Store, run_id: str, code: int) -> None:
         typer.echo(f"the recorded program exited {code}", err=True)
 
 
+def _finish_if_running(db: Store, run_id: str, code: int) -> None:
+    """Close a run the child opened but did not finish.
+
+    A still-running row means the child died before atexit (or never reached
+    session close). A finished row is either a completed recording or an
+    existing cassette under once/none replay — leave it alone.
+    """
+    if db.run(run_id).status == "running":
+        db.finish_run(run_id, "ok" if code == 0 else "error", time.time())
+
+
 def _echo_replay(replay: ReplayReport | None) -> None:
     """Say how much of the log the run answered from, and how surely.
 
@@ -199,11 +210,17 @@ def record(
         target, command, store, mode, redact=not no_redact  # type: ignore[arg-type]
     )
     db = Store(store)
-    # Pure replay must not rewrite the recording. can_record comes back over the
-    # report channel because the parent cannot infer it — report is None also
-    # means the child died before atexit, in which case finish the run if we can.
-    if replay is None or replay.can_record:
+    # Pure replay must not rewrite the recording. When the child owned the run,
+    # reconcile status with the process exit code (the session context only
+    # sees Python exceptions). When the report is missing the child died before
+    # atexit — finish only a still-running row so an existing once/none cassette
+    # stays untouched.
+    if replay is not None and not replay.can_record:
+        pass
+    elif replay is not None:
         db.finish_run(run_id, "ok" if code == 0 else "error", time.time())
+    else:
+        _finish_if_running(db, run_id, code)
     _report(db, run_id, code)
     _echo_replay(replay)
     db.close()
@@ -292,7 +309,10 @@ def intervene_(
         source_store=source_store,
     )
     db = Store(store)
-    db.finish_run(forked, "ok" if code == 0 else "error", time.time())
+    if replay is not None:
+        db.finish_run(forked, "ok" if code == 0 else "error", time.time())
+    else:
+        _finish_if_running(db, forked, code)
     _echo_replay(replay)
     typer.echo(f"recorded {forked}  —  compare with: locus diff {run} {forked}")
     db.close()
@@ -455,6 +475,8 @@ def view(
             f"clipped {clipped} context blocks to stay under the "
             f"{max_bytes / 1e6:.2f} MB embedded payload cap; full text is in {store}"
         )
+    if result.excluded_by_length:
+        raise typer.Exit(2)
 
 
 @app.command("pprof")
@@ -527,5 +549,7 @@ def main() -> None:
         app()
     except (KeyError, ValueError, LocusError) as exc:
         message = exc.args[0] if exc.args else str(exc)
+        if not isinstance(message, str) or len(message) < 12:
+            message = f"{type(exc).__name__}: {message!r}"
         typer.echo(f"locus: {message}", err=True)
         sys.exit(1)

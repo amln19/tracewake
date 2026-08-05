@@ -22,6 +22,7 @@ from locus import (
     ModelCallEvent,
     ModelResponse,
     Store,
+    StreamChunk,
     ToolCallEvent,
     ToolCallRequest,
     Usage,
@@ -272,6 +273,33 @@ def test_a_partially_consumed_stream_is_still_recorded(tmp_path: Path) -> None:
             replayed,
         )
     assert replayed.to_bytes() == recorded.to_bytes()
+
+
+def test_a_stream_that_errors_mid_flight_is_still_recorded(tmp_path: Path) -> None:
+    def broken_stream(model_id, messages, params):
+        yield StreamChunk(index=0, text_delta="partial ")
+        yield StreamChunk(index=1, text_delta="answer")
+        raise RuntimeError("provider dropped")
+
+    with locus.record("broken-stream", store=tmp_path) as rec:
+        model = rec.model(
+            provider="mock",
+            model_id="mock-1",
+            stream_fn=broken_stream,
+        )
+        with pytest.raises(RuntimeError, match="provider dropped"):
+            with model.stream(messages=[Message(role="user", content="hi")]) as stream:
+                for _ in stream:
+                    pass
+        rec.outcome(status="ok")
+        run_id = rec.run_id
+
+    store = Store(tmp_path)
+    calls = [e.event for e in store.events(run_id) if isinstance(e.event, ModelCallEvent)]
+    store.close()
+    assert len(calls) == 1
+    assert calls[0].response.text == "partial answer"
+    assert calls[0].response.finish_reason == "error"
 
 
 def test_replay_of_a_missing_run_names_what_exists(tmp_path: Path) -> None:

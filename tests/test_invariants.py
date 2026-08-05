@@ -95,9 +95,29 @@ def test_export_fails_when_a_referenced_blob_is_missing_from_the_store(
     path = db.blobs._path(digest)
     path.unlink()
 
+    dest = tmp_path / "cassette"
     with pytest.raises(KeyError, match="missing"):
-        export_cassette(db, run_id, tmp_path / "cassette")
+        export_cassette(db, run_id, dest)
+    assert not dest.exists(), "a failed export must not leave a partial cassette"
     db.close()
+
+
+def test_finish_if_running_leaves_a_finished_cassette_alone(tmp_path: Path) -> None:
+    """A missing child report must not rewrite an already-finished once/none cassette."""
+    from locus.cli import _finish_if_running
+
+    with locus.session("demo", store=tmp_path, mode="once") as rec:
+        rec.clock.time()
+        rec.outcome(status="ok")
+        run_id = rec.run_id
+
+    db = Store(tmp_path)
+    before = db.run(run_id)
+    _finish_if_running(db, run_id, code=1)
+    after = db.run(run_id)
+    db.close()
+    assert after.status == before.status == "ok"
+    assert after.finished_at == before.finished_at
 
 
 def test_a_pure_once_replay_does_not_rewrite_the_recording(tmp_path: Path) -> None:

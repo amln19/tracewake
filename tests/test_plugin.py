@@ -112,6 +112,37 @@ def test_a_test_that_diverges_from_its_cassette_fails(pytester: pytest.Pytester)
     result.assert_outcomes(passed=1)
 
 
+def test_unused_recorded_calls_fail_the_test(pytester: pytest.Pytester) -> None:
+    pytester.makepyfile(
+        test_unused="""
+        from locus import Message, ModelResponse, Usage
+
+        def create(model_id, messages, params):
+            return ModelResponse(text="answer", finish_reason="end_turn", usage=Usage())
+
+        def test_stops_early(locus_cassette):
+            with locus_cassette("cassette", mode="all") as rec:
+                rec.model(provider="p", model_id="m", create_fn=create).create(
+                    messages=[Message(role="user", content="hi")]
+                )
+                rec.model(provider="p", model_id="m", create_fn=create).create(
+                    messages=[Message(role="user", content="again")]
+                )
+                rec.outcome(status="ok")
+
+            with locus_cassette("cassette") as rep:
+                rep.model(provider="p", model_id="m").create(
+                    messages=[Message(role="user", content="hi")]
+                )
+                # Leaves the second recorded call unconsumed.
+                rep.outcome(status="ok")
+        """
+    )
+    result = pytester.runpytest_subprocess("-p", "no:cacheprovider")
+    result.assert_outcomes(failed=1)
+    assert "unused" in result.stdout.str() or "unused" in result.stderr.str()
+
+
 def test_the_plugin_registers_its_options(pytester: pytest.Pytester) -> None:
     result = pytester.runpytest_subprocess("--help")
     result.stdout.fnmatch_lines(["*--locus-record*"])

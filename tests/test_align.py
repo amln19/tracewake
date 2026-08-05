@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from locus import (
     BlobRef,
     EventMeta,
@@ -397,4 +399,31 @@ def test_step_similarity_uses_all_four_components():
         reasoning="look at the helper",
         changed_files=frozenset({("a.py", "x" * 64)}),
     )
-    assert step_similarity(a, b) == 1.0
+    vecs = LexicalEmbedder()([a.reasoning, b.reasoning])
+    assert step_similarity(a, b, reasoning_vectors=(vecs[0], vecs[1])) == 1.0
+
+
+def test_lexical_embedder_scores_empty_reasoning_as_identity():
+    a = Step("bash", {"cmd": "ls"}, target="ls", reasoning="")
+    b = Step("bash", {"cmd": "ls"}, target="ls", reasoning="")
+    vecs = LexicalEmbedder()([a.reasoning, b.reasoning])
+    assert step_similarity(a, b, reasoning_vectors=(vecs[0], vecs[1])) == 1.0
+
+
+def test_align_refuses_reasoning_without_an_embedder():
+    from locus.patches import LocusError
+
+    a = Step("read_file", {"path": "a.py"}, target="a.py", reasoning="why")
+    b = Step("read_file", {"path": "a.py"}, target="a.py", reasoning="why")
+    with pytest.raises(LocusError, match="needs an embedder"):
+        align([a], [b])
+
+
+def test_align_empty_side_charges_affine_gaps():
+    steps = [Step("read_file", {"path": "a.py"}, target="a.py")]
+    score, pairs, _ = align(steps, [])
+    assert pairs == [(0, None)]
+    assert score == GAP_OPEN
+    score, pairs, _ = align([], steps)
+    assert pairs == [(None, 0)]
+    assert score == GAP_OPEN

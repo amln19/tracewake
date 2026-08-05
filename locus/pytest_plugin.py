@@ -75,10 +75,12 @@ def locus_cassette(request: pytest.FixtureRequest) -> CassetteFactory:
             **overrides,
         ) as active:
             yield active
-            if active.report.missed:
+            report = active.report
+            if report.missed or report.degraded or report.unconsumed:
                 pytest.fail(
-                    f"cassette {active.name!r}: {active.report.summary()}. The agent under "
-                    f"test built requests the recording does not contain."
+                    f"cassette {active.name!r}: {report.summary()}. Replay must consume "
+                    f"every recorded call by messages_hash; degraded or unused calls mean "
+                    f"the agent under test diverged from the recording."
                 )
 
     return open_cassette

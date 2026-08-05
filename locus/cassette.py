@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+import tempfile
 from importlib.metadata import version
 from pathlib import Path
 
@@ -81,32 +83,46 @@ def _line(stored: StoredEvent) -> str:
 def export_cassette(store: Store, run_or_name: str, dest: str | Path) -> Path:
     header = store.resolve(run_or_name)
     events = store.events(header.run_id)
+    # Fetch every blob before writing anything, so a missing blob cannot leave
+    # a half-written export directory behind.
+    blob_bytes = {digest: store.blobs.get(digest) for digest in sorted(_blob_digests(events))}
+
     out = Path(dest)
-    out.mkdir(parents=True, exist_ok=True)
-
-    cassette = CassetteHeader(
-        locus_version=version("locus"),
-        schema_version=SCHEMA_VERSION,
-        run_id=header.run_id,
-        name=header.name,
-        recorded_at=header.started_at,
-        finished_at=header.finished_at,
-        status=header.status,
-        models=header.models,
-        command=header.command,
-        redacted=header.redacted,
-        task_id=header.task_id,
-        event_count=len(events),
-        digest=run_digest(events),
+    out.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(
+        tempfile.mkdtemp(prefix=f".{out.name}.locus-export-", dir=out.parent)
     )
-    lines = [cassette.model_dump_json()] + [_line(e) for e in events]
-    (out / CASSETTE_FILE).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    try:
+        cassette = CassetteHeader(
+            locus_version=version("locus"),
+            schema_version=SCHEMA_VERSION,
+            run_id=header.run_id,
+            name=header.name,
+            recorded_at=header.started_at,
+            finished_at=header.finished_at,
+            status=header.status,
+            models=header.models,
+            command=header.command,
+            redacted=header.redacted,
+            task_id=header.task_id,
+            event_count=len(events),
+            digest=run_digest(events),
+        )
+        lines = [cassette.model_dump_json()] + [_line(e) for e in events]
+        (staging / CASSETTE_FILE).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    blobs = out / BLOB_DIR
-    for digest in sorted(_blob_digests(events)):
-        target = blobs / digest[:2] / digest[2:4] / digest
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(store.blobs.get(digest))
+        blobs = staging / BLOB_DIR
+        for digest, data in blob_bytes.items():
+            target = blobs / digest[:2] / digest[2:4] / digest
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+
+        if out.exists():
+            shutil.rmtree(out)
+        staging.rename(out)
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
     return out
 
 
@@ -137,6 +153,12 @@ def _events(path: Path) -> list[tuple[int, AnyEvent]]:
                     f"{path} line {number} is not a valid locus event: {exc}"
                 ) from exc
     return out
+
+
+def _cassette_blob_files(blobs: Path) -> dict[str, Path]:
+    if not blobs.is_dir():
+        return {}
+    return {blob.name: blob for blob in blobs.rglob("*") if blob.is_file()}
 
 
 def import_cassette(source: str | Path, store: Store) -> RunHeader:
@@ -175,16 +197,17 @@ def import_cassette(source: str | Path, store: Store) -> RunHeader:
         )
 
     blobs = root / BLOB_DIR
-    for blob in sorted(blobs.rglob("*")) if blobs.is_dir() else []:
-        if blob.is_file():
-            store.blobs.put(blob.read_bytes())
-
-    missing = sorted(d for d in _blob_digests(staged) if not store.blobs.has(d))
+    on_disk = _cassette_blob_files(blobs)
+    needed = sorted(_blob_digests(staged))
+    missing = [d for d in needed if d not in on_disk]
     if missing:
         raise ValueError(
             f"{path} references blob {missing[0]} but that file is not under "
             f"{blobs}. Re-export the cassette; nothing was imported."
         )
+
+    for digest in needed:
+        store.blobs.put(on_disk[digest].read_bytes())
 
     header = RunHeader(
         run_id=cassette.run_id,
@@ -198,17 +221,23 @@ def import_cassette(source: str | Path, store: Store) -> RunHeader:
         task_id=cassette.task_id,
     )
     store.create_run(header)
-    for _, event in sorted(events, key=lambda pair: pair[0]):
-        store.append(header.run_id, event)
+    try:
+        for _, event in sorted(events, key=lambda pair: pair[0]):
+            store.append(header.run_id, event)
 
-    # The file was already proved good above, so a mismatch here is the store
-    # failing to hold what it was given rather than a bad cassette.
-    stored_digest = run_digest(store.events(header.run_id))
-    if stored_digest != cassette.digest:
-        raise ValueError(
-            f"importing {path} into {store.root} produced a run hashing to "
-            f"{stored_digest[:12]}, but the cassette's own events hash to "
-            f"{cassette.digest[:12]}. The store did not round-trip the events it was "
-            f"given."
-        )
+        # The file was already proved good above, so a mismatch here is the store
+        # failing to hold what it was given rather than a bad cassette.
+        stored_digest = run_digest(store.events(header.run_id))
+        if stored_digest != cassette.digest:
+            raise ValueError(
+                f"importing {path} into {store.root} produced a run hashing to "
+                f"{stored_digest[:12]}, but the cassette's own events hash to "
+                f"{cassette.digest[:12]}. The store did not round-trip the events it was "
+                f"given."
+            )
+    except BaseException:
+        # Blobs are content-addressed and shared; leave them. Drop the run row so
+        # a retry does not fail with "already in the store".
+        store.drop_run(header.run_id)
+        raise
     return header

@@ -152,6 +152,12 @@ class Store:
                 ),
             )
 
+    def drop_run(self, run_id: str) -> None:
+        """Remove a run row and its events. Blobs stay (content-addressed, shared)."""
+        with self._lock, self._db:
+            self._db.execute("DELETE FROM events WHERE run_id = ?", (run_id,))
+            self._db.execute("DELETE FROM runs WHERE run_id = ?", (run_id,))
+
     def finish_run(
         self,
         run_id: str,

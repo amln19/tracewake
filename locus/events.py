@@ -187,6 +187,20 @@ class ModelCallEvent(Event):
                 f"{len(self.response.text)} chars in response.text. The stream adapter is "
                 f"dropping or duplicating deltas; fix it before recording."
             )
+        delta_ids = [
+            c.tool_call_delta["id"]
+            for c in self.stream.chunks
+            if c.tool_call_delta is not None and "id" in c.tool_call_delta
+        ]
+        if delta_ids:
+            response_ids = [t.id for t in self.response.tool_calls]
+            if sorted(delta_ids) != sorted(response_ids):
+                raise ValueError(
+                    f"stream tool_call_delta ids for call {self.call_id} do not match "
+                    f"response.tool_calls: deltas={delta_ids!r} response={response_ids!r}. "
+                    f"The stream adapter is dropping or duplicating tool-call deltas; "
+                    f"fix it before recording."
+                )
         return self
 
 

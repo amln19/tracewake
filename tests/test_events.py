@@ -46,6 +46,33 @@ def test_chunks_that_reassemble_are_accepted() -> None:
     assert _call(["hel", "lo"], "hello").stream is not None
 
 
+def test_tool_call_delta_ids_must_match_the_response() -> None:
+    with pytest.raises(ValidationError, match="tool_call_delta ids"):
+        ModelCallEvent(
+            call_id="c1",
+            provider="mock",
+            model_id="mock-1",
+            params=DecodeParams(temperature=0.0),
+            messages=[Message(role="user", content="hi")],
+            messages_hash=hash_messages([Message(role="user", content="hi")]),
+            response=ModelResponse(
+                text="hi",
+                tool_calls=[
+                    ToolCallRequest(id="t0", name="read", args={}, batch_index=0)
+                ],
+                finish_reason="tool_use",
+                usage=Usage(),
+            ),
+            stream=StreamRecord(
+                chunks=[
+                    StreamChunk(index=0, text_delta="hi"),
+                    StreamChunk(index=-1, tool_call_delta={"id": "other", "name": "read"}),
+                ]
+            ),
+            meta=_meta(),
+        )
+
+
 def test_canonical_bytes_exclude_recording_metadata() -> None:
     a = _call(["hi"], "hi")
     b = a.model_copy(update={"meta": EventMeta(recorded_at=999.0, duration_ms=42.0)})

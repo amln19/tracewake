@@ -404,13 +404,15 @@ def step_similarity(
     ]
     if config.weight_reasoning:
         if reasoning_vectors is None:
-            # Lexical stand-in only when both sides are empty; otherwise the
-            # caller must supply embeddings so the frozen weight is real.
+            # Empty↔empty needs no embedder. Anything else must supply vectors so
+            # the frozen weight is real — SequenceMatcher is not a silent stand-in.
             if not a.reasoning and not b.reasoning:
                 parts.append(config.weight_reasoning * 1.0)
             else:
-                parts.append(
-                    config.weight_reasoning * text_similarity(a.reasoning, b.reasoning)
+                raise LocusError(
+                    "alignment needs an embedder when steps carry reasoning text. "
+                    "Pass embed=... (MlxEmbedder or LexicalEmbedder), or set "
+                    "weight_reasoning=0 for an ablation."
                 )
         else:
             parts.append(config.weight_reasoning * cosine(*reasoning_vectors))
@@ -426,8 +428,11 @@ class LexicalEmbedder:
     """Bag-of-words vectors for tests. Not the pinned evaluation embedder."""
 
     def __call__(self, texts: Sequence[str]) -> list[list[float]]:
+        # Match MlxEmbedder: blank strings still need a stable non-zero vector so
+        # empty↔empty reasoning scores 1.0 instead of cosine(0, 0) → 0.
+        filled = [t if t.strip() else "." for t in texts]
         vocab: dict[str, int] = {}
-        tokenized = [_TOKEN.findall(t.lower()) for t in texts]
+        tokenized = [_TOKEN.findall(t.lower()) for t in filled]
         for tokens in tokenized:
             for tok in tokens:
                 if tok not in vocab:
@@ -611,13 +616,18 @@ def align(
     embed: EmbedFn | None = None,
     config: AlignConfig = DEFAULT_CONFIG,
 ) -> tuple[float, Aligned, list[list[float]]]:
+    if not a or not b:
+        # Same gap accounting as gotoh's empty-side branches; skip the matrix.
+        if not a and not b:
+            return (0.0, [], [])
+        if not a:
+            n = len(b)
+            score = config.gap_open + (n - 1) * config.gap_extend
+            return (score, [(None, j) for j in range(n)], [])
+        n = len(a)
+        score = config.gap_open + (n - 1) * config.gap_extend
+        return (score, [(i, None) for i in range(n)], [])
     scores = _score_matrix(a, b, embed, config=config)
-    if not a:
-        pairs: Aligned = [(None, j) for j in range(len(b))]
-        return (0.0, pairs, scores)
-    if not b:
-        pairs = [(i, None) for i in range(len(a))]
-        return (0.0, pairs, scores)
     total, pairs = gotoh(
         scores, gap_open=config.gap_open, gap_extend=config.gap_extend
     )
