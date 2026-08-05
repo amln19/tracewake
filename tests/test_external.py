@@ -196,6 +196,55 @@ def test_scoring_tells_apart_packets_that_share_a_run_id(tmp_path: Path) -> None
     )
 
 
+def test_the_score_report_never_states_a_hit_rate_without_its_ceiling(
+    tmp_path: Path,
+) -> None:
+    """A constant answer scores well when labels cluster near the start.
+
+    Reporting the aligner's rate alone invites quoting it as a win, so every
+    group in the report carries the best-constant rate beside it.
+    """
+    def traj(*names: str) -> list[dict]:
+        return [
+            {"role": "user", "content": "fix pr"},
+            *[
+                _assistant("str_replace_editor", {"command": "view", "path": f"{n}.py"})
+                for n in names
+            ],
+        ]
+
+    rows = [
+        {"instance_id": "pkg-1", "run_id": "g", "resolved": True,
+         "messages": traj("a", "b", "c", "d"), "model": "m"},
+        {"instance_id": "pkg-1", "run_id": "b", "resolved": False,
+         "messages": traj("a", "b", "z"), "model": "m"},
+    ]
+    (tmp_path / "key.jsonl").write_text(
+        json.dumps(
+            {"packet_id": "E01", "instance_id": "pkg-1",
+             "good_run_id": "g", "bad_run_id": "b"}
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "labels.jsonl").write_text(
+        '{"packet_id": "E01", "label": 3}\n', encoding="utf-8"
+    )
+    report = score_openhands_labels(
+        labels_path=tmp_path / "labels.jsonl",
+        key_path=tmp_path / "key.jsonl",
+        model="m",
+        out=tmp_path / "predictions.jsonl",
+        rows=rows,
+    )
+    lines = report.splitlines()
+    aligner_lines = [l for l in lines if l.startswith("  aligner ") and "within±2" in l]
+    oracle_lines = [l for l in lines if l.startswith("  oracle_k ")]
+    assert aligner_lines, report
+    assert len(oracle_lines) == len(aligner_lines), report
+    assert "McNemar vs baseline_a" in report, report
+
+
 def test_extending_the_sheet_keeps_packet_ids_and_filled_labels(tmp_path: Path) -> None:
     pairs = _fixture_pairs(9)
     export_openhands_packets(n=3, seed=7, dest=tmp_path, pairs=pairs)

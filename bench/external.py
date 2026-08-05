@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import random
 import re
+import statistics
 import textwrap
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
@@ -757,7 +758,6 @@ def score_openhands_labels(
 
     embed = LexicalEmbedder()
     rows_out: list[dict[str, Any]] = []
-    aligner_hits = baseline_a_hits = baseline_b_hits = 0
     for key in filled:
         lab = int(labels[key["packet_id"]]["label"])
         win = by_id.get((key["instance_id"], key["good_run_id"]))
@@ -770,20 +770,16 @@ def score_openhands_labels(
         bad = strip_terminal(to_steps(loss["messages"], shell_verbs=True))
         _, aligned, _ = align(good, bad, embed=embed)
         pred = divergence_step(aligned, good, bad)
-        pred_i = pred if pred is not None else len(bad)
-        a = first_target_difference(good, bad)
-        b = last_common_prefix(good, bad)
-        aligner_hits += abs(pred_i - lab) <= 2
-        baseline_a_hits += a is not None and abs(a - lab) <= 2
-        baseline_b_hits += b is not None and abs(b - lab) <= 2
         rows_out.append(
             {
                 "packet_id": key["packet_id"],
                 "instance_id": key["instance_id"],
                 "label": lab,
-                "aligner": pred_i,
-                "baseline_a": a,
-                "baseline_b": b,
+                "aligner": pred if pred is not None else len(bad),
+                "abstained": pred is None,
+                "baseline_a": first_target_difference(good, bad),
+                "baseline_b": last_common_prefix(good, bad),
+                "failure_steps": len(bad),
             }
         )
 
@@ -805,16 +801,57 @@ def score_openhands_labels(
         for row in rows_out:
             fh.write(json.dumps(row, sort_keys=True) + "\n")
 
-    n = len(rows_out)
-    return "\n".join(
-        [
-            "external alignment evaluation (OpenHands-Sampled)",
-            f"n={n}  labels={labels_path.name}  sheet={out}",
-            f"  aligner     within±2 {aligner_hits}/{n} ({aligner_hits / n:.1%})",
-            f"  baseline_a  within±2 {baseline_a_hits}/{n} ({baseline_a_hits / n:.1%})",
-            f"  baseline_b  within±2 {baseline_b_hits}/{n} ({baseline_b_hits / n:.1%})",
-        ]
+    lines = [
+        "external alignment evaluation (OpenHands-Sampled)",
+        f"n={len(rows_out)}  labels={labels_path.name}  sheet={out}",
+    ]
+    # Split at the median failing length. A constant answer does well when
+    # labels cluster near the start, so a whole-set number says little on its
+    # own; the two halves are where the aligner and a constant come apart.
+    cut = statistics.median(r["failure_steps"] for r in rows_out)
+    lines += _external_metrics(rows_out, "all pairs")
+    lines += _external_metrics(
+        [r for r in rows_out if r["failure_steps"] <= cut], f"failure ≤{cut:.0f} steps"
     )
+    lines += _external_metrics(
+        [r for r in rows_out if r["failure_steps"] > cut], f"failure >{cut:.0f} steps"
+    )
+    return "\n".join(lines)
+
+
+def _external_metrics(group: Sequence[dict[str, Any]], name: str) -> list[str]:
+    from .aligneval import mcnemar, median_abs_error, oracle_constant, within_tol
+
+    if not group:
+        return ["", f"{name}: (empty)"]
+    labels = [r["label"] for r in group]
+    n = len(group)
+    lines = ["", f"{name}: n={n}"]
+    hits_by: dict[str, list[bool]] = {}
+    for method in ("aligner", "baseline_a", "baseline_b"):
+        values = [r[method] if r[method] is not None else -(10**9) for r in group]
+        hits = [within_tol(v, y) for v, y in zip(values, labels, strict=True)]
+        hits_by[method] = hits
+        lines.append(
+            f"  {method:<12} within±2 {sum(hits)}/{n} ({sum(hits) / n:.1%})  "
+            f"median |err| {median_abs_error(values, labels):.1f}"
+        )
+    k = oracle_constant(labels)
+    k_hits = sum(1 for y in labels if within_tol(k, y))
+    lines.append(
+        f"  {'oracle_k':<12} within±2 {k_hits}/{n} ({k_hits / n:.1%})  "
+        f"(best constant k={k}; ceiling diagnostic, fit on these labels)"
+    )
+    for method in ("baseline_a", "baseline_b"):
+        b_only, a_only, p = mcnemar(hits_by["aligner"], hits_by[method])
+        p_txt = f"{p:.3f}" if p is not None else "n/a"
+        lines.append(
+            f"  McNemar vs {method}: aligner-only {a_only}, "
+            f"baseline-only {b_only}, p={p_txt}"
+        )
+    abstained = sum(1 for r in group if r["abstained"])
+    lines.append(f"  aligner abstained (scored as last step): {abstained}/{n}")
+    return lines
 
 
 # Back-compat name used by older CLI wiring.
