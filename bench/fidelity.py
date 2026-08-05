@@ -300,16 +300,30 @@ def extract(
     store: Path = STORE, ledger: Path = LEDGER
 ) -> tuple[list[dict], dict[str, list[Step]]]:
     rows = ledger_rows(ledger)
+    extracted: dict[str, list[Step]] = {}
+    stored_any = False
     db = Store(store)
     try:
-        # Every field is required rather than defaulted. A ledger missing
-        # `coverage` would silently make every pair same-outcome and report a
-        # clean result for the comparison that matters most.
-        extracted = {
-            row["run_id"]: steps(db.events(row["run_id"]), row["stop_reason"]) for row in rows
-        }
+        for row in rows:
+            events = db.events(row["run_id"])
+            stored_any = stored_any or bool(events)
+            # Every field is required rather than defaulted. A ledger missing
+            # `coverage` would silently make every pair same-outcome and report
+            # a clean result for the comparison that matters most.
+            extracted[row["run_id"]] = steps(events, row["stop_reason"])
     finally:
         db.close()
+    # The ledger ships but the store it indexes does not, and opening a Store
+    # creates an empty one rather than failing. Checked on events rather than on
+    # the extracted steps, because a submitted run yields a terminal step even
+    # when nothing was recorded — so a missing corpus would otherwise read as
+    # one where every run submitted immediately, and score clean.
+    if rows and not stored_any:
+        raise FileNotFoundError(
+            f"the ledger at {ledger} lists {len(rows)} runs but the store at {store} holds "
+            f"events for none of them. The recorded runs are not committed; rebuild them "
+            f"with `python -m bench run`, or point the store at one that has them."
+        )
     return (rows, extracted)
 
 

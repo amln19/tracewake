@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
+from bench.fidelity import extract
 from bench.label import _anonymize, _paths_in, select_pairs
 from bench.runner import STORE
 from locus import Store
@@ -19,6 +21,16 @@ def _corpus_is_present() -> bool:
         return bool(db.runs())
     finally:
         db.close()
+
+
+def test_a_ledger_without_its_store_fails_instead_of_reading_as_empty(tmp_path: Path) -> None:
+    ledger = tmp_path / "runs.jsonl"
+    ledger.write_text(
+        json.dumps({"run_id": "a" * 32, "task_id": "t", "stop_reason": "submitted"}) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(FileNotFoundError, match="holds events for none of them"):
+        extract(store=tmp_path / "absent", ledger=ledger)
 
 
 def test_paths_are_collected_from_messy_tokens():
