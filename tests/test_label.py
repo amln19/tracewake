@@ -7,20 +7,6 @@ import pytest
 
 from bench.fidelity import extract
 from bench.label import _anonymize, _paths_in, select_pairs
-from bench.runner import STORE
-from locus import Store
-
-
-def _corpus_is_present() -> bool:
-    # The labels ship but the recorded runs do not, and opening a Store creates
-    # an empty one, so the presence of the directory proves nothing.
-    if not (STORE / "locus.db").exists():
-        return False
-    db = Store(STORE)
-    try:
-        return bool(db.runs())
-    finally:
-        db.close()
 
 
 def test_a_ledger_without_its_store_fails_instead_of_reading_as_empty(tmp_path: Path) -> None:
@@ -76,9 +62,13 @@ def test_anonymize_rewrites_paths_before_they_can_leak():
 def test_select_pairs_is_one_per_task_and_coverage_mixed():
     # Against the closed corpus. Selection is method-blind: it only reads
     # coverage labels and trajectory lengths.
-    if not _corpus_is_present():
-        pytest.skip("the recorded corpus store is not committed; `bench run` rebuilds it")
-    selected = select_pairs()
+    try:
+        selected = select_pairs()
+    except FileNotFoundError as exc:
+        # The labels ship but the recorded runs do not. `extract` already knows
+        # that question and says how to rebuild, so skip on its answer rather
+        # than on a second, weaker guess at the same condition.
+        pytest.skip(str(exc))
     assert len(selected) >= 30
     assert len({p.task_id for p in selected}) == len(selected)
     for pair in selected:

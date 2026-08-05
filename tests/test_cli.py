@@ -43,6 +43,14 @@ def _record(store: Path, name: str = "demo") -> str:
         return rec.run_id
 
 
+def _record_wrapped(tmp_path: Path, store: Path, source: str = SCRIPT) -> str:
+    """Record a script under the wrapper and hand back the run id it opened."""
+    script = tmp_path / "agent.py"
+    script.write_text(source)
+    _locus("record", "--store", str(store), "--name", "wrapped", "--", sys.executable, str(script))
+    return Store(store).latest_named("wrapped").run_id
+
+
 def test_ls_lists_runs_newest_first(tmp_path: Path) -> None:
     _record(tmp_path, "older")
     _record(tmp_path, "newer")
@@ -98,10 +106,8 @@ def test_an_error_is_a_message_not_a_traceback(tmp_path: Path) -> None:
 
 
 def test_the_id_that_ls_prints_is_accepted_back(tmp_path: Path) -> None:
-    script = tmp_path / "agent.py"
-    script.write_text(SCRIPT)
     store = tmp_path / "store"
-    _locus("record", "--store", str(store), "--name", "wrapped", "--", sys.executable, str(script))
+    _record_wrapped(tmp_path, store)
 
     listed = _locus("ls", "--store", str(store)).stdout.split()[0]
     result = _locus("replay", listed, "--store", str(store))
@@ -144,11 +150,8 @@ def test_the_wrapper_records_a_script_that_opens_its_own_session(tmp_path: Path)
 
 
 def test_replay_reruns_the_recorded_command_without_being_told_it(tmp_path: Path) -> None:
-    script = tmp_path / "agent.py"
-    script.write_text(SCRIPT)
     store = tmp_path / "store"
-    _locus("record", "--store", str(store), "--name", "wrapped", "--", sys.executable, str(script))
-    run_id = Store(store).latest_named("wrapped").run_id
+    run_id = _record_wrapped(tmp_path, store)
 
     result = _locus("replay", run_id, "--store", str(store))
     assert result.returncode == 0, result.stderr
@@ -156,11 +159,8 @@ def test_replay_reruns_the_recorded_command_without_being_told_it(tmp_path: Path
 
 
 def test_replay_says_how_many_calls_it_answered_from_the_log(tmp_path: Path) -> None:
-    script = tmp_path / "agent.py"
-    script.write_text(SCRIPT)
     store = tmp_path / "store"
-    _locus("record", "--store", str(store), "--name", "wrapped", "--", sys.executable, str(script))
-    run_id = Store(store).latest_named("wrapped").run_id
+    run_id = _record_wrapped(tmp_path, store)
 
     result = _locus("replay", run_id, "--store", str(store))
     assert result.returncode == 0, result.stderr
@@ -179,11 +179,8 @@ def test_recording_afresh_reports_no_replay_counts(tmp_path: Path) -> None:
 
 
 def test_a_replay_the_agent_walked_away_from_reports_the_miss(tmp_path: Path) -> None:
-    script = tmp_path / "agent.py"
-    script.write_text(SCRIPT)
     store = tmp_path / "store"
-    _locus("record", "--store", str(store), "--name", "wrapped", "--", sys.executable, str(script))
-    run_id = Store(store).latest_named("wrapped").run_id
+    run_id = _record_wrapped(tmp_path, store)
 
     # Same shape, different prompt: the request no longer hashes to a recorded
     # one. The child dies on the miss, so this also proves the counts survive a
