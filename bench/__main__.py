@@ -131,6 +131,11 @@ def main(argv: list[str] | None = None) -> int:
         default=30,
         help="How many OpenHands pairs to export for labeling.",
     )
+    ext.add_argument(
+        "--extend",
+        action="store_true",
+        help="Grow the existing sheet to --n, keeping filled labels and packet ids.",
+    )
 
     cfd = sub.add_parser(
         "fork-diff", help="Align a forked run against the run it was forked from."
@@ -220,7 +225,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(external.report_openhands(model=model))
             elif source == "export":
                 dest = external.export_openhands_packets(
-                    n=args.n, model=args.model or "gpt-4o-2024-08-06"
+                    n=args.n,
+                    model=args.model or "gpt-4o-2024-08-06",
+                    extend=args.extend,
                 )
                 n = len(list((dest / "packets").glob("*.md")))
                 print(f"{n} blinded external packets under {dest}")

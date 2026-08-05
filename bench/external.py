@@ -599,36 +599,74 @@ def _render_packet(packet_id: str, good: list[dict], bad: list[dict]) -> str:
     )
 
 
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    if not path.is_file():
+        return []
+    return [
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
 def export_openhands_packets(
     *,
     n: int = 30,
     seed: int = SELECT_SEED,
     dest: Path = EXTERNAL_LABEL_ROOT,
     model: str | None = "gpt-4o-2024-08-06",
+    extend: bool = False,
+    pairs: Sequence[ExternalPair] | None = None,
 ) -> Path:
-    """Blind packets for external transfer labeling. Key must stay closed."""
-    pairs = select_openhands_pairs(load_openhands_pairs(model=model), n=n, seed=seed)
-    if not pairs:
+    """Blind packets for external transfer labeling. Key must stay closed.
+
+    `extend` grows a sheet that already has labels in it. The seeded selection
+    shuffles once and takes a prefix, so a larger `n` is a superset of a
+    smaller one; already-keyed pairs therefore keep the packet id they were
+    labeled under, and only the pairs the sheet has never seen get new ids.
+    Without it the whole sheet is rewritten and every existing label silently
+    starts pointing at a different pair.
+    """
+    loaded = pairs if pairs is not None else load_openhands_pairs(model=model)
+    selected = select_openhands_pairs(loaded, n=n, seed=seed)
+    if not selected:
         raise RuntimeError(
             "no OpenHands pairs to export. Install `datasets`, ensure network "
             "access to Hugging Face, and re-run."
         )
     packets_dir = dest / "packets"
     packets_dir.mkdir(parents=True, exist_ok=True)
-    for old in packets_dir.glob("*.md"):
-        old.unlink()
     key_path = dest / "key.jsonl"
     sheet_path = dest / "labels.jsonl"
-    order = list(range(len(pairs)))
-    random.Random(seed + 41).shuffle(order)
-    key_rows: list[dict[str, Any]] = []
-    sheet_rows: list[dict[str, Any]] = []
-    for display_i, source_i in enumerate(order, start=1):
-        pair = pairs[source_i]
+
+    key_rows = _read_jsonl(key_path) if extend else []
+    sheet_rows = _read_jsonl(sheet_path) if extend else []
+    if len(key_rows) != len(sheet_rows):
+        raise RuntimeError(
+            f"{key_path.name} has {len(key_rows)} packets but {sheet_path.name} has "
+            f"{len(sheet_rows)}. Refusing to extend a sheet whose key and labels "
+            f"disagree — re-export without --extend to rebuild both."
+        )
+    if not extend:
+        for old in packets_dir.glob("*.md"):
+            old.unlink()
+
+    # Keyed by instance, which is what a sheet entry actually is — the loader
+    # yields one pair per instance. Run ids are the sampling configuration,
+    # shared by thousands of rollouts, and which rollout wins a length tie has
+    # changed before; either makes an already-labeled instance come back under
+    # a second packet id.
+    keyed = {row["instance_id"] for row in key_rows}
+    fresh = [p for p in selected if p.instance_id not in keyed]
+    order = list(range(len(fresh)))
+    random.Random(seed + 41 + len(key_rows)).shuffle(order)
+    start = len(key_rows)
+    for offset, source_i in enumerate(order):
+        pair = fresh[source_i]
         good, bad = _anonymize(
             _steps_as_label_rows(pair.good), _steps_as_label_rows(pair.bad)
         )
-        packet_id = f"E{display_i:02d}"
+        packet_id = f"E{start + offset + 1:02d}"
         (packets_dir / f"{packet_id}.md").write_text(
             _render_packet(packet_id, good, bad), encoding="utf-8"
         )
@@ -672,6 +710,7 @@ def score_openhands_labels(
     key_path: Path = EXTERNAL_LABEL_ROOT / "key.jsonl",
     model: str | None = "gpt-4o-2024-08-06",
     out: Path = EXTERNAL_PRED,
+    rows: Sequence[dict[str, Any]] | None = None,
 ) -> str:
     """Score frozen aligner against filled external labels. Separate sheet of record."""
     from locus.align import (
@@ -705,19 +744,24 @@ def score_openhands_labels(
 
     # Score the exact runs the key sheet named — not a re-derived "best" pair,
     # which can flip when several candidates share the same length key.
-    by_id: dict[str, dict[str, Any]] = {}
-    for row in iter_openhands_rows():
+    #
+    # Keyed by instance as well as run id: `run_id` names the sampling
+    # configuration ("...-t0-run_1"), and all 5.8k rollouts share eight of
+    # them. Keyed on run id alone the table holds eight rows, and every packet
+    # silently scores against whichever instance landed there last.
+    by_id: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows if rows is not None else iter_openhands_rows():
         if model is not None and row["model"] != model:
             continue
-        by_id[row["run_id"]] = row
+        by_id[(row["instance_id"], row["run_id"])] = row
 
     embed = LexicalEmbedder()
     rows_out: list[dict[str, Any]] = []
     aligner_hits = baseline_a_hits = baseline_b_hits = 0
     for key in filled:
         lab = int(labels[key["packet_id"]]["label"])
-        win = by_id.get(key["good_run_id"])
-        loss = by_id.get(key["bad_run_id"])
+        win = by_id.get((key["instance_id"], key["good_run_id"]))
+        loss = by_id.get((key["instance_id"], key["bad_run_id"]))
         if win is None or loss is None:
             raise KeyError(
                 f"packet {key['packet_id']} names runs not in {OPENHANDS_DATASET}"

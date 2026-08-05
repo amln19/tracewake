@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from bench.external import (
     ExternalPair,
+    _read_jsonl,
+    export_openhands_packets,
     instruction_kind,
     load_openhands_pairs,
     model_of_run_id,
+    score_openhands_labels,
     select_openhands_pairs,
     strip_terminal,
     to_steps,
@@ -114,13 +118,101 @@ def test_load_openhands_pairs_requires_same_model_mixed_outcome() -> None:
     assert pairs[0].bad_run_id.endswith("run_2")
 
 
-def test_select_openhands_pairs_is_seeded() -> None:
-    pairs = [
+def _fixture_pairs(count: int) -> list[ExternalPair]:
+    return [
         ExternalPair(f"i{i}", "m", (Step("a", {}),), (Step("b", {}),), f"g{i}", f"b{i}")
-        for i in range(10)
+        for i in range(count)
     ]
+
+
+def test_select_openhands_pairs_is_seeded() -> None:
+    pairs = _fixture_pairs(10)
     a = [p.instance_id for p in select_openhands_pairs(pairs, n=3, seed=1)]
     b = [p.instance_id for p in select_openhands_pairs(pairs, n=3, seed=1)]
     c = [p.instance_id for p in select_openhands_pairs(pairs, n=3, seed=2)]
     assert a == b
     assert a != c
+
+
+def test_a_bigger_selection_is_a_superset_of_a_smaller_one() -> None:
+    """What lets a labeled sheet grow: the extra pairs are added, not reshuffled."""
+    pairs = _fixture_pairs(20)
+    small = [p.instance_id for p in select_openhands_pairs(pairs, n=5, seed=7)]
+    large = [p.instance_id for p in select_openhands_pairs(pairs, n=12, seed=7)]
+    assert large[:5] == small
+
+
+def test_scoring_tells_apart_packets_that_share_a_run_id(tmp_path: Path) -> None:
+    """`run_id` is the sampling config, not a row id — 5.8k rollouts share eight.
+
+    Keyed on run id alone every packet scores against the same trajectories,
+    which looks like a working eval and measures nothing.
+    """
+    def traj(*names: str) -> list[dict]:
+        return [
+            {"role": "user", "content": "fix pr"},
+            *[
+                _assistant("str_replace_editor", {"command": "view", "path": f"{n}.py"})
+                for n in names
+            ],
+        ]
+
+    good_id, bad_id = "cfg-t0-run_1", "cfg-t1-run_1"
+    rows = [
+        {"instance_id": "pkg-1", "run_id": good_id, "resolved": True,
+         "messages": traj("a", "b", "c", "d"), "model": "m"},
+        {"instance_id": "pkg-1", "run_id": bad_id, "resolved": False,
+         "messages": traj("a", "b", "c", "z"), "model": "m"},
+        {"instance_id": "pkg-2", "run_id": good_id, "resolved": True,
+         "messages": traj("q", "r", "s", "t"), "model": "m"},
+        {"instance_id": "pkg-2", "run_id": bad_id, "resolved": False,
+         "messages": traj("x", "y"), "model": "m"},
+    ]
+    keys = [
+        {"packet_id": "E01", "instance_id": "pkg-1", "good_run_id": good_id,
+         "bad_run_id": bad_id},
+        {"packet_id": "E02", "instance_id": "pkg-2", "good_run_id": good_id,
+         "bad_run_id": bad_id},
+    ]
+    (tmp_path / "key.jsonl").write_text(
+        "".join(json.dumps(k) + "\n" for k in keys), encoding="utf-8"
+    )
+    (tmp_path / "labels.jsonl").write_text(
+        '{"packet_id": "E01", "label": 4}\n{"packet_id": "E02", "label": 1}\n',
+        encoding="utf-8",
+    )
+    out = tmp_path / "predictions.jsonl"
+    score_openhands_labels(
+        labels_path=tmp_path / "labels.jsonl",
+        key_path=tmp_path / "key.jsonl",
+        model="m",
+        out=out,
+        rows=rows,
+    )
+    scored = _read_jsonl(out)[1:]
+    assert [r["packet_id"] for r in scored] == ["E01", "E02"]
+    assert scored[0]["aligner"] != scored[1]["aligner"], (
+        "both packets scored against the same trajectories"
+    )
+
+
+def test_extending_the_sheet_keeps_packet_ids_and_filled_labels(tmp_path: Path) -> None:
+    pairs = _fixture_pairs(9)
+    export_openhands_packets(n=3, seed=7, dest=tmp_path, pairs=pairs)
+    key_before = _read_jsonl(tmp_path / "key.jsonl")
+    (tmp_path / "labels.jsonl").write_text(
+        "".join(
+            json.dumps({"packet_id": row["packet_id"], "label": i + 1, "note": "x"}) + "\n"
+            for i, row in enumerate(key_before)
+        ),
+        encoding="utf-8",
+    )
+
+    export_openhands_packets(n=6, seed=7, dest=tmp_path, pairs=pairs, extend=True)
+
+    key_after = _read_jsonl(tmp_path / "key.jsonl")
+    labels_after = _read_jsonl(tmp_path / "labels.jsonl")
+    assert key_after[:3] == key_before, "an extension repointed an already-labeled packet"
+    assert [row["label"] for row in labels_after] == [1, 2, 3, None, None, None]
+    assert [row["packet_id"] for row in key_after[3:]] == ["E04", "E05", "E06"]
+    assert len(list((tmp_path / "packets").glob("*.md"))) == 6
