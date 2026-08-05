@@ -423,6 +423,12 @@ earlier reasoning being handed back to it. That breakdown is only possible
 because the provenance of each block was recorded at the time; it cannot be
 recovered from a finished transcript.
 
+The tag names are yours, not locus's. A block is labelled by setting
+`provenance` on the `Message` you send, so an agent that never sets it profiles
+as one `untagged` leaf and gets an HTML report with nothing to group context by.
+`bench/agent.py` is the worked example. Nothing infers a tag, because a guess
+about where a block came from is exactly the thing this is supposed to know.
+
 Token spend is exported as a standard gzipped pprof profile, so Speedscope,
 `go tool pprof`, and Pyroscope can open it without a custom renderer. The stack
 is run → model → turn → provenance tag. Sample types are input and output
