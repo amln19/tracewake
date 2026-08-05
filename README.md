@@ -65,11 +65,26 @@ embeddings.
 
 Transfer: `SWE-smith-trajectories` still yields no same-instruction pairs.
 `SWE-Gym/OpenHands-Sampled-Trajectories` does — 129 same-model (gpt-4o)
-OpenHands pairs under the corpus length gate after stripping `finish`. On a
-30-pair blinded hand-labeled subset (single annotator), the aligner and both
-positional baselines each hit 12/30 within ±2 — no transfer win on this sheet.
-Scout notes and packets: `corpus/alignment/external_scout.json`,
-`corpus/labels/external/`.
+OpenHands pairs under the corpus length gate after stripping `finish`. On an
+80-pair blinded hand-labeled subset (single annotator) the aligner hits 36/80
+within ±2 against 29/80 and 26/80 for the positional baselines, but the best
+constant scores 34/80. The whole-set number is not a win.
+
+Splitting at the median failing length separates two regimes. Under 18 steps
+the aligner hits 31/40 against 23 and 21, clearing the best constant (26/40)
+and beating last-common-prefix at p=0.031. Over 18 steps everything collapses:
+aligner 5/40, baselines 6 and 5, and a constant beats all three at 15/40.
+
+That collapse is systematic, not noise. On long runs the aligner answers late —
+25 of 40 predictions sit past the label, median predicted step 19.5 against a
+median label of 11. These are runs that go wrong early and then thrash,
+re-applying the same failed edit to the same file for twenty steps. Tool and
+target keep matching the successful run, so the traces only stop corresponding
+near the end, while the label marks where the run stopped being recoverable.
+On a thrashing run those are different places. Closing that gap is the open
+problem here, and it is a question about what divergence means rather than a
+parameter to tune. Scout notes and packets:
+`corpus/alignment/external_scout.json`, `corpus/labels/external/`.
 
 ## Quick start
 
@@ -176,7 +191,7 @@ python -m bench run
 python -m bench status          # works from the committed ledger alone
 python -m bench external scout  # published-trajectory inventory
 python -m bench external openhands   # needs: pip install datasets
-python -m bench external export      # 30 blinded transfer packets
+python -m bench external export      # blinded transfer packets (--extend to grow)
 python -m bench external score       # after filling corpus/labels/external/labels.jsonl
 ```
 

@@ -21,11 +21,17 @@
         "affine_changes_answer": "46/129"
       },
       "labeled_subset": {
-        "n": 30,
+        "n": 80,
         "seed": 20260805,
-        "aligner_within_2": "12/30",
-        "baseline_a_within_2": "12/30",
-        "baseline_b_within_2": "12/30"
+        "aligner_within_2": "36/80",
+        "baseline_a_within_2": "29/80",
+        "baseline_b_within_2": "26/80",
+        "oracle_constant_within_2": "34/80",
+        "by_failure_length": {
+          "le_18": "aligner 31/40, baseline_a 23/40, baseline_b 21/40, constant 26/40",
+          "gt_18": "aligner 5/40, baseline_a 6/40, baseline_b 5/40, constant 15/40"
+        },
+        "supersedes": "An earlier 12/30 tie on the first 30 packets was an artifact of keying the scorer's lookup on run_id, which names the sampling configuration and is shared across instances."
       },
       "chosen": true,
       "why": "Same OpenHands scaffold, one model, shared PR instruction per instance, 129 pairs under the corpus length gate after stripping finish."
