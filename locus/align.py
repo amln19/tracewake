@@ -634,6 +634,25 @@ def align(
     return (total, pairs, scores)
 
 
+def _trailing_identical_loop_start(steps: Sequence[Step]) -> int | None:
+    """0-based index of a trailing run of 2+ identical (name, args) steps, else None.
+
+    Matches the labeling rule: a run that ends by repeating an action with the
+    same arguments is looping, and the loop is not recovery.
+    """
+    if len(steps) < 2:
+        return None
+    last = steps[-1]
+    start = len(steps) - 1
+    while start > 0 and (
+        steps[start - 1].name == last.name and steps[start - 1].args == last.args
+    ):
+        start -= 1
+    if start == len(steps) - 1:
+        return None
+    return start
+
+
 def divergence_step(
     alignment: Aligned,
     good: Sequence[Step],
@@ -641,26 +660,29 @@ def divergence_step(
 ) -> int | None:
     """1-based index on the failure (`bad`) side, or None if they re-align through the end.
 
-    Walk the alignment backward to the last column that agrees at target width,
-    then take the first failure-side step after it. Never agreed → step 1.
-    Trailing region empty because they recovered → None (the product reports no
-    standing divergence; evaluation maps that to the last failure step, matching
-    the labeling rule for a run that was only doomed at the end).
+    Walk the alignment to the last column that agrees at target width, then take
+    the first failure-side step after it. Never agreed → step 1. Trailing region
+    empty because they recovered → None (the product reports no standing
+    divergence; evaluation maps that to the last failure step, matching the
+    labeling rule for a run that was only doomed at the end).
 
-    A single coincidental agreement at the tail (two unrelated runs both ending
-    on a bare `run_tests()`) is indistinguishable from real recovery under this
-    rule, and requiring a longer trailing run does not reliably fix it. A real
-    one-column recovery exists in this corpus and requiring two loses it; a
-    repeated identical action pads a "run" without being recovery. Left as
-    documented, unresolved behavior rather than a rule that trades one failure
-    mode for a worse one.
+    Agreements whose failure-side step sits inside a trailing identical-arg loop
+    do not count as recovery: a stuck `run_tests()` repeated against several
+    separate real tests on the other side would otherwise look like sustained
+    re-alignment. A single shared terminal action (no loop) is unchanged — that
+    case still needs the ending stripped before diffing. Requiring 2+ agreeing
+    *columns* was tried and reverted; it broke real one-column recoveries and
+    did not fix the loop case.
     """
     if not bad:
         raise ValueError("the failure run has no steps to locate a divergence in")
 
+    loop_start = _trailing_identical_loop_start(bad)
     last_agree = -1
     for k, (i, j) in enumerate(alignment):
         if i is None or j is None:
+            continue
+        if loop_start is not None and j >= loop_start:
             continue
         if target_agree(good[i], bad[j]):
             last_agree = k

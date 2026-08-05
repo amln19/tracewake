@@ -44,21 +44,22 @@ does not work — that is why the traces are aligned first.
 ## Results
 
 On 41 blinded hand-labeled pairs (single annotator, synthetic injected bugs),
-the aligner lands within two steps of the label on 32/41, against 12/41 for
+the aligner lands within two steps of the label on 33/41, against 12/41 for
 first target-width difference, 6/41 for last common prefix, and 12/41 for a local
 7B judge on the same packets. On the 29 pairs where first-difference was already
 outside ±2 — the only pairs where an aligner can show a distinct win — it hit
-20/29 and first-difference hit 0/29. No named baseline beat it on a single pair.
+21/29 and first-difference hit 0/29. No named baseline beat it on a single pair.
 
-Always guessing "step 6" also scores 32/41, and on the contestable subset a
-constant does better (best constant 23/29 vs aligner 20/29). Labels cluster
-because most failing runs here ran out of budget while still exploring; median
-failing trajectory is 6 steps. The honest claim: the aligner beats every named
-baseline and does not beat a constant.
+Always guessing "step 6" scores 32/41 — one below the aligner on the full set —
+but on the contestable subset a constant still does better (best constant 23/29
+vs aligner 21/29). Labels cluster because most failing runs here ran out of
+budget while still exploring; median failing trajectory is 6 steps. The honest
+claim: the aligner beats every named baseline; against a constant it wins the
+full set by one pair and loses where first-difference already fails.
 
 Ablations on the same 41: target-width argument similarity alone matches the
-full distance (32/41); bag-of-words reasoning matches the pinned embedder
-(32/41); linear gaps lose three pairs; dropping reasoning gains one. On this
+full distance (33/41); bag-of-words reasoning matches the pinned embedder
+(33/41); linear gaps lose three pairs; dropping reasoning gains one. On this
 corpus the load-bearing piece is target-width args, not affine gaps or
 embeddings. Transfer to published SWE-agent rollouts is untested — that corpus
 yields no same-instruction pass/fail pairs.

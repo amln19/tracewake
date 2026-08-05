@@ -6,7 +6,7 @@
 {"full": 6, "label": 6, "lexical_reasoning": 6, "needleman_wunsch": 6, "no_reasoning": 6, "strict_args": 6, "target_only_args": 6, "task_id": "boltons-off_by_one-16"}
 {"full": 5, "label": 5, "lexical_reasoning": 1, "needleman_wunsch": 5, "no_reasoning": 5, "strict_args": 1, "target_only_args": 5, "task_id": "boltons-off_by_one-4"}
 {"full": 5, "label": 5, "lexical_reasoning": 5, "needleman_wunsch": 5, "no_reasoning": 5, "strict_args": 5, "target_only_args": 5, "task_id": "boltons-operator_swap-6"}
-{"full": 13, "label": 9, "lexical_reasoning": 13, "needleman_wunsch": 13, "no_reasoning": 13, "strict_args": 13, "target_only_args": 13, "task_id": "cachetools-deleted_guard-7"}
+{"full": 10, "label": 9, "lexical_reasoning": 10, "needleman_wunsch": 10, "no_reasoning": 10, "strict_args": 7, "target_only_args": 10, "task_id": "cachetools-deleted_guard-7"}
 {"full": 2, "label": 8, "lexical_reasoning": 2, "needleman_wunsch": 5, "no_reasoning": 2, "strict_args": 2, "target_only_args": 2, "task_id": "cachetools-operator_swap-2"}
 {"full": 6, "label": 6, "lexical_reasoning": 6, "needleman_wunsch": 6, "no_reasoning": 6, "strict_args": 4, "target_only_args": 4, "task_id": "funcy-deleted_guard-3"}
 {"full": 4, "label": 4, "lexical_reasoning": 4, "needleman_wunsch": 3, "no_reasoning": 4, "strict_args": 4, "target_only_args": 4, "task_id": "funcy-off_by_one-1"}
@@ -34,7 +34,7 @@
 {"full": 2, "label": 3, "lexical_reasoning": 2, "needleman_wunsch": 2, "no_reasoning": 2, "strict_args": 2, "target_only_args": 2, "task_id": "sortedcontainers-operator_swap-1"}
 {"full": 4, "label": 4, "lexical_reasoning": 4, "needleman_wunsch": 4, "no_reasoning": 4, "strict_args": 4, "target_only_args": 4, "task_id": "tabulate-argument_swap-9"}
 {"full": 12, "label": 7, "lexical_reasoning": 12, "needleman_wunsch": 16, "no_reasoning": 12, "strict_args": 14, "target_only_args": 12, "task_id": "tabulate-off_by_one-15"}
-{"full": 16, "label": 8, "lexical_reasoning": 16, "needleman_wunsch": 16, "no_reasoning": 16, "strict_args": 16, "target_only_args": 16, "task_id": "tabulate-operator_swap-10"}
+{"full": 4, "label": 8, "lexical_reasoning": 4, "needleman_wunsch": 3, "no_reasoning": 4, "strict_args": 4, "target_only_args": 4, "task_id": "tabulate-operator_swap-10"}
 {"full": 4, "label": 4, "lexical_reasoning": 4, "needleman_wunsch": 4, "no_reasoning": 4, "strict_args": 4, "target_only_args": 4, "task_id": "toolz-argument_swap-5"}
 {"full": 16, "label": 16, "lexical_reasoning": 16, "needleman_wunsch": 16, "no_reasoning": 16, "strict_args": 16, "target_only_args": 16, "task_id": "toolz-deleted_guard-4"}
 {"full": 4, "label": 4, "lexical_reasoning": 4, "needleman_wunsch": 4, "no_reasoning": 4, "strict_args": 4, "target_only_args": 4, "task_id": "toolz-operator_swap-2"}

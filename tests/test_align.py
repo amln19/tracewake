@@ -117,15 +117,8 @@ def test_a_shared_final_step_hides_divergence_everywhere_before_it():
     A harness that finishes every run with the same terminal action makes the
     last column agree by construction, so there is no trailing mismatch region
     and the runs read as re-aligning however far apart they actually went.
-    Strip a fixed ending before diffing.
-
-    A run-length threshold (require 2+ consecutive agreeing columns before
-    accepting recovery) was tried as a general fix and reverted: on the real
-    corpus it left the motivating case unchanged — a failing run stuck
-    repeating a bare `run_tests()` pairs against several separate `run_tests()`
-    calls on the passing side, which forms a run past any small threshold
-    without being recovery — while it broke three pairs that had a genuine
-    one-column recovery.
+    Strip a fixed ending before diffing. (A single shared terminal is not a
+    trailing identical-arg loop, so the loop rule does not apply here.)
     """
     good = [
         Step("read_file", {"path": "a.py"}, target="a.py"),
@@ -144,6 +137,54 @@ def test_a_shared_final_step_hides_divergence_everywhere_before_it():
     trimmed_good, trimmed_bad = good[:-1], bad[:-1]
     _, pairs, _ = align(trimmed_good, trimmed_bad, embed=embed)
     assert divergence_step(pairs, trimmed_good, trimmed_bad) == 1
+
+
+def test_a_trailing_identical_arg_loop_is_not_recovery():
+    """Stuck repeats of the same action must not pad the agreeing suffix.
+
+    The failing side loops on bare `run_tests()`; Gotoh pairs each copy against
+    a separate real `run_tests()` on the good side. Counting those as recovery
+    hid the divergence (corpus pair cachetools-deleted_guard-7). Ignoring
+    agreements inside the trailing loop surfaces it; a genuine one-column
+    recovery (no loop) is unchanged.
+    """
+    good = [
+        Step("read_file", {"path": "a.py"}, target="a.py"),
+        Step("edit_file", {"path": "a.py", "old": "x", "new": "y"}, target="a.py"),
+        Step("run_tests", {}),
+        Step("edit_file", {"path": "a.py", "old": "y", "new": "z"}, target="a.py"),
+        Step("run_tests", {}),
+        Step("edit_file", {"path": "a.py", "old": "z", "new": "w"}, target="a.py"),
+        Step("run_tests", {}),
+        Step("run_tests", {}),  # genuine second test, different position — not a bad-side loop
+    ]
+    bad = [
+        Step("read_file", {"path": "a.py"}, target="a.py"),
+        Step("search", {"query": "wrong"}, target="wrong"),
+        Step("run_tests", {}),
+        Step("run_tests", {}),
+        Step("run_tests", {}),
+        Step("run_tests", {}),
+    ]
+    embed = LexicalEmbedder()
+    _, pairs, _ = align(good, bad, embed=embed)
+    # Loop starts at bad index 2; those agreements are ignored, so the last
+    # counted agreement is the shared read and divergence is the search.
+    assert divergence_step(pairs, good, bad) == 2
+
+    # One-column recovery at the end still counts when there is no loop.
+    recovered_good = [
+        Step("read_file", {"path": "a.py"}, target="a.py"),
+        Step("search", {"query": "x"}, target="x"),
+        Step("run_tests", {}),
+    ]
+    recovered_bad = [
+        Step("read_file", {"path": "b.py"}, target="b.py"),
+        Step("search", {"query": "y"}, target="y"),
+        Step("run_tests", {}),
+    ]
+    _, pairs, _ = align(recovered_good, recovered_bad, embed=embed)
+    assert divergence_step(pairs, recovered_good, recovered_bad) is None
 
 
 def test_backward_definition_beats_first_difference_after_realignment():
