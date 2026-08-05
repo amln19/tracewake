@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import random
+import secrets
 import socket
 import time
 import uuid
@@ -26,6 +27,7 @@ def _sources(store: Path, run_id: str) -> list[tuple[str, str | None]]:
 
 
 def _observe() -> list[str]:
+    own = random.Random()
     return [
         f"time={time.time()!r}",
         f"monotonic={time.monotonic()!r}",
@@ -34,6 +36,9 @@ def _observe() -> list[str]:
         f"random={random.random()!r}",
         f"randint={random.randint(0, 10**9)}",
         f"choice={random.choice('abcdefghij')}",
+        f"own_random={own.random()!r}",
+        f"token_hex={secrets.token_hex(8)}",
+        f"token_bytes={secrets.token_bytes(8).hex()}",
         f"uuid4={uuid.uuid4()}",
         f"env={os.environ['LOCUS_PATCH_TEST']}",
         f"getenv={os.getenv('LOCUS_PATCH_TEST')}",
@@ -71,6 +76,8 @@ def test_each_kind_of_input_is_recorded_under_its_own_source(tmp_path: Path) -> 
     assert ("monotonic", None) in sources
     assert ("perf_counter", None) in sources
     assert ("random", None) in sources
+    assert ("random", "token_hex:8") in sources
+    assert ("random", "token_bytes:8") in sources
     assert ("uuid", "uuid4") in sources
     assert ("env", "LOCUS_PATCH_TEST") in sources
     assert any(
@@ -182,8 +189,7 @@ def test_the_runtimes_own_clock_reads_are_not_recorded(tmp_path: Path) -> None:
 
 
 def test_a_seeded_generator_of_your_own_is_left_alone(tmp_path: Path) -> None:
-    """Only the module-level generator is nondeterministic; an explicitly seeded
-    Random is already reproducible and recording it would be noise."""
+    """An explicitly seeded Random is already reproducible; recording it is noise."""
     with locus.record("seeded", store=tmp_path) as rec:
         own = random.Random(1234)
         expected = [own.random() for _ in range(5)]
@@ -192,6 +198,34 @@ def test_a_seeded_generator_of_your_own_is_left_alone(tmp_path: Path) -> None:
 
     assert _sources(tmp_path, run_id) == []
     assert random.Random(1234).random() == expected[0]
+
+
+def test_an_unseeded_generator_replays_from_the_log(tmp_path: Path) -> None:
+    with locus.record("unseeded", store=tmp_path) as rec:
+        own = random.Random()
+        recorded = [own.random() for _ in range(5)]
+        rec.outcome(status="ok")
+        run_id = rec.run_id
+
+    with locus.replay(run_id, store=tmp_path) as rep:
+        own = random.Random()
+        assert [own.random() for _ in range(5)] == recorded
+        rep.outcome(status="ok")
+
+
+def test_secrets_tokens_replay_from_the_log(tmp_path: Path) -> None:
+    with locus.record("sec", store=tmp_path) as rec:
+        recorded = (secrets.token_hex(16), secrets.token_bytes(16), secrets.token_urlsafe(16))
+        rec.outcome(status="ok")
+        run_id = rec.run_id
+
+    with locus.replay(run_id, store=tmp_path) as rep:
+        assert (
+            secrets.token_hex(16),
+            secrets.token_bytes(16),
+            secrets.token_urlsafe(16),
+        ) == recorded
+        rep.outcome(status="ok")
 
 
 def test_patches_are_removed_when_the_session_ends(tmp_path: Path) -> None:

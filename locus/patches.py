@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import random
+import secrets
 import socket
 import sys
 import sysconfig
@@ -70,6 +71,9 @@ _ENV_FORWARDERS = _frame_files(
 _RANDOM_FORWARDERS = _frame_files(
     random.randint, random.choice, random.shuffle, random.sample
 ) | frozenset({random.__file__})
+_SECRETS_FORWARDERS = _frame_files(
+    secrets.token_bytes, secrets.token_hex, secrets.token_urlsafe
+) | frozenset({secrets.__file__})
 
 _instrumented: dict[CodeType, bool] = {}
 _reentrant = threading.local()
@@ -194,6 +198,7 @@ class _Patcher:
     def install(self) -> None:
         self._install_time()
         self._install_random()
+        self._install_secrets()
         self._install_uuid()
         self._install_environ()
 
@@ -208,11 +213,12 @@ class _Patcher:
         ):
             self._set(time, name, self._clock(source, key, getattr(time, name)))
 
-    def _install_random(self) -> None:
-        # Every other function on the module-level generator — randint, choice,
-        # shuffle, sample — is built from these two on the same instance, so
-        # overriding them on the instance covers the whole module surface.
-        inst = random._inst
+    # datetime.now / date.today are not patched: on current CPython the type is
+    # immutable (`cannot set 'now' attribute`), and even a module-level class
+    # swap would miss `from datetime import datetime` holders. Prefer
+    # time.time() / session.clock for recordable wall time.
+
+    def _shadow_random_instance(self, inst: random.Random) -> None:
         real_random, real_getrandbits = inst.random, inst.getrandbits
 
         def patched_random() -> float:
@@ -229,12 +235,75 @@ class _Patcher:
             with _no_reentry() as first:
                 if not first:
                     return real_getrandbits(k)
-                return int(self._value("random", f"getrandbits:{k}", lambda: real_getrandbits(k)))
+                return int(
+                    self._value("random", f"getrandbits:{k}", lambda: real_getrandbits(k))
+                )
 
         self._shadow(inst, "random", patched_random)
         self._shadow(inst, "getrandbits", patched_getrandbits)
-        self._set(random, "random", patched_random)
-        self._set(random, "getrandbits", patched_getrandbits)
+
+    def _install_random(self) -> None:
+        # Every other function on the module-level generator — randint, choice,
+        # shuffle, sample — is built from these two on the same instance, so
+        # overriding them on the instance covers the whole module surface.
+        inst = random._inst
+        self._shadow_random_instance(inst)
+        self._set(random, "random", inst.random)
+        self._set(random, "getrandbits", inst.getrandbits)
+
+        # Unseeded Random() and SystemRandom draw OS entropy. An explicitly
+        # seeded Random is already reproducible — leave it alone (noise).
+        real_init = random.Random.__init__
+
+        def patched_init(this: random.Random, x: Any = None) -> None:
+            real_init(this, x)
+            if isinstance(this, random.SystemRandom) or x is None:
+                self._shadow_random_instance(this)
+
+        self._set(random.Random, "__init__", patched_init)
+
+    def _install_secrets(self) -> None:
+        # secrets is stdlib, so patching SystemRandom alone would see a stdlib
+        # caller and skip recording. Intercept at the secrets surface instead.
+        real_bytes = secrets.token_bytes
+        real_hex = secrets.token_hex
+        real_urlsafe = secrets.token_urlsafe
+
+        def patched_token_bytes(nbytes: int | None = None) -> bytes:
+            n = 32 if nbytes is None else nbytes
+            if not _caller_is_instrumented(forwarders=_SECRETS_FORWARDERS):
+                return real_bytes(n)
+            with _no_reentry() as first:
+                if not first:
+                    return real_bytes(n)
+                hexed = self._value(
+                    "random", f"token_bytes:{n}", lambda: real_bytes(n).hex()
+                )
+                return bytes.fromhex(str(hexed))
+
+        def patched_token_hex(nbytes: int | None = None) -> str:
+            n = 32 if nbytes is None else nbytes
+            if not _caller_is_instrumented(forwarders=_SECRETS_FORWARDERS):
+                return real_hex(n)
+            with _no_reentry() as first:
+                if not first:
+                    return real_hex(n)
+                return str(self._value("random", f"token_hex:{n}", lambda: real_hex(n)))
+
+        def patched_token_urlsafe(nbytes: int | None = None) -> str:
+            n = 32 if nbytes is None else nbytes
+            if not _caller_is_instrumented(forwarders=_SECRETS_FORWARDERS):
+                return real_urlsafe(n)
+            with _no_reentry() as first:
+                if not first:
+                    return real_urlsafe(n)
+                return str(
+                    self._value("random", f"token_urlsafe:{n}", lambda: real_urlsafe(n))
+                )
+
+        self._set(secrets, "token_bytes", patched_token_bytes)
+        self._set(secrets, "token_hex", patched_token_hex)
+        self._set(secrets, "token_urlsafe", patched_token_urlsafe)
 
     def _install_uuid(self) -> None:
         for name in ("uuid1", "uuid4"):
@@ -287,8 +356,10 @@ class _Patcher:
 @contextmanager
 def patch_environment(session: Session) -> Iterator[None]:
     patcher = _Patcher(session)
-    patcher.install()
     try:
+        patcher.install()
         yield
     finally:
+        # Always undo: a mid-install failure must not leave live patches pointing
+        # at a session that never opened (or that is about to close).
         patcher.uninstall()
