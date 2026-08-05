@@ -265,11 +265,18 @@ exchanged, a deleted guard clause — and asks a minimal ReAct agent to fix it
 from a generated bug report.
 
 ```
+uv sync --group corpus         # the local model the agent runs against
 python -m bench setup          # clone the pinned repos, build their test env
 python -m bench build-tasks    # inject bugs, validate them, write the manifest
 python -m bench run            # record the agent against every task
 python -m bench status         # outcome rates and how many tasks came out mixed
 ```
+
+`bench status` reads the committed ledger and works straight out of a clone. The
+other three need the corpus group. `build-tasks` overwrites `corpus/tasks.json`,
+which is committed: at the default seed it selects the same 64 bugs, but the
+test summaries it stores carry pytest's wall-clock times, so the file comes back
+dirty on timings alone. Check it back out rather than committing the churn.
 
 The agent runs against a local model in process, so a full corpus costs nothing
 and touches no network once `setup` has cloned the repos and the model is on
@@ -541,6 +548,10 @@ baselines on hand-labeled pairs.
 uv sync
 PYTHONHASHSEED=0 uv run pytest
 ```
+
+That covers the library and the CLI. `locus diff` and `locus view` additionally
+need `uv sync --extra embeddings` unless you pass `--lexical`, and the corpus
+tests skip in a fresh clone because the recorded runs are not committed.
 
 `tests/test_offline.py` is the load-bearing test: an agent whose model backend
 genuinely opens a socket is recorded through the CLI, then replayed. The test
