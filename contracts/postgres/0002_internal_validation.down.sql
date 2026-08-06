@@ -1,0 +1,2 @@
+-- PostgreSQL enum values cannot be removed safely while retained lifecycle
+-- records may reference them. Rollback requires an operator-approved restore.

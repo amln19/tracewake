@@ -2,15 +2,18 @@ package store
 
 import (
 	"context"
-	_ "embed"
+	"embed"
 	"errors"
 	"fmt"
+	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-//go:embed migrations/0001_hosted_contracts.up.sql
-var initialMigration string
+//go:embed migrations/*.up.sql
+var migrationFiles embed.FS
 
 type Store struct {
 	pool *pgxpool.Pool
@@ -39,18 +42,43 @@ func (s *Store) Migrate(ctx context.Context) error {
     )`); err != nil {
 		return fmt.Errorf("create migration ledger: %w", err)
 	}
-	var applied bool
-	if err := s.pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = 1)").Scan(&applied); err != nil {
-		return fmt.Errorf("read migration ledger: %w", err)
+	entries, err := migrationFiles.ReadDir("migrations")
+	if err != nil {
+		return fmt.Errorf("read embedded migrations: %w", err)
 	}
-	if applied {
-		return nil
+	versions := make([]int, 0, len(entries))
+	byVersion := make(map[int]string, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		versionText, _, found := strings.Cut(entry.Name(), "_")
+		version, parseErr := strconv.Atoi(versionText)
+		if !found || parseErr != nil {
+			return fmt.Errorf("invalid migration file %q", entry.Name())
+		}
+		contents, readErr := migrationFiles.ReadFile("migrations/" + entry.Name())
+		if readErr != nil {
+			return fmt.Errorf("read migration %d: %w", version, readErr)
+		}
+		versions = append(versions, version)
+		byVersion[version] = string(contents)
 	}
-	if _, err := s.pool.Exec(ctx, initialMigration); err != nil {
-		return fmt.Errorf("apply hosted schema migration 1: %w", err)
-	}
-	if _, err := s.pool.Exec(ctx, "INSERT INTO schema_migrations (version) VALUES (1)"); err != nil {
-		return fmt.Errorf("record migration 1: %w", err)
+	sort.Ints(versions)
+	for _, version := range versions {
+		var applied bool
+		if err := s.pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)", version).Scan(&applied); err != nil {
+			return fmt.Errorf("read migration ledger: %w", err)
+		}
+		if applied {
+			continue
+		}
+		if _, err := s.pool.Exec(ctx, byVersion[version]); err != nil {
+			return fmt.Errorf("apply hosted schema migration %d: %w", version, err)
+		}
+		if _, err := s.pool.Exec(ctx, "INSERT INTO schema_migrations (version) VALUES ($1)", version); err != nil {
+			return fmt.Errorf("record migration %d: %w", version, err)
+		}
 	}
 	return nil
 }
