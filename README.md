@@ -165,7 +165,16 @@ context grouping and the pprof leaves; untagged blocks collapse to one bucket.
 
 ## Local control plane
 
-The hosted lifecycle can be exercised locally without AWS:
+The hosted lifecycle can be exercised locally without AWS. With Go 1.24,
+PostgreSQL 17, and `uv` installed, one command starts PostgreSQL, the Go
+control plane, and the Python worker:
+
+```sh
+scripts/local-control-plane
+```
+
+The command prints the private credentials-file location and stops all three
+processes together on Ctrl-C. Docker is an alternative:
 
 ```sh
 docker compose up --build

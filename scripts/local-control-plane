@@ -1,0 +1,99 @@
+#!/bin/sh
+set -eu
+
+project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+state_root=${LOCUS_LOCAL_STATE:-"$project_root/.locus/hosted"}
+postgres_port=${LOCUS_POSTGRES_PORT:-55432}
+public_port=${LOCUS_PUBLIC_PORT:-8080}
+worker_port=${LOCUS_PRIVATE_PORT:-8081}
+postgres_data="$state_root/postgres"
+postgres_socket="$state_root/socket"
+artifact_root="$state_root/artifacts"
+credential_file="$state_root/credentials.json"
+secret_file="$state_root/secrets"
+binary="$state_root/locusd"
+
+for command in go initdb pg_ctl pg_isready createdb psql uv openssl curl; do
+    command -v "$command" >/dev/null || {
+        printf '%s\n' "missing required command: $command" >&2
+        exit 1
+    }
+done
+
+mkdir -p "$state_root" "$postgres_socket" "$artifact_root"
+chmod 700 "$state_root" "$postgres_socket" "$artifact_root"
+if [ ! -f "$secret_file" ]; then
+    umask 077
+    tenant_pepper=$(openssl rand -hex 32)
+    worker_pepper=$(openssl rand -hex 32)
+    printf "LOCUS_TOKEN_PEPPER='%s'\nLOCUS_WORKER_PEPPER='%s'\n" "$tenant_pepper" "$worker_pepper" >"$secret_file"
+fi
+. "$secret_file"
+export LOCUS_TOKEN_PEPPER LOCUS_WORKER_PEPPER
+
+if [ ! -f "$postgres_data/PG_VERSION" ]; then
+    initdb -D "$postgres_data" -A trust -U locus --no-locale
+fi
+pg_ctl -D "$postgres_data" -l "$state_root/postgres.log" -o "-p $postgres_port -k $postgres_socket" start
+
+api_pid=
+worker_pid=
+cleanup() {
+    if [ -n "$worker_pid" ]; then kill "$worker_pid" 2>/dev/null || true; fi
+    if [ -n "$api_pid" ]; then kill "$api_pid" 2>/dev/null || true; fi
+    pg_ctl -D "$postgres_data" stop -m fast >/dev/null 2>&1 || true
+}
+trap cleanup EXIT INT TERM
+
+tries=0
+until pg_isready -h "$postgres_socket" -p "$postgres_port" -U locus >/dev/null; do
+    tries=$((tries + 1))
+    if [ "$tries" -ge 30 ]; then
+        printf '%s\n' "PostgreSQL did not become ready" >&2
+        exit 1
+    fi
+    sleep 1
+done
+if ! psql -h "$postgres_socket" -p "$postgres_port" -U locus -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='locus'" | grep -q 1; then
+    createdb -h "$postgres_socket" -p "$postgres_port" -U locus locus
+fi
+
+(cd "$project_root/controlplane" && go build -o "$binary" ./cmd/locusd)
+database_url="postgres://locus@localhost/locus?host=$postgres_socket&port=$postgres_port&sslmode=disable"
+LOCUS_DATABASE_URL="$database_url" \
+LOCUS_ARTIFACT_ROOT="$artifact_root" \
+LOCUS_LISTEN_ADDR="127.0.0.1:$public_port" \
+LOCUS_WORKER_LISTEN_ADDR="127.0.0.1:$worker_port" \
+LOCUS_BOOTSTRAP_FILE="$credential_file" \
+"$binary" &
+api_pid=$!
+
+tries=0
+while [ ! -f "$credential_file" ]; do
+    tries=$((tries + 1))
+    if [ "$tries" -ge 30 ]; then
+        printf '%s\n' "control plane did not create local credentials" >&2
+        exit 1
+    fi
+    sleep 1
+done
+tries=0
+until curl --fail --silent --output /dev/null "http://127.0.0.1:$public_port/healthz"; do
+    tries=$((tries + 1))
+    if [ "$tries" -ge 30 ]; then
+        printf '%s\n' "control plane did not become healthy" >&2
+        exit 1
+    fi
+    sleep 1
+done
+LOCUS_WORKER_URL="http://127.0.0.1:$worker_port" \
+LOCUS_WORKER_CREDENTIALS_FILE="$credential_file" \
+LOCUS_WORKER_BUILD=local-command \
+uv run --project "$project_root" locus-worker &
+worker_pid=$!
+
+printf '%s\n' "Locus control plane: http://127.0.0.1:$public_port"
+printf '%s\n' "Credentials: $credential_file"
+while kill -0 "$api_pid" 2>/dev/null && kill -0 "$worker_pid" 2>/dev/null; do sleep 1; done
+printf '%s\n' "control plane or worker exited unexpectedly" >&2
+exit 1
