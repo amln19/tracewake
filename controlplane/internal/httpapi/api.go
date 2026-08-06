@@ -109,6 +109,7 @@ func (a *API) createUpload(w http.ResponseWriter, r *http.Request) {
 		"required_digest": upload.Digest,
 		"required_size":   upload.Size,
 		"upload_url":      artifacts.Absolute(a.baseURL, grant.URL),
+		"upload_headers":  grant.Headers,
 		"expires_at":      grant.ExpiresAt,
 	})
 }
