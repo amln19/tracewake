@@ -70,6 +70,7 @@ resource "aws_ecs_task_definition" "control_plane" {
       { name = "LOCUS_ARTIFACT_BUCKET", value = aws_s3_bucket.artifacts.bucket },
       { name = "LOCUS_JOB_QUEUE_URL", value = aws_sqs_queue.jobs.url },
       { name = "LOCUS_PUBLIC_BASE_URL", value = local.public_base_url },
+      { name = "LOCUS_WORKER_BASE_URL", value = local.worker_base_url },
       { name = "LOCUS_BOOTSTRAP_WORKSPACE", value = var.environment },
       { name = "AWS_REGION", value = var.region },
     ]

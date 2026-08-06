@@ -27,6 +27,11 @@ services:
       LOCUS_ARTIFACT_ROOT: /var/lib/locus/artifacts
       LOCUS_LISTEN_ADDR: 0.0.0.0:8080
       LOCUS_WORKER_LISTEN_ADDR: 0.0.0.0:8081
+      # Object grants are handed to clients, so they must name the address the
+      # client uses: the published port for tenants, the service name for the
+      # worker container.
+      LOCUS_PUBLIC_BASE_URL: http://127.0.0.1:8080
+      LOCUS_WORKER_BASE_URL: http://controlplane:8081
       LOCUS_BOOTSTRAP_FILE: /run/locus/credentials.json
     ports:
       - "127.0.0.1:8080:8080"
