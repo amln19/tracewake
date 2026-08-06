@@ -11,6 +11,23 @@ type Notification struct {
 	Payload json.RawMessage
 }
 
+func (s *Service) RetainedObjectKeys(ctx context.Context) (map[string]bool, error) {
+	rows, err := s.pool.Query(ctx, `SELECT bundle_object_key FROM runs WHERE state<>'deleted' AND retention_expires_at>transaction_timestamp() UNION SELECT object_key FROM artifacts WHERE authoritative AND retention_expires_at>transaction_timestamp()`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := map[string]bool{}
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		result[key] = true
+	}
+	return result, rows.Err()
+}
+
 func (s *Service) NextNotification(ctx context.Context) (Notification, error) {
 	var notification Notification
 	err := s.pool.QueryRow(ctx, `SELECT id,payload FROM outbox WHERE topic='job.created' AND available_at<=transaction_timestamp() AND published_at IS NULL ORDER BY id LIMIT 1`).Scan(&notification.ID, &notification.Payload)
@@ -69,14 +86,21 @@ func (s *Service) Reconcile(ctx context.Context, limit int) (int, error) {
 			if _, err = tx.Exec(ctx, `UPDATE jobs SET state='failed',terminal_at=transaction_timestamp(),failure_code='retry_exhausted',failure_message='worker lease expired',updated_at=transaction_timestamp(),row_version=row_version+1 WHERE id=$1`, item.id); err != nil {
 				return 0, err
 			}
+			if _, err = tx.Exec(ctx, `UPDATE runs r SET state='invalid',failure_code='retry_exhausted',failure_message='worker lease expired',row_version=row_version+1 FROM job_inputs i WHERE i.id=(SELECT input_id FROM jobs WHERE id=$1) AND i.operation='validate' AND r.id=i.run_a_id AND r.state='validating'`, item.id); err != nil {
+				return 0, err
+			}
 		}
 	}
 	command, err := tx.Exec(ctx, `WITH due AS (SELECT id FROM jobs WHERE state='retry_wait' AND retry_at<=transaction_timestamp() AND cancel_requested_at IS NULL FOR UPDATE SKIP LOCKED LIMIT $1), updated AS (UPDATE jobs j SET state='queued',retry_at=NULL,updated_at=transaction_timestamp(),row_version=row_version+1 FROM due WHERE j.id=due.id RETURNING j.id,j.row_version,(SELECT operation FROM job_inputs WHERE id=j.input_id) operation) INSERT INTO outbox(aggregate_type,aggregate_id,aggregate_version,topic,payload) SELECT 'job',id,row_version,'job.created',jsonb_build_object('protocol_version',1,'job_id',id,'job_version',row_version,'operation',operation) FROM updated`, limit)
 	if err != nil {
 		return 0, err
 	}
+	stranded, err := tx.Exec(ctx, `WITH candidates AS (SELECT j.id FROM jobs j WHERE j.state='queued' AND NOT EXISTS(SELECT 1 FROM outbox o WHERE o.aggregate_id=j.id AND o.topic='job.created' AND o.published_at IS NULL) FOR UPDATE SKIP LOCKED LIMIT $1), updated AS (UPDATE jobs j SET row_version=row_version+1,updated_at=transaction_timestamp() FROM candidates WHERE j.id=candidates.id RETURNING j.id,j.row_version,(SELECT operation FROM job_inputs WHERE id=j.input_id) operation) INSERT INTO outbox(aggregate_type,aggregate_id,aggregate_version,topic,payload) SELECT 'job',id,row_version,'job.created',jsonb_build_object('protocol_version',1,'job_id',id,'job_version',row_version,'operation',operation) FROM updated`, limit)
+	if err != nil {
+		return 0, err
+	}
 	if err = tx.Commit(ctx); err != nil {
 		return 0, err
 	}
-	return len(items) + int(command.RowsAffected()), nil
+	return len(items) + int(command.RowsAffected()) + int(stranded.RowsAffected()), nil
 }

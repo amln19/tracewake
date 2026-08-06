@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const MaxBundleSize int64 = 256 * 1024 * 1024
@@ -16,10 +17,10 @@ const MaxBundleSize int64 = 256 * 1024 * 1024
 type Store struct{ root string }
 
 type Object struct {
-	Key     string
-	Version string
-	Digest  string
-	Size    int64
+	Key     string `json:"object_key"`
+	Version string `json:"object_version"`
+	Digest  string `json:"digest"`
+	Size    int64  `json:"size"`
 }
 
 func New(root string) (*Store, error) {
@@ -101,4 +102,40 @@ func (s *Store) Verify(key, version, expectedDigest string, expectedSize int64) 
 
 func safeKey(key string) bool {
 	return key != "" && !strings.HasPrefix(key, "/") && filepath.ToSlash(filepath.Clean(key)) == key && !strings.Contains(key, "..")
+}
+
+func (s *Store) Cleanup(keep map[string]bool, before time.Time) (int, error) {
+	removed := 0
+	err := filepath.WalkDir(s.root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		relative, err := filepath.Rel(s.root, path)
+		if err != nil {
+			return err
+		}
+		key := filepath.ToSlash(relative)
+		if keep[key] {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if info.ModTime().After(before) {
+			return nil
+		}
+		if err := os.Remove(path); err != nil {
+			return err
+		}
+		removed++
+		return nil
+	})
+	if err != nil {
+		return removed, fmt.Errorf("clean orphan artifacts: %w", err)
+	}
+	return removed, nil
 }

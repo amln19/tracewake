@@ -2,6 +2,8 @@ package workerapi
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -30,6 +32,7 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("POST /internal/v1/jobs/{job}/attempts/{attempt}/fail", a.fail)
 	mux.HandleFunc("PUT /internal/v1/jobs/{job}/attempts/{attempt}/artifacts/{kind}", a.putArtifact)
 	mux.HandleFunc("POST /internal/v1/jobs/{job}/attempts/{attempt}/complete", a.complete)
+	mux.HandleFunc("GET /internal/v1/jobs/{job}/attempts/{attempt}/inputs/{artifact}", a.input)
 	return mux
 }
 
@@ -78,19 +81,22 @@ func (a *API) claim(w http.ResponseWriter, r *http.Request) {
 		ProtocolVersion int    `json:"protocol_version"`
 		WorkerID        string `json:"worker_id"`
 		Notification    struct {
-			JobID string `json:"job_id"`
+			ProtocolVersion int    `json:"protocol_version"`
+			JobID           string `json:"job_id"`
+			JobVersion      int64  `json:"job_version"`
+			Operation       string `json:"operation"`
 		} `json:"notification"`
 	}
-	if decode(w, r, &body) != nil || body.ProtocolVersion != 1 || body.WorkerID != worker {
+	if decode(w, r, &body) != nil || body.ProtocolVersion != 1 || body.Notification.ProtocolVersion != 1 || body.WorkerID != worker {
 		writeError(w, http.StatusUnprocessableEntity, "invalid_request")
 		return
 	}
-	claim, err := a.service.Claim(r.Context(), worker, body.Notification.JobID)
+	claim, err := a.service.ClaimNotification(r.Context(), worker, body.Notification.JobID, body.Notification.JobVersion)
 	if err != nil {
 		writeError(w, http.StatusConflict, "conflict")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"protocol_version": 1, "job_id": claim.JobID, "attempt_number": claim.Attempt, "attempt_token": claim.AttemptToken, "lease_expires_at": claim.LeaseExpires, "operation": claim.Operation, "profile": claim.Profile})
+	writeJSON(w, http.StatusCreated, map[string]any{"protocol_version": 1, "job_id": claim.JobID, "attempt_number": claim.Attempt, "attempt_token": claim.AttemptToken, "lease_expires_at": claim.LeaseExpires, "operation": claim.Operation, "profile": claim.Profile, "input_artifacts": claim.Inputs})
 }
 func attemptNumber(r *http.Request) (int, error) { return strconv.Atoi(r.PathValue("attempt")) }
 func (a *API) heartbeat(w http.ResponseWriter, r *http.Request) {
@@ -99,6 +105,15 @@ func (a *API) heartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 	attempt, err := attemptNumber(r)
 	if err != nil {
+		writeError(w, 400, "invalid_request")
+		return
+	}
+	var body struct {
+		ProtocolVersion int    `json:"protocol_version"`
+		Attempt         int    `json:"attempt_number"`
+		Observed        string `json:"observed_lease_expires_at"`
+	}
+	if decode(w, r, &body) != nil || body.ProtocolVersion != 1 || body.Attempt != attempt {
 		writeError(w, 400, "invalid_request")
 		return
 	}
@@ -195,13 +210,19 @@ func (a *API) putArtifact(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 409, "lease_lost")
 		return
 	}
+	kind := r.PathValue("kind")
+	allowed := map[string]bool{"validation_json": true, "diff_json": true, "diff_html": true, "otlp_json": true, "pprof": true, "worker_diagnostic": true}
+	if !allowed[kind] {
+		writeError(w, 400, "invalid_request")
+		return
+	}
 	digest := r.Header.Get("Locus-Artifact-Digest")
 	size, err := strconv.ParseInt(r.Header.Get("Locus-Artifact-Size"), 10, 64)
 	if err != nil {
 		writeError(w, 400, "invalid_request")
 		return
 	}
-	key := "workspaces/" + workspace + "/jobs/" + r.PathValue("job") + "/attempts/" + strconv.Itoa(attempt) + "/" + r.PathValue("kind")
+	key := "workspaces/" + workspace + "/jobs/" + r.PathValue("job") + "/attempts/" + strconv.Itoa(attempt) + "/" + kind
 	object, err := a.artifacts.Put(key, digest, size, http.MaxBytesReader(w, r.Body, size+1))
 	if err != nil {
 		writeError(w, 400, "invalid_request")
@@ -227,6 +248,12 @@ func (a *API) complete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 409, "artifact_commit_failed")
 		return
 	}
+	for _, companion := range body.Companions {
+		if err := a.artifacts.Verify(companion.ObjectKey, companion.ObjectVersion, companion.Digest, companion.Size); err != nil {
+			writeError(w, 409, "artifact_commit_failed")
+			return
+		}
+	}
 	err = a.service.CompleteAttempt(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Locus-Attempt-Token"), body)
 	if err != nil {
 		writeError(w, 409, "lease_lost")
@@ -234,10 +261,42 @@ func (a *API) complete(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]any{"protocol_version": 1, "status": "succeeded"})
 }
+
+func (a *API) input(w http.ResponseWriter, r *http.Request) {
+	if _, ok := a.worker(w, r); !ok {
+		return
+	}
+	attempt, err := attemptNumber(r)
+	if err != nil {
+		writeError(w, 400, "invalid_request")
+		return
+	}
+	value, err := a.service.InputArtifact(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Locus-Attempt-Token"), r.PathValue("artifact"))
+	if err != nil {
+		writeError(w, 409, "lease_lost")
+		return
+	}
+	file, err := a.artifacts.Open(value.ObjectKey, value.ObjectVersion)
+	if err != nil {
+		writeError(w, 500, "internal")
+		return
+	}
+	defer file.Close()
+	w.Header().Set("Content-Type", value.MediaType)
+	w.Header().Set("Content-Length", strconv.FormatInt(value.Size, 10))
+	_, _ = io.Copy(w, file)
+}
 func decode(w http.ResponseWriter, r *http.Request, value any) error {
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	decoder.DisallowUnknownFields()
-	return decoder.Decode(value)
+	if err := decoder.Decode(value); err != nil {
+		return err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return errors.New("request must contain one JSON value")
+	}
+	return nil
 }
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")

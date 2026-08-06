@@ -1,0 +1,190 @@
+package controlplane
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+)
+
+type RunView struct {
+	ID               string     `json:"run_id"`
+	State            string     `json:"state"`
+	BundleDigest     string     `json:"bundle_digest"`
+	BundleFormat     int        `json:"bundle_format_version"`
+	LogicalDigest    *string    `json:"logical_run_digest"`
+	CassetteFormat   *int       `json:"cassette_format_version"`
+	EventSchema      *int       `json:"event_schema_version"`
+	EventCount       *int       `json:"event_count"`
+	FailureCode      *string    `json:"failure_code"`
+	FailureMessage   *string    `json:"failure_message"`
+	CreatedAt        time.Time  `json:"created_at"`
+	RetentionExpires time.Time  `json:"retention_expires_at"`
+	ReadyAt          *time.Time `json:"ready_at"`
+}
+type AttemptView struct {
+	Number         int        `json:"attempt_number"`
+	State          string     `json:"state"`
+	StartedAt      time.Time  `json:"started_at"`
+	FinishedAt     *time.Time `json:"finished_at"`
+	FailureCode    *string    `json:"failure_code"`
+	FailureMessage *string    `json:"failure_message"`
+}
+type JobView struct {
+	ID              string           `json:"job_id"`
+	Operation       string           `json:"operation"`
+	State           string           `json:"state"`
+	RunIDs          []string         `json:"run_ids"`
+	Profile         *string          `json:"profile"`
+	CurrentAttempt  *int             `json:"current_attempt_number"`
+	Attempts        []AttemptView    `json:"attempts"`
+	Progress        *Progress        `json:"progress"`
+	CancelRequested *time.Time       `json:"cancel_requested_at"`
+	FailureCode     *string          `json:"failure_code"`
+	FailureMessage  *string          `json:"failure_message"`
+	CreatedAt       time.Time        `json:"created_at"`
+	UpdatedAt       time.Time        `json:"updated_at"`
+	TerminalAt      *time.Time       `json:"terminal_at"`
+	Artifacts       []PublicArtifact `json:"artifacts"`
+}
+type PublicArtifact struct {
+	ID               string    `json:"artifact_id"`
+	Kind             string    `json:"kind"`
+	Digest           string    `json:"digest"`
+	Size             int64     `json:"size"`
+	MediaType        string    `json:"media_type"`
+	SchemaName       *string   `json:"schema_name"`
+	SchemaVersion    *int      `json:"schema_version"`
+	RetentionExpires time.Time `json:"retention_expires_at"`
+}
+type ArtifactView struct {
+	ID        string `json:"artifact_id"`
+	Key       string `json:"-"`
+	Version   string `json:"-"`
+	Digest    string `json:"digest"`
+	MediaType string `json:"media_type"`
+	Size      int64  `json:"size"`
+}
+type AuditView struct {
+	ID            int64     `json:"id"`
+	AggregateType string    `json:"aggregate_type"`
+	AggregateID   string    `json:"aggregate_id"`
+	EventType     string    `json:"event_type"`
+	ActorType     string    `json:"actor_type"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+func (s *Service) GetRun(ctx context.Context, p Principal, id string) (RunView, error) {
+	var v RunView
+	err := s.pool.QueryRow(ctx, `SELECT id,state,declared_bundle_format,declared_bundle_digest,logical_run_digest,cassette_format_version,event_schema_version,event_count,failure_code,failure_message,created_at,ready_at,retention_expires_at FROM runs WHERE id=$1 AND workspace_id=$2 AND state<>'deleted'`, id, p.WorkspaceID).Scan(&v.ID, &v.State, &v.BundleFormat, &v.BundleDigest, &v.LogicalDigest, &v.CassetteFormat, &v.EventSchema, &v.EventCount, &v.FailureCode, &v.FailureMessage, &v.CreatedAt, &v.ReadyAt, &v.RetentionExpires)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return v, ErrNotFound
+	}
+	return v, err
+}
+func (s *Service) ListRuns(ctx context.Context, p Principal, limit int) ([]RunView, error) {
+	if limit < 1 || limit > 100 {
+		limit = 100
+	}
+	rows, err := s.pool.Query(ctx, `SELECT id,state,declared_bundle_format,declared_bundle_digest,logical_run_digest,cassette_format_version,event_schema_version,event_count,failure_code,failure_message,created_at,ready_at,retention_expires_at FROM runs WHERE workspace_id=$1 AND state<>'deleted' ORDER BY created_at DESC,id DESC LIMIT $2`, p.WorkspaceID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []RunView
+	for rows.Next() {
+		var v RunView
+		if err := rows.Scan(&v.ID, &v.State, &v.BundleFormat, &v.BundleDigest, &v.LogicalDigest, &v.CassetteFormat, &v.EventSchema, &v.EventCount, &v.FailureCode, &v.FailureMessage, &v.CreatedAt, &v.ReadyAt, &v.RetentionExpires); err != nil {
+			return nil, err
+		}
+		result = append(result, v)
+	}
+	return result, rows.Err()
+}
+func (s *Service) GetJob(ctx context.Context, p Principal, id string) (JobView, error) {
+	var v JobView
+	var runA string
+	var runB *string
+	err := s.pool.QueryRow(ctx, `SELECT j.id,i.operation,i.run_a_id,i.run_b_id,i.analysis_profile,j.state,j.current_attempt_number,j.cancel_requested_at,j.failure_code,j.failure_message,j.created_at,j.updated_at,j.terminal_at FROM jobs j JOIN job_inputs i ON i.id=j.input_id WHERE j.id=$1 AND j.workspace_id=$2 AND i.operation<>'validate'`, id, p.WorkspaceID).Scan(&v.ID, &v.Operation, &runA, &runB, &v.Profile, &v.State, &v.CurrentAttempt, &v.CancelRequested, &v.FailureCode, &v.FailureMessage, &v.CreatedAt, &v.UpdatedAt, &v.TerminalAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return v, ErrNotFound
+	}
+	if err != nil {
+		return v, err
+	}
+	v.RunIDs = []string{runA}
+	if runB != nil {
+		v.RunIDs = append(v.RunIDs, *runB)
+	}
+	rows, err := s.pool.Query(ctx, `SELECT attempt_number,state,started_at,finished_at,failure_code,failure_message FROM job_attempts WHERE job_id=$1 ORDER BY attempt_number`, id)
+	if err != nil {
+		return v, err
+	}
+	for rows.Next() {
+		var a AttemptView
+		if err := rows.Scan(&a.Number, &a.State, &a.StartedAt, &a.FinishedAt, &a.FailureCode, &a.FailureMessage); err != nil {
+			rows.Close()
+			return v, err
+		}
+		v.Attempts = append(v.Attempts, a)
+	}
+	rows.Close()
+	artifactRows, err := s.pool.Query(ctx, `SELECT id,kind,digest,size,media_type,schema_name,schema_version,retention_expires_at FROM artifacts WHERE job_id=$1 AND workspace_id=$2 AND authoritative ORDER BY kind`, id, p.WorkspaceID)
+	if err != nil {
+		return v, err
+	}
+	for artifactRows.Next() {
+		var artifact PublicArtifact
+		if err := artifactRows.Scan(&artifact.ID, &artifact.Kind, &artifact.Digest, &artifact.Size, &artifact.MediaType, &artifact.SchemaName, &artifact.SchemaVersion, &artifact.RetentionExpires); err != nil {
+			artifactRows.Close()
+			return v, err
+		}
+		v.Artifacts = append(v.Artifacts, artifact)
+	}
+	artifactRows.Close()
+	var progress Progress
+	err = s.pool.QueryRow(ctx, `SELECT sequence,stage,message FROM progress_snapshots WHERE job_id=$1`, id).Scan(&progress.Sequence, &progress.Stage, &progress.Message)
+	if err == nil {
+		v.Progress = &progress
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return v, err
+	}
+	return v, nil
+}
+func (s *Service) GetArtifact(ctx context.Context, p Principal, id string) (ArtifactView, error) {
+	var v ArtifactView
+	err := s.pool.QueryRow(ctx, `SELECT id,object_key,object_version,digest,size,media_type FROM artifacts WHERE id=$1 AND workspace_id=$2 AND authoritative AND retention_expires_at>transaction_timestamp()`, id, p.WorkspaceID).Scan(&v.ID, &v.Key, &v.Version, &v.Digest, &v.Size, &v.MediaType)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return v, ErrNotFound
+	}
+	return v, err
+}
+func (s *Service) ListAudit(ctx context.Context, p Principal, limit int) ([]AuditView, error) {
+	if limit < 1 || limit > 100 {
+		limit = 100
+	}
+	rows, err := s.pool.Query(ctx, `SELECT id,aggregate_type,aggregate_id,event_type,actor_type,created_at FROM audit_records WHERE workspace_id=$1 ORDER BY created_at DESC,id DESC LIMIT $2`, p.WorkspaceID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []AuditView
+	for rows.Next() {
+		var v AuditView
+		if err := rows.Scan(&v.ID, &v.AggregateType, &v.AggregateID, &v.EventType, &v.ActorType, &v.CreatedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, v)
+	}
+	return result, rows.Err()
+}
+func (s *Service) CurrentProgress(ctx context.Context, p Principal, jobID string) (Progress, error) {
+	var value Progress
+	err := s.pool.QueryRow(ctx, `SELECT p.sequence,p.stage,p.message FROM progress_snapshots p JOIN jobs j ON j.id=p.job_id WHERE p.job_id=$1 AND j.workspace_id=$2`, jobID, p.WorkspaceID).Scan(&value.Sequence, &value.Stage, &value.Message)
+	if err != nil {
+		return value, fmt.Errorf("read progress: %w", err)
+	}
+	return value, nil
+}

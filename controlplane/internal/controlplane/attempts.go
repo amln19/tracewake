@@ -12,24 +12,38 @@ import (
 )
 
 type Progress struct {
-	Sequence       int64
-	Stage, Message string
+	Sequence int64  `json:"sequence"`
+	Stage    string `json:"stage"`
+	Message  string `json:"message"`
 }
 type Completion struct {
-	ArtifactID     string `json:"artifact_id"`
-	Kind           string `json:"kind"`
-	ObjectKey      string `json:"object_key"`
-	ObjectVersion  string `json:"object_version"`
-	Digest         string `json:"digest"`
-	MediaType      string `json:"media_type"`
-	SchemaName     string `json:"schema_name"`
-	Size           int64  `json:"size"`
-	SchemaVersion  int    `json:"schema_version"`
-	LogicalDigest  string `json:"logical_run_digest"`
-	EventCount     int    `json:"event_count"`
-	BundleFormat   int    `json:"bundle_format_version"`
-	CassetteFormat int    `json:"cassette_format_version"`
-	EventSchema    int    `json:"event_schema_version"`
+	ArtifactID     string              `json:"artifact_id"`
+	Kind           string              `json:"kind"`
+	ObjectKey      string              `json:"object_key"`
+	ObjectVersion  string              `json:"object_version"`
+	Digest         string              `json:"digest"`
+	MediaType      string              `json:"media_type"`
+	SchemaName     string              `json:"schema_name"`
+	Size           int64               `json:"size"`
+	SchemaVersion  int                 `json:"schema_version"`
+	LogicalDigest  string              `json:"logical_run_digest"`
+	EventCount     int                 `json:"event_count"`
+	BundleFormat   int                 `json:"bundle_format_version"`
+	CassetteFormat int                 `json:"cassette_format_version"`
+	EventSchema    int                 `json:"event_schema_version"`
+	Companions     []CompanionArtifact `json:"companions"`
+}
+
+type CompanionArtifact struct {
+	ArtifactID    string  `json:"artifact_id"`
+	Kind          string  `json:"kind"`
+	ObjectKey     string  `json:"object_key"`
+	ObjectVersion string  `json:"object_version"`
+	Digest        string  `json:"digest"`
+	Size          int64   `json:"size"`
+	MediaType     string  `json:"media_type"`
+	SchemaName    *string `json:"schema_name"`
+	SchemaVersion *int    `json:"schema_version"`
 }
 
 func (s *Service) Cancellation(ctx context.Context, jobID string, attempt int, token string) (bool, error) {
@@ -60,6 +74,24 @@ func (s *Service) AuthorizeAttempt(ctx context.Context, jobID string, attempt in
 		return "", err
 	}
 	return workspace, tx.Commit(ctx)
+}
+
+func (s *Service) InputArtifact(ctx context.Context, jobID string, attempt int, token, artifactID string) (InputArtifact, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return InputArtifact{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, _, err = s.checkAttempt(ctx, tx, jobID, attempt, token); err != nil {
+		return InputArtifact{}, err
+	}
+	var value InputArtifact
+	err = tx.QueryRow(ctx, `SELECT r.id,r.bundle_object_key,r.bundle_object_version,r.declared_bundle_digest,r.declared_bundle_size FROM jobs j JOIN job_inputs i ON i.id=j.input_id JOIN runs r ON r.id IN(i.run_a_id,i.run_b_id) WHERE j.id=$1 AND r.id=$2`, jobID, artifactID).Scan(&value.ArtifactID, &value.ObjectKey, &value.ObjectVersion, &value.Digest, &value.Size)
+	if err != nil {
+		return value, ErrNotFound
+	}
+	value.MediaType = "application/x-tar"
+	return value, tx.Commit(ctx)
 }
 
 func (s *Service) checkAttempt(ctx context.Context, tx pgx.Tx, jobID string, attempt int, token string) (string, string, error) {
@@ -160,12 +192,17 @@ func (s *Service) FailAttempt(ctx context.Context, jobID string, attempt int, to
 	if len(code) == 0 || len(code) > 64 || len(message) > 512 {
 		return "", errors.New("invalid failure")
 	}
+	permanent := map[string]bool{"invalid_bundle": true, "unsupported_version": true, "invalid_result": true, "unauthorized_input": true, "cancelled": true}
+	retryableCodes := map[string]bool{"artifact_commit_failed": true, "transient_dependency": true, "internal": true}
+	if (!permanent[code] && !retryableCodes[code]) || retryable != retryableCodes[code] {
+		return "", errors.New("failure retryability does not match policy")
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return "", err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	workspace, _, err := s.checkAttempt(ctx, tx, jobID, attempt, token)
+	workspace, operation, err := s.checkAttempt(ctx, tx, jobID, attempt, token)
 	if err != nil {
 		return "", err
 	}
@@ -194,8 +231,14 @@ func (s *Service) FailAttempt(ctx context.Context, jobID string, attempt int, to
 		if err != nil {
 			return "", err
 		}
+		if operation == "validate" {
+			_, err = tx.Exec(ctx, `UPDATE runs r SET state='invalid',failure_code=$2,failure_message=$3,row_version=row_version+1 FROM job_inputs i WHERE i.id=(SELECT input_id FROM jobs WHERE id=$1) AND r.id=i.run_a_id AND r.state='validating'`, jobID, code, message)
+			if err != nil {
+				return "", err
+			}
+		}
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO audit_records(workspace_id,aggregate_type,aggregate_id,event_type,actor_type,payload) VALUES($1,'job',$2,'attempt.failed','worker',jsonb_build_object('attempt',$3,'failure_code',$4))`, workspace, jobID, attempt, code)
+	_, err = tx.Exec(ctx, `INSERT INTO audit_records(workspace_id,aggregate_type,aggregate_id,event_type,actor_type,payload) VALUES($1,'job',$2,'attempt.failed','worker',jsonb_build_object('attempt',$3::integer,'failure_code',$4::text))`, workspace, jobID, attempt, code)
 	if err != nil {
 		return "", err
 	}
@@ -224,9 +267,22 @@ func (s *Service) CompleteAttempt(ctx context.Context, jobID string, attempt int
 			return err
 		}
 	}
+	expectedKinds := map[string]string{"validate": "validation_json", "diff": "diff_json", "otlp": "otlp_json", "pprof": "pprof"}
+	if result.Kind != expectedKinds[operation] || result.SchemaName != "result-envelope" || result.SchemaVersion != 1 {
+		return errors.New("result schema does not match operation")
+	}
 	expectedPrefix := "workspaces/" + workspace + "/jobs/" + jobID + "/attempts/" + strconv.Itoa(attempt) + "/"
 	if !strings.HasPrefix(result.ObjectKey, expectedPrefix) {
 		return errors.New("artifact key is outside the current attempt")
+	}
+	for _, companion := range result.Companions {
+		if !strings.HasPrefix(companion.ObjectKey, expectedPrefix) {
+			return errors.New("companion artifact key is outside the current attempt")
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO artifacts(id,workspace_id,job_id,attempt_number,kind,object_key,object_version,digest,size,media_type,schema_name,schema_version,authoritative,retention_expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,transaction_timestamp()+interval '90 days')`, companion.ArtifactID, workspace, jobID, attempt, companion.Kind, companion.ObjectKey, companion.ObjectVersion, companion.Digest, companion.Size, companion.MediaType, companion.SchemaName, companion.SchemaVersion)
+		if err != nil {
+			return fmt.Errorf("register companion artifact: %w", err)
+		}
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO artifacts(id,workspace_id,job_id,attempt_number,kind,object_key,object_version,digest,size,media_type,schema_name,schema_version,authoritative,retention_expires_at)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,transaction_timestamp()+interval '90 days')`, result.ArtifactID, workspace, jobID, attempt, result.Kind, result.ObjectKey, result.ObjectVersion, result.Digest, result.Size, result.MediaType, result.SchemaName, result.SchemaVersion)
@@ -234,9 +290,13 @@ func (s *Service) CompleteAttempt(ctx context.Context, jobID string, attempt int
 		return fmt.Errorf("register artifact: %w", err)
 	}
 	if operation == "validate" {
-		_, err = tx.Exec(ctx, `UPDATE runs r SET state='ready',validated_bundle_format=$2,cassette_format_version=$3,event_schema_version=$4,logical_run_digest=$5,event_count=$6,ready_at=transaction_timestamp(),row_version=row_version+1 FROM job_inputs i WHERE i.id=(SELECT input_id FROM jobs WHERE id=$1) AND r.id=i.run_a_id AND r.state='validating'`, jobID, result.BundleFormat, result.CassetteFormat, result.EventSchema, result.LogicalDigest, result.EventCount)
+		command, updateErr := tx.Exec(ctx, `UPDATE runs r SET state='ready',validated_bundle_format=$2,cassette_format_version=$3,event_schema_version=$4,logical_run_digest=$5,event_count=$6,ready_at=transaction_timestamp(),row_version=row_version+1 FROM job_inputs i WHERE i.id=(SELECT input_id FROM jobs WHERE id=$1) AND r.id=i.run_a_id AND r.state='validating'`, jobID, result.BundleFormat, result.CassetteFormat, result.EventSchema, result.LogicalDigest, result.EventCount)
+		err = updateErr
 		if err != nil {
 			return err
+		}
+		if command.RowsAffected() != 1 {
+			return errors.New("validation result did not match one validating run")
 		}
 	}
 	_, err = tx.Exec(ctx, `UPDATE job_attempts SET state='succeeded',finished_at=transaction_timestamp() WHERE job_id=$1 AND attempt_number=$2`, jobID, attempt)
@@ -249,6 +309,9 @@ func (s *Service) CompleteAttempt(ctx context.Context, jobID string, attempt int
 	}
 	if command.RowsAffected() != 1 {
 		return ErrLeaseLost
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO audit_records(workspace_id,aggregate_type,aggregate_id,event_type,actor_type,payload) VALUES($1,'job',$2,'job.succeeded','worker',jsonb_build_object('attempt',$3::integer,'artifact_id',$4::text))`, workspace, jobID, attempt, result.ArtifactID); err != nil {
+		return err
 	}
 	return tx.Commit(ctx)
 }

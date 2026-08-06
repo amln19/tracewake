@@ -23,6 +23,7 @@ var (
 	ErrConflict            = errors.New("conflict")
 	ErrIdempotencyConflict = errors.New("idempotency conflict")
 	ErrLeaseLost           = errors.New("lease lost")
+	ErrNotFound            = errors.New("not found")
 )
 
 type JobRequest struct {
@@ -44,6 +45,18 @@ type Claim struct {
 	LeaseExpires time.Time
 	Operation    string
 	Profile      *string
+	Inputs       []InputArtifact
+}
+
+type InputArtifact struct {
+	ArtifactID    string  `json:"artifact_id"`
+	ObjectKey     string  `json:"object_key"`
+	ObjectVersion string  `json:"object_version"`
+	Digest        string  `json:"digest"`
+	Size          int64   `json:"size"`
+	MediaType     string  `json:"media_type"`
+	SchemaName    *string `json:"schema_name"`
+	SchemaVersion *int    `json:"schema_version"`
 }
 
 type Upload struct {
@@ -271,6 +284,14 @@ func (s *Service) CreateJob(ctx context.Context, principal Principal, key string
 }
 
 func (s *Service) Claim(ctx context.Context, workerID, jobID string) (Claim, error) {
+	return s.claim(ctx, workerID, jobID, 0)
+}
+
+func (s *Service) ClaimNotification(ctx context.Context, workerID, jobID string, jobVersion int64) (Claim, error) {
+	return s.claim(ctx, workerID, jobID, jobVersion)
+}
+
+func (s *Service) claim(ctx context.Context, workerID, jobID string, expectedVersion int64) (Claim, error) {
 	transaction, err := s.pool.Begin(ctx)
 	if err != nil {
 		return Claim{}, fmt.Errorf("begin claim: %w", err)
@@ -279,16 +300,18 @@ func (s *Service) Claim(ctx context.Context, workerID, jobID string) (Claim, err
 	var state, operation string
 	var profile *string
 	var next int
-	err = transaction.QueryRow(ctx, `SELECT j.state, i.operation, i.analysis_profile, COALESCE(j.current_attempt_number,0)+1
+	var rowVersion int64
+	var workspaceID string
+	err = transaction.QueryRow(ctx, `SELECT j.state, i.operation, i.analysis_profile, COALESCE((SELECT max(a.attempt_number) FROM job_attempts a WHERE a.job_id=j.id),0)+1,j.row_version,j.workspace_id
         FROM jobs j JOIN job_inputs i ON i.id=j.input_id
-        WHERE j.id=$1 FOR UPDATE`, jobID).Scan(&state, &operation, &profile, &next)
+		WHERE j.id=$1 FOR UPDATE`, jobID).Scan(&state, &operation, &profile, &next, &rowVersion, &workspaceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Claim{}, ErrConflict
 	}
 	if err != nil {
 		return Claim{}, fmt.Errorf("lock job: %w", err)
 	}
-	if state != "queued" || next > 3 {
+	if state != "queued" || next > 3 || (expectedVersion > 0 && expectedVersion != rowVersion) {
 		return Claim{}, ErrConflict
 	}
 	prefix, err := randomPrefix("attempt")
@@ -311,10 +334,28 @@ func (s *Service) Claim(ctx context.Context, workerID, jobID string) (Claim, err
         WHERE id=$1 AND state='queued'`, jobID, next); err != nil {
 		return Claim{}, fmt.Errorf("mark job running: %w", err)
 	}
+	if _, err := transaction.Exec(ctx, `INSERT INTO audit_records(workspace_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES($1,'job',$2,'attempt.claimed','worker',$3,jsonb_build_object('attempt',$4::integer))`, workspaceID, jobID, workerID, next); err != nil {
+		return Claim{}, fmt.Errorf("audit claim: %w", err)
+	}
+	rows, err := transaction.Query(ctx, `SELECT r.id,r.bundle_object_key,r.bundle_object_version,r.declared_bundle_digest,r.declared_bundle_size FROM jobs j JOIN job_inputs i ON i.id=j.input_id JOIN runs r ON r.id IN(i.run_a_id,i.run_b_id) WHERE j.id=$1 ORDER BY CASE WHEN r.id=i.run_a_id THEN 0 ELSE 1 END`, jobID)
+	if err != nil {
+		return Claim{}, err
+	}
+	var inputs []InputArtifact
+	for rows.Next() {
+		var value InputArtifact
+		if err := rows.Scan(&value.ArtifactID, &value.ObjectKey, &value.ObjectVersion, &value.Digest, &value.Size); err != nil {
+			rows.Close()
+			return Claim{}, err
+		}
+		value.MediaType = "application/x-tar"
+		inputs = append(inputs, value)
+	}
+	rows.Close()
 	if err := transaction.Commit(ctx); err != nil {
 		return Claim{}, fmt.Errorf("commit claim: %w", err)
 	}
-	return Claim{JobID: jobID, Attempt: next, AttemptToken: token, LeaseExpires: lease, Operation: operation, Profile: profile}, nil
+	return Claim{JobID: jobID, Attempt: next, AttemptToken: token, LeaseExpires: lease, Operation: operation, Profile: profile, Inputs: inputs}, nil
 }
 
 func getJob(ctx context.Context, q interface {

@@ -134,7 +134,7 @@ func (s *Service) Authenticate(ctx context.Context, token string, requiredScope 
 		principal.Scopes[scope] = true
 	}
 	if !principal.Scopes[requiredScope] {
-		return Principal{}, errors.New("forbidden")
+		return Principal{}, ErrForbidden
 	}
 	if _, err := s.pool.Exec(ctx, "UPDATE api_tokens SET last_used_at = transaction_timestamp() WHERE prefix = $1", prefix); err != nil {
 		return Principal{}, fmt.Errorf("record API token use: %w", err)

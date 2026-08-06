@@ -11,6 +11,7 @@ import (
 )
 
 var ErrUnauthenticated = errors.New("unauthenticated")
+var ErrForbidden = errors.New("forbidden")
 
 type KeyRing struct {
 	CurrentVersion int16
