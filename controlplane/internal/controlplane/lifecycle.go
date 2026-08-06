@@ -46,6 +46,66 @@ type Claim struct {
 	Profile      *string
 }
 
+type Upload struct {
+	RunID, Key, Digest string
+	Size               int64
+}
+
+func (s *Service) CreateUpload(ctx context.Context, principal Principal, digest string, size int64) (Upload, error) {
+	if len(digest) != 64 || size < 0 || size > 256*1024*1024 {
+		return Upload{}, errors.New("upload declaration is invalid")
+	}
+	runID, err := newID()
+	if err != nil {
+		return Upload{}, err
+	}
+	key := "workspaces/" + principal.WorkspaceID + "/runs/" + runID + "/bundle.tar"
+	if _, err := s.pool.Exec(ctx, `INSERT INTO runs (id,workspace_id,declared_bundle_format,declared_bundle_digest,declared_bundle_size,bundle_object_key)
+        VALUES ($1,$2,1,$3,$4,$5)`, runID, principal.WorkspaceID, digest, size, key); err != nil {
+		return Upload{}, fmt.Errorf("create upload: %w", err)
+	}
+	return Upload{RunID: runID, Key: key, Digest: digest, Size: size}, nil
+}
+
+func (s *Service) CompleteUpload(ctx context.Context, principal Principal, runID, version, digest string, size int64) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	command, err := tx.Exec(ctx, `UPDATE runs SET state='validating',bundle_object_version=$3,uploaded_at=transaction_timestamp(),row_version=row_version+1
+        WHERE id=$1 AND workspace_id=$2 AND state='pending' AND declared_bundle_digest=$4 AND declared_bundle_size=$5`, runID, principal.WorkspaceID, version, digest, size)
+	if err != nil {
+		return fmt.Errorf("complete upload: %w", err)
+	}
+	if command.RowsAffected() != 1 {
+		return ErrConflict
+	}
+	inputID, err := newID()
+	if err != nil {
+		return err
+	}
+	jobID, err := newID()
+	if err != nil {
+		return err
+	}
+	normalized, err := normalizedValidationDigest(runID)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO job_inputs (id,workspace_id,operation,run_a_id,normalized_digest) VALUES ($1,$2,'validate',$3,$4)`, inputID, principal.WorkspaceID, runID, normalized); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, "INSERT INTO jobs (id,workspace_id,input_id) VALUES ($1,$2,$3)", jobID, principal.WorkspaceID, inputID); err != nil {
+		return err
+	}
+	payload, _ := json.Marshal(map[string]any{"protocol_version": 1, "job_id": jobID, "job_version": 1, "operation": "validate"})
+	if _, err := tx.Exec(ctx, `INSERT INTO outbox (aggregate_type,aggregate_id,aggregate_version,topic,payload) VALUES ('job',$1,1,'job.created',$2)`, jobID, payload); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 func normalizedDigest(request JobRequest) (string, error) {
 	if request.Operation != "diff" && request.Operation != "otlp" && request.Operation != "pprof" {
 		return "", errors.New("unsupported job operation")
