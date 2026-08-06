@@ -78,6 +78,59 @@ func TestOutboxPublishesToQueueAndSurvivesFailure(t *testing.T) {
 	}
 }
 
+func TestDuplicateDeliveryCreatesOneAttempt(t *testing.T) {
+	service, pool, workspace := newTestService(t)
+	ctx := context.Background()
+	queue := awstest.NewSQS()
+	defer queue.Close()
+	publisher, err := notify.NewSQS(awstest.Config(queue.Server.URL), queue.QueueURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runA, runB := readyRun(t, pool, workspace), readyRun(t, pool, workspace)
+	principal := controlplane.Principal{WorkspaceID: workspace, Scopes: map[string]bool{"jobs:write": true}}
+	profile := "lexical-v1"
+	job, _, err := service.CreateJob(ctx, principal, "duplicate-"+runA, controlplane.JobRequest{Operation: "diff", RunIDs: []string{runA, runB}, Profile: &profile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.PublishOutbox(ctx, publisher, 100); err != nil {
+		t.Fatal(err)
+	}
+	// A publisher crash after sending but before recording publication makes the
+	// same notification arrive twice.
+	if _, err := pool.Exec(ctx, "UPDATE outbox SET published_at=NULL WHERE aggregate_id=$1", job.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.PublishOutbox(ctx, publisher, 100); err != nil {
+		t.Fatal(err)
+	}
+	if len(queue.Bodies()) < 2 {
+		t.Fatalf("expected a duplicate delivery, got %d", len(queue.Bodies()))
+	}
+	worker, _, err := service.CreateWorkerCredential(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var version int64
+	if err := pool.QueryRow(ctx, "SELECT row_version FROM jobs WHERE id=$1", job.ID).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ClaimNotification(ctx, worker, job.ID, version); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ClaimNotification(ctx, worker, job.ID, version); !errors.Is(err, controlplane.ErrConflict) {
+		t.Fatalf("duplicate delivery claimed twice: %v", err)
+	}
+	var attempts int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM job_attempts WHERE job_id=$1", job.ID).Scan(&attempts); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts=%d", attempts)
+	}
+}
+
 func TestOutboxPayloadsCarryNoSensitiveContent(t *testing.T) {
 	service, pool, workspace := newTestService(t)
 	ctx := context.Background()
