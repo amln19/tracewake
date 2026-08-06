@@ -22,6 +22,20 @@
       "title": "Run Id",
       "type": "string"
     },
+    "upload_headers": {
+      "additionalProperties": {
+        "maxLength": 256,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxProperties": 8,
+      "propertyNames": {
+        "maxLength": 64,
+        "minLength": 1
+      },
+      "title": "Upload Headers",
+      "type": "object"
+    },
     "upload_id": {
       "format": "uuid",
       "title": "Upload Id",

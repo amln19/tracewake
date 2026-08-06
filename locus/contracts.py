@@ -249,6 +249,12 @@ class UploadGrant(ContractModel):
     required_digest: Digest
     required_size: int = Field(ge=0, le=256 * 1024 * 1024)
     upload_url: Annotated[str, StringConstraints(min_length=1, max_length=4096)]
+    # Object stores bind checksum and content-type headers into the signature,
+    # so the client must send exactly what the grant names.
+    upload_headers: dict[
+        Annotated[str, StringConstraints(min_length=1, max_length=64)],
+        Annotated[str, StringConstraints(min_length=1, max_length=256)],
+    ] = Field(default_factory=dict, max_length=8)
     expires_at: AwareDatetime
 
 

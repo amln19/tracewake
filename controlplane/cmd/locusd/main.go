@@ -21,6 +21,7 @@ import (
 	"github.com/amln19/locus/controlplane/internal/httpapi"
 	"github.com/amln19/locus/controlplane/internal/store"
 	"github.com/amln19/locus/controlplane/internal/workerapi"
+	"github.com/aws/aws-sdk-go-v2/config"
 )
 
 func main() {
@@ -47,6 +48,17 @@ func main() {
 		log.Fatal(err)
 	}
 	var artifactStore artifacts.Store = localStore
+	if bucket := strings.TrimSpace(os.Getenv("LOCUS_ARTIFACT_BUCKET")); bucket != "" {
+		awsConfig, err := config.LoadDefaultConfig(ctx)
+		if err != nil {
+			log.Fatalf("load AWS configuration: %v", err)
+		}
+		hosted, err := artifacts.NewS3(awsConfig, bucket)
+		if err != nil {
+			log.Fatal(err)
+		}
+		artifactStore = hosted
+	}
 	if len(os.Args) > 1 && os.Args[1] == "bootstrap" {
 		workspace, token, err := service.CreateWorkspace(ctx, "local", []string{"runs:read", "runs:write", "jobs:read", "jobs:write", "artifacts:read", "audit:read"})
 		if err != nil {
