@@ -422,6 +422,23 @@ def test_export_refuses_corrupted_stored_blob_bytes_and_preserves_destination(
     db.close()
 
 
+def test_successful_export_atomically_replaces_an_existing_directory(
+    tmp_path: Path,
+) -> None:
+    run_id = _record(tmp_path / "source")
+    db = Store(tmp_path / "source")
+    destination = export_cassette(db, run_id, tmp_path / "cassette")
+    marker = destination / "old-export"
+    marker.write_text("replace me", encoding="utf-8")
+
+    export_cassette(db, run_id, destination)
+
+    assert not marker.exists()
+    assert _validate_cassette(destination).header.run_id == run_id
+    assert not list(tmp_path.glob(".cassette.locus-export-*"))
+    db.close()
+
+
 def test_handled_import_failure_removes_only_new_blobs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

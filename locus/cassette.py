@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 import shutil
+import sys
 import tempfile
 from dataclasses import dataclass
 from importlib.metadata import version
@@ -354,6 +356,53 @@ def _checked_store_blobs(store: Store, events: list[StoredEvent]) -> dict[str, b
     return checked
 
 
+def _publish_export(staging: Path, out: Path) -> None:
+    if not out.exists() and not out.is_symlink():
+        staging.rename(out)
+        return
+    if out.is_symlink() or not out.is_dir():
+        raise ValueError(
+            f"export destination {out} must be a directory; move or remove the existing "
+            "non-directory entry before exporting."
+        )
+
+    libc = ctypes.CDLL(None, use_errno=True)
+    source = os.fsencode(staging)
+    destination = os.fsencode(out)
+    if sys.platform == "darwin":
+        exchange = libc.renamex_np
+        exchange.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
+        result = exchange(source, destination, 0x2)
+    elif sys.platform.startswith("linux"):
+        try:
+            exchange = libc.renameat2
+        except AttributeError as exc:
+            raise OSError(
+                "atomic replacement of an existing export requires renameat2 on Linux; "
+                "export to a new destination on this system"
+            ) from exc
+        exchange.argtypes = [
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_uint,
+        ]
+        result = exchange(-100, source, -100, destination, 0x2)
+    else:
+        raise OSError(
+            "atomic replacement of an existing export is supported on Linux and macOS; "
+            "export to a new destination on this system"
+        )
+    if result != 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error), out)
+
+    # The exchange leaves the previous complete export at the staging path. A
+    # crash before cleanup still leaves the requested destination fully valid.
+    shutil.rmtree(staging, ignore_errors=True)
+
+
 def export_cassette(store: Store, run_or_name: str, dest: str | Path) -> Path:
     header = store.resolve(run_or_name)
     events = store.events(header.run_id)
@@ -362,7 +411,6 @@ def export_cassette(store: Store, run_or_name: str, dest: str | Path) -> Path:
     out = Path(dest)
     out.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=f".{out.name}.locus-export-", dir=out.parent))
-    backup: Path | None = None
     try:
         cassette = CassetteHeader(
             locus_version=version("locus"),
@@ -386,21 +434,7 @@ def export_cassette(store: Store, run_or_name: str, dest: str | Path) -> Path:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data)
 
-        if out.exists() or out.is_symlink():
-            backup = Path(tempfile.mkdtemp(prefix=f".{out.name}.locus-old-", dir=out.parent))
-            backup.rmdir()
-            out.rename(backup)
-        try:
-            staging.rename(out)
-        except BaseException:
-            if backup is not None:
-                backup.rename(out)
-            raise
-        if backup is not None:
-            if backup.is_dir() and not backup.is_symlink():
-                shutil.rmtree(backup)
-            else:
-                backup.unlink()
+        _publish_export(staging, out)
     except BaseException:
         shutil.rmtree(staging, ignore_errors=True)
         raise
