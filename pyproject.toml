@@ -42,7 +42,7 @@ packages = ["locus"]
 # what keeps local working notes out of a published sdist. Denylisting them by
 # name would leak the names and would not cover notes added later.
 [tool.hatch.build.targets.sdist]
-include = ["locus", "tests", "contracts", "contracttest", "README.md", "LICENSE"]
+include = ["/locus", "/tests", "/contracts", "/contracttest", "/README.md", "/LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
