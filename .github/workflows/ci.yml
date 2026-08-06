@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python 3.13 / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked --python 3.13
+      - run: PYTHONHASHSEED=0 uv run --python 3.13 pytest
+
+  package:
+    name: Build and installed-wheel smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: uv build
+      - name: Check artifact contents
+        run: |
+          python - <<'PY'
+          import tarfile
+          import zipfile
+          from pathlib import Path
+
+          artifacts = [*Path("dist").glob("*.tar.gz"), *Path("dist").glob("*.whl")]
+          assert len(artifacts) == 2, artifacts
+          for artifact in artifacts:
+              if artifact.suffix == ".whl":
+                  with zipfile.ZipFile(artifact) as archive:
+                      names = archive.namelist()
+              else:
+                  with tarfile.open(artifact) as archive:
+                      names = archive.getnames()
+              assert not any(
+                  ".project-notes" in name or name.endswith("AGENTS.md") or "/.git/" in name
+                  for name in names
+              ), (artifact, names)
+          PY
+      - name: Install wheel in a clean environment
+        run: |
+          python -m venv "$RUNNER_TEMP/locus-wheel"
+          "$RUNNER_TEMP/locus-wheel/bin/python" -m pip install dist/*.whl
+      - name: Run installed-package smoke example
+        run: |
+          smoke="$RUNNER_TEMP/locus-smoke"
+          mkdir "$smoke"
+          recorded=$("$RUNNER_TEMP/locus-wheel/bin/locus" record \
+            --store "$smoke/store" --name smoke -- \
+            "$RUNNER_TEMP/locus-wheel/bin/python" -c \
+            'import locus; s = locus.current(); print(s.clock.time()); s.outcome(status="ok")')
+          replayed=$("$RUNNER_TEMP/locus-wheel/bin/locus" replay smoke --store "$smoke/store")
+          test "$(printf '%s\n' "$recorded" | head -n 1)" = \
+            "$(printf '%s\n' "$replayed" | head -n 1)"
