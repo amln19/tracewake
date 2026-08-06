@@ -153,8 +153,8 @@ def block_network() -> Iterator[None]:
         raise NetworkBlocked(
             "a network call was attempted during replay. Replay answers every request "
             "from the recorded log, so reaching the network means the agent asked for "
-            "something the log does not contain. Record a new run instead, or pass "
-            "block_network=False if you meant to let it through."
+            "something the log does not contain. Record a new run or use an explicitly "
+            "record-capable mode if the request should reach the network."
         )
 
     for target, name in originals:

@@ -6,7 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from .cassette import export_cassette, import_cassette, read_header
+from .cassette import CASSETTE_FORMAT_VERSION, export_cassette, import_cassette, read_header
 from .config import (
     MATCHERS,
     RECORD_MODES,
@@ -17,6 +17,7 @@ from .config import (
     resolve,
 )
 from .events import (
+    EVENT_SCHEMA_VERSION,
     SCHEMA_VERSION,
     BlobRef,
     DecodeParams,
@@ -65,13 +66,16 @@ from .session import (
     warn_if_stale,
 )
 from .session import plan_intervention as _check
-from .store import BlobStore, Store
+from .store import STORE_SCHEMA_VERSION, BlobStore, Store
 
 __all__ = [
     "MATCHERS",
     "RECORD_MODES",
     "REDACTED",
+    "CASSETTE_FORMAT_VERSION",
+    "EVENT_SCHEMA_VERSION",
     "SCHEMA_VERSION",
+    "STORE_SCHEMA_VERSION",
     "BlobRef",
     "BlobStore",
     "CassetteStale",
@@ -152,7 +156,7 @@ def _read_source(
 
 
 @contextmanager
-def open_session(
+def _open_session(
     run_or_name: str,
     *,
     store: str | Path = ".locus",
@@ -249,7 +253,7 @@ def open_session(
             warn_if_stale(header, cfg)
         if cfg.patch_environment:
             stack.enter_context(patch_environment(active))
-        if cfg.block_network and not active.can_record:
+        if not active.can_record:
             stack.enter_context(block_network())
     except BaseException:
         stack.close()
@@ -285,7 +289,7 @@ def _entered(
         # opens its own session joins that one instead of starting a second.
         yield ambient
         return
-    with open_session(
+    with _open_session(
         run_or_name, store=store, mode=mode, config=config, task_id=task_id, **overrides
     ) as s:
         yield s
@@ -361,7 +365,7 @@ def intervene(
         from_turn=from_turn,
         store=source_store if source_store is not None else store,
     )
-    with open_session(
+    with _open_session(
         name,
         store=store,
         mode="new_episodes",

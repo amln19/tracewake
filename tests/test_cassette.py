@@ -21,8 +21,15 @@ from locus import (
     Usage,
     run_digest,
 )
-from locus.cassette import _validate_cassette, export_cassette, import_cassette, read_header
-from locus.events import EVENT_ADAPTER, StoredEvent, sha256_hex
+from locus.cassette import (
+    CASSETTE_FORMAT,
+    CASSETTE_FORMAT_VERSION,
+    _validate_cassette,
+    export_cassette,
+    import_cassette,
+    read_header,
+)
+from locus.events import EVENT_ADAPTER, EVENT_SCHEMA_VERSION, StoredEvent, sha256_hex
 
 
 def _create(model_id: str, messages: list[Message], params: DecodeParams) -> ModelResponse:
@@ -135,6 +142,32 @@ def test_the_header_says_what_produced_the_cassette(tmp_path: Path) -> None:
         ("acme", "acme-1", "2026-05-01")
     ]
     assert header.status == "ok"
+    assert header.format_version == CASSETTE_FORMAT_VERSION
+    assert header.schema_version == EVENT_SCHEMA_VERSION
+
+
+def test_the_cassette_format_alias_remains_compatible() -> None:
+    assert CASSETTE_FORMAT == CASSETTE_FORMAT_VERSION
+
+
+@pytest.mark.parametrize(
+    ("field", "message"),
+    [
+        ("format_version", "expected format version"),
+        ("schema_version", "event schema version"),
+    ],
+)
+def test_cassette_and_event_versions_are_rejected_independently(
+    tmp_path: Path, field: str, message: str
+) -> None:
+    cassette, _ = _exported(tmp_path)
+
+    def change(header: dict[str, Any], events: list[dict[str, Any]]) -> None:
+        header[field] = 999
+
+    _rewrite(cassette, change)
+    with pytest.raises(ValueError, match=message):
+        _validate_cassette(cassette)
 
 
 def test_the_cassette_is_line_oriented_and_readable(tmp_path: Path) -> None:

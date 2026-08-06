@@ -63,7 +63,7 @@ def bootstrap_from_env() -> None:
         )
     stack = ExitStack()
     session = stack.enter_context(
-        locus.open_session(
+        locus._open_session(
             os.environ["LOCUS_TARGET"],
             store=os.environ["LOCUS_STORE"],
             mode=os.environ["LOCUS_MODE"],  # type: ignore[arg-type]

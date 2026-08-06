@@ -16,7 +16,7 @@ import fcntl
 from .events import (
     DIGEST_PATTERN,
     EVENT_ADAPTER,
-    SCHEMA_VERSION,
+    EVENT_SCHEMA_VERSION,
     AnyEvent,
     BlobRef,
     ModelCallEvent,
@@ -31,6 +31,8 @@ _DIGEST_RE = re.compile(DIGEST_PATTERN)
 _IMPORTS_DIR = ".imports"
 _IMPORT_PREFIX = "import-"
 _IMPORT_LOCK = ".lock"
+
+STORE_SCHEMA_VERSION = 3
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS runs (
@@ -129,12 +131,12 @@ class Store:
         (version,) = self._db.execute("PRAGMA user_version").fetchone()
         if existing is None:
             self._db.executescript(SCHEMA_SQL)
-            self._db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            self._db.execute(f"PRAGMA user_version = {STORE_SCHEMA_VERSION}")
             return
-        if version != SCHEMA_VERSION:
+        if version != STORE_SCHEMA_VERSION:
             raise ValueError(
                 f"the store at {self.root} was written in format {version or 1}, but this "
-                f"locus reads format {SCHEMA_VERSION}. Export anything you need from it "
+                f"locus reads format {STORE_SCHEMA_VERSION}. Export anything you need from it "
                 f"with the older version, or point --store at a new directory."
             )
         self._db.executescript(SCHEMA_SQL)
@@ -275,10 +277,11 @@ class Store:
         data["command"] = json.loads(command) if command is not None else None
         data["redacted"] = bool(data["redacted"])
         header = RunHeader(**data)
-        if header.schema_version != SCHEMA_VERSION:
+        if header.schema_version != EVENT_SCHEMA_VERSION:
             raise ValueError(
                 f"run {header.run_id} was written with schema version "
-                f"{header.schema_version}, but this locus reads version {SCHEMA_VERSION}. "
+                f"{header.schema_version}, but this locus reads version "
+                f"{EVENT_SCHEMA_VERSION}. "
                 f"Re-record the run."
             )
         return header

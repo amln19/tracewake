@@ -15,7 +15,9 @@ from pydantic import (
     model_validator,
 )
 
-SCHEMA_VERSION = 3
+EVENT_SCHEMA_VERSION = 3
+# Kept for callers that imported the original event-schema name.
+SCHEMA_VERSION = EVENT_SCHEMA_VERSION
 
 # Every digest locus writes comes from sha256_hex. Constraining the schema keeps
 # a cassette from smuggling a path through BlobRef and having the blob store
@@ -287,7 +289,7 @@ class RunHeader(BaseModel):
     started_at: float
     finished_at: float | None = None
     status: Literal["running", "ok", "error"]
-    schema_version: int = SCHEMA_VERSION
+    schema_version: int = EVENT_SCHEMA_VERSION
     # Model weights change under a stable model id, so a replay months later may
     # be replaying against a model that no longer exists. Recording what was
     # actually called is what lets replay say so instead of silently passing.

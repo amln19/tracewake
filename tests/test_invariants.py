@@ -293,7 +293,7 @@ def test_header_command_is_scrubbed_in_the_store_and_the_exported_cassette(
     secret = "sk-live-9d2f4a7b1c8e0356"
     command = ["python", f"{home}/work/agent.py", "--api-key", secret]
 
-    with locus.open_session(
+    with locus._open_session(
         "demo",
         store=tmp_path / "src",
         mode="all",
@@ -316,6 +316,11 @@ def test_header_command_is_scrubbed_in_the_store_and_the_exported_cassette(
     text = (cass / "cassette.jsonl").read_text(encoding="utf-8")
     assert home not in text
     assert secret not in text
+
+
+def test_open_session_is_not_part_of_the_public_python_surface() -> None:
+    assert "open_session" not in locus.__dict__
+    assert "open_session" not in locus.__all__
 
 
 def test_replay_restores_home_paths_in_the_recorded_command() -> None:

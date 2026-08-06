@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, Validation
 
 from .events import (
     EVENT_ADAPTER,
-    SCHEMA_VERSION,
+    EVENT_SCHEMA_VERSION,
     BlobRef,
     ModelIdentity,
     RunHeader,
@@ -23,7 +23,9 @@ from .events import (
 )
 from .store import Store
 
-CASSETTE_FORMAT = 1
+CASSETTE_FORMAT_VERSION = 1
+# Kept for callers that imported the original cassette-format name.
+CASSETTE_FORMAT = CASSETTE_FORMAT_VERSION
 CASSETTE_FILE = "cassette.jsonl"
 BLOB_DIR = "blobs"
 
@@ -33,7 +35,7 @@ _Digest = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 class CassetteHeader(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    format_version: int = CASSETTE_FORMAT
+    format_version: int = CASSETTE_FORMAT_VERSION
     locus_version: str
     schema_version: int
     run_id: str
@@ -273,15 +275,15 @@ def _validate_cassette(source: str | Path) -> _ValidatedCassette:
     root = path if strict_root else path.parent
     cassette_path = path / CASSETTE_FILE if strict_root else path
     header = read_header(path)
-    if header.format_version != CASSETTE_FORMAT:
+    if header.format_version != CASSETTE_FORMAT_VERSION:
         raise ValueError(
             f"cassette {path} entry {cassette_path} expected format version "
-            f"{CASSETTE_FORMAT}; actual version {header.format_version}."
+            f"{CASSETTE_FORMAT_VERSION}; actual version {header.format_version}."
         )
-    if header.schema_version != SCHEMA_VERSION:
+    if header.schema_version != EVENT_SCHEMA_VERSION:
         raise ValueError(
             f"cassette {path} entry {cassette_path} expected event schema version "
-            f"{SCHEMA_VERSION}; actual version {header.schema_version}. Re-record the run "
+            f"{EVENT_SCHEMA_VERSION}; actual version {header.schema_version}. Re-record the run "
             "with a matching locus version."
         )
 
@@ -364,7 +366,7 @@ def export_cassette(store: Store, run_or_name: str, dest: str | Path) -> Path:
     try:
         cassette = CassetteHeader(
             locus_version=version("locus"),
-            schema_version=SCHEMA_VERSION,
+            schema_version=EVENT_SCHEMA_VERSION,
             run_id=header.run_id,
             name=header.name,
             recorded_at=header.started_at,

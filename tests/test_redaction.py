@@ -211,7 +211,7 @@ def test_the_run_header_command_is_scrubbed(tmp_path: Path) -> None:
     secret = "sk-live-9d2f4a7b1c8e0356"
     command = ["python", f"{home}/work/agent.py", "--api-key", secret]
 
-    with locus.open_session(
+    with locus._open_session(
         "demo", store=tmp_path / "s", mode="all", command=command, filter_values=(secret,)
     ) as s:
         s.outcome(status="ok")

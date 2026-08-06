@@ -8,6 +8,8 @@ import pytest
 
 import locus
 from locus import EnvironmentEvent, EventMeta, RunHeader, Store
+from locus.events import EVENT_SCHEMA_VERSION, SCHEMA_VERSION
+from locus.store import STORE_SCHEMA_VERSION
 
 
 def _run(store: Store, run_id: str = "r1") -> str:
@@ -21,6 +23,19 @@ def test_database_is_in_wal_mode(tmp_path: Path) -> None:
     store = Store(tmp_path)
     (mode,) = store._db.execute("PRAGMA journal_mode").fetchone()
     assert mode == "wal"
+    store.close()
+
+
+def test_persistent_versions_have_distinct_names_and_compatible_aliases(
+    tmp_path: Path,
+) -> None:
+    store = Store(tmp_path)
+    (stored_version,) = store._db.execute("PRAGMA user_version").fetchone()
+    assert stored_version == STORE_SCHEMA_VERSION
+    assert RunHeader(run_id="r", name="n", started_at=0, status="ok").schema_version == (
+        EVENT_SCHEMA_VERSION
+    )
+    assert SCHEMA_VERSION == EVENT_SCHEMA_VERSION
     store.close()
 
 

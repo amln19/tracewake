@@ -1,45 +1,20 @@
 # locus
 
-Find where two coding agent runs diverged. Record a run once, replay it offline
-for free, then align a good run against a bad one to get the step where they
-stopped agreeing.
+Record a coding-agent run once, replay it offline, and align a good run against
+a bad one to find the step where their trajectories stopped agreeing.
 
-```
-$ locus diff 16ccfac0 45af6f8f
+The installed package can record and replay a program without an API key:
 
-divergence at BAD 45af6f8f step 9
-alignment score -1.080  length ratio 1.07
-embeddings mlx-community/bge-small-en-v1.5-bf16@0e415031434cdf5f1b89d584e11be33b82abfc8d
-
-      GOOD 16ccfac0                             BAD 45af6f8f
-------------------------------------------------------------
-   =  1. run_tests                              1. run_tests
-   =  2. read_file → bidict/_orderedbase.py     2. read_file → bidict/_orderedbase.py
-      3. read_file → bidict/_orderedbase.py     —
-   =  4. edit_file → bidict/_orderedbase.py     3. edit_file → bidict/_orderedbase.py
-   |  5. run_tests                              4. read_file → tests/test_bidict.py
-   |  6. search → WeakAttr                      5. search → test_orderedbidict_weakattr_
-   |  7. read_file → bidict/_orderedbase.py     6. read_file → tests/test_bidict.py
-   =  8. read_file → bidict/_orderedbase.py     7. read_file → bidict/_orderedbase.py
-   =  9. edit_file → bidict/_orderedbase.py     8. edit_file → bidict/_orderedbase.py
-      10. run_tests                             —
-      11. search → WeakAttr                     —
-      12. edit_file → bidict/_orderedbase.py    —
-      13. run_tests                             —
-      14. edit_file → bidict/_orderedbase.py    —
-      15. run_tests                             —
-   |  16. read_file → bidict/_orderedbase.py    >>> 9. read_file → tests/test_bidict.py
-      —                                         10. read_file → tests/test_bidict.py
-      —                                         11. read_file → tests/test_bidict.py
-      —                                         12. read_file → tests/test_bidict.py
-      —                                         13. read_file → tests/test_bidict.py
-      —                                         14. read_file → tests/test_bidict.py
-      —                                         15. read_file → tests/test_bidict.py
+```sh
+work="$(mktemp -d)"
+locus record --store "$work/store" --name smoke -- python -c \
+  'import locus; s = locus.current(); print(s.clock.time()); s.outcome(status="ok")'
+locus replay smoke --store "$work/store"
 ```
 
-`=` agree, `|` differ, `—` one side skipped a step, `>>>` divergence. An extra
-read on the good side shifts every later index, so comparing position by position
-does not work — that is why the traces are aligned first.
+Both commands print the same recorded clock value. Replay-only sessions install
+the network blocker even if process-wide or per-session configuration tries to
+disable it.
 
 ## Results
 
@@ -86,7 +61,7 @@ problem here, and it is a question about what divergence means rather than a
 parameter to tune. Scout notes and packets:
 `corpus/alignment/external_scout.json`, `corpus/labels/external/`.
 
-## Quick start
+## Library use
 
 ```python
 import locus
@@ -136,10 +111,12 @@ embeddings lexical@unpinned
 
 ## How it works
 
-- **Records** every nondeterministic input the agent consumes: model calls
-  (including stream chunk boundaries), tool calls, filesystem reads/writes, and
-  clock / random / uuid / env values. Parallel tool batches keep an intra-batch
-  index — a batch is a partial order, not a total one.
+- **Records** nondeterministic inputs consumed through Locus's supported
+  adapters: model calls (including stream chunk boundaries), tool calls,
+  `Session.fs` operations, and supported clock, random, UUID, and environment
+  reads. This is not complete syscall, native-code, subprocess, or universal
+  filesystem interception. Parallel tool batches keep an intra-batch index — a
+  batch is a partial order, not a total one.
 - **Matches** replay requests with `model` + `messages_hash` by default.
   `ordinal` is opt-in and never a silent fallback.
 - **Modes:**
@@ -151,16 +128,25 @@ embeddings lexical@unpinned
   | `new_episodes` | Replay what matches, record what does not |
   | `all` | Always record |
 
-- **Redaction** is default-on (API keys, home paths). Secrets are scrubbed before
-  disk. `locus record --no-redact` turns it off; the cassette records that fact.
+- **Redaction** is default-on and targets configured secret values, known secret
+  headers and environment names, and home paths. It cannot prove arbitrary
+  source, binary content, private repository data, or unknown secrets safe to
+  distribute. `locus record --no-redact` turns it off; the cassette records that
+  fact.
 - **Cassettes** export to JSONL + blobs (`locus export` / `import`). The header
   carries model id and date so a stale cassette can warn rather than pass quietly.
+  Its digest identifies canonical logical event content. It is not a digest of
+  every transport byte; a separate bundle digest belongs to a future archive
+  format.
 
 ## Commands
 
 ```
 locus diff <good> <bad>              # align and print the divergence step
 locus view <good> <bad> -o out.html  # self-contained HTML, side-by-side + provenance
+locus verify <cassette-directory>    # validate without changing the local store
+locus export <run> -o cassette       # export JSONL and content-addressed blobs
+locus import cassette                # validate completely, then import atomically
 locus pprof <run> --view tokens      # token spend as standard pprof (needs provenance tags)
 locus intervene <run> --drop-tag file_read --from-step 4 -- <agent>
 locus otel <run> -o trace.json       # OTLP/JSON GenAI spans
@@ -175,6 +161,21 @@ at the first tool output that is not byte-identical to the recording. The bench
 agent strips pytest wall-clock from suite output so a re-run does not break that
 prefix on timing alone. Provenance tags on `Message`s power both the HTML
 context grouping and the pprof leaves; untagged blocks collapse to one bucket.
+
+## Persistent formats
+
+Event schema 3, SQLite store schema 3, and cassette directory format 1 are
+independent contracts even though two currently share the number 3. Unsupported
+versions are rejected with instructions to use a matching Locus version; no old
+version is silently reinterpreted. `SCHEMA_VERSION` remains a compatibility
+alias for `EVENT_SCHEMA_VERSION`, and `CASSETTE_FORMAT` remains an alias for
+`CASSETTE_FORMAT_VERSION`.
+
+`locus verify` checks header shape and versions, event count and dense sequence,
+event schemas, the logical digest, canonical paths, and every referenced blob's
+presence, digest, and size. It rejects symlinks, duplicate or unexpected blob
+paths, and corruption without writing to a store. Export performs the same blob
+integrity checks against local storage before publishing a destination.
 
 ## Evaluation
 
@@ -199,7 +200,8 @@ python -m bench external score       # after filling corpus/labels/external/labe
 
 ```
 uv sync
-PYTHONHASHSEED=0 uv run pytest
+PYTHONHASHSEED=0 uv run --python 3.13 pytest
+uv build
 ```
 
 `locus diff` / `view` need `uv sync --extra embeddings` unless you pass

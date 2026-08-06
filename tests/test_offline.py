@@ -144,6 +144,49 @@ def test_a_network_call_during_replay_fails_the_run(
     assert server.connections == 0
 
 
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"block_network": False},
+        {"config": Config(block_network=False)},
+    ],
+)
+def test_none_mode_cannot_be_configured_to_reach_the_network(
+    server: _Server,
+    tmp_path: Path,
+    env: dict[str, str],
+    options: dict[str, object],
+) -> None:
+    store = tmp_path / "store"
+    recorded = _locus(
+        "record", "--store", str(store), "--name", "gate", "--", sys.executable, str(AGENT), env=env
+    )
+    assert recorded.returncode == 0, recorded.stderr
+    run_id = Store(store).latest_named("gate").run_id
+    server.reset()
+
+    with locus.replay(run_id, store=store, **options):
+        with pytest.raises(locus.NetworkBlocked, match="record-capable mode"):
+            socket.create_connection(("127.0.0.1", server.server_address[1]), timeout=5)
+    assert server.connections == 0
+
+
+def test_once_mode_is_blocked_when_it_resolves_to_pure_replay(
+    server: _Server, tmp_path: Path, env: dict[str, str]
+) -> None:
+    store = tmp_path / "store"
+    recorded = _locus(
+        "record", "--store", str(store), "--name", "gate", "--", sys.executable, str(AGENT), env=env
+    )
+    assert recorded.returncode == 0, recorded.stderr
+    server.reset()
+
+    with locus.session("gate", store=store, mode="once", block_network=False):
+        with pytest.raises(locus.NetworkBlocked):
+            socket.create_connection(("127.0.0.1", server.server_address[1]), timeout=5)
+    assert server.connections == 0
+
+
 def test_the_socket_block_is_lifted_when_the_session_ends(
     server: _Server, tmp_path: Path, env: dict[str, str]
 ) -> None:
