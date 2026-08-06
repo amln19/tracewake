@@ -73,6 +73,60 @@ func normalizedDigest(request JobRequest) (string, error) {
 	return hex.EncodeToString(digest[:]), nil
 }
 
+func (s *Service) CreateValidationJob(ctx context.Context, workspaceID, runID string) (string, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return "", fmt.Errorf("begin validation job: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var uploaded bool
+	if err := tx.QueryRow(ctx, "SELECT state = 'uploaded' FROM runs WHERE id=$1 AND workspace_id=$2 FOR UPDATE", runID, workspaceID).Scan(&uploaded); err != nil || !uploaded {
+		return "", ErrConflict
+	}
+	inputID, err := newID()
+	if err != nil {
+		return "", err
+	}
+	jobID, err := newID()
+	if err != nil {
+		return "", err
+	}
+	digest, err := normalizedValidationDigest(runID)
+	if err != nil {
+		return "", err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO job_inputs (id,workspace_id,operation,run_a_id,normalized_digest)
+        VALUES ($1,$2,'validate',$3,$4)`, inputID, workspaceID, runID, digest); err != nil {
+		return "", fmt.Errorf("insert validation input: %w", err)
+	}
+	if _, err := tx.Exec(ctx, "INSERT INTO jobs (id,workspace_id,input_id) VALUES ($1,$2,$3)", jobID, workspaceID, inputID); err != nil {
+		return "", fmt.Errorf("insert validation job: %w", err)
+	}
+	if _, err := tx.Exec(ctx, "UPDATE runs SET state='validating',row_version=row_version+1 WHERE id=$1 AND state='uploaded'", runID); err != nil {
+		return "", fmt.Errorf("mark run validating: %w", err)
+	}
+	payload, _ := json.Marshal(map[string]any{"protocol_version": 1, "job_id": jobID, "job_version": 1, "operation": "validate"})
+	if _, err := tx.Exec(ctx, `INSERT INTO outbox (aggregate_type,aggregate_id,aggregate_version,topic,payload) VALUES ('job',$1,1,'job.created',$2)`, jobID, payload); err != nil {
+		return "", fmt.Errorf("enqueue validation: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", fmt.Errorf("commit validation job: %w", err)
+	}
+	return jobID, nil
+}
+
+func normalizedValidationDigest(runID string) (string, error) {
+	data, err := json.Marshal(struct {
+		Operation string `json:"operation"`
+		RunID     string `json:"run_id"`
+	}{"validate", runID})
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(data)
+	return hex.EncodeToString(digest[:]), nil
+}
+
 func (s *Service) CreateJob(ctx context.Context, principal Principal, key string, request JobRequest) (Job, bool, error) {
 	if len(key) == 0 || len(key) > 255 {
 		return Job{}, false, errors.New("idempotency key must contain 1 to 255 characters")

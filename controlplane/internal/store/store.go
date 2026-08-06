@@ -35,6 +35,10 @@ func (s *Store) Close() {
 	s.pool.Close()
 }
 
+func (s *Store) Pool() *pgxpool.Pool {
+	return s.pool
+}
+
 func (s *Store) Migrate(ctx context.Context) error {
 	if _, err := s.pool.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
         version integer PRIMARY KEY,
