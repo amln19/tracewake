@@ -141,15 +141,23 @@ func (s *Service) UpdateProgress(ctx context.Context, jobID string, attempt int,
 		return err
 	}
 	var seq int64
+	var storedAttempt int
 	var stage, message string
-	err = tx.QueryRow(ctx, "SELECT sequence,stage,message FROM progress_snapshots WHERE job_id=$1", jobID).Scan(&seq, &stage, &message)
-	if err == nil && progress.Sequence == seq {
-		if stage == progress.Stage && message == progress.Message {
-			return tx.Commit(ctx)
+	err = tx.QueryRow(ctx, "SELECT attempt_number,sequence,stage,message FROM progress_snapshots WHERE job_id=$1", jobID).Scan(&storedAttempt, &seq, &stage, &message)
+	// Sequences are monotonic within one attempt. A later attempt starts its
+	// own sequence and supersedes the snapshot; an earlier one is stale.
+	if err == nil && storedAttempt == attempt {
+		if progress.Sequence == seq {
+			if stage == progress.Stage && message == progress.Message {
+				return tx.Commit(ctx)
+			}
+			return ErrConflict
 		}
-		return ErrConflict
+		if progress.Sequence < seq {
+			return ErrConflict
+		}
 	}
-	if err == nil && progress.Sequence < seq {
+	if err == nil && storedAttempt > attempt {
 		return ErrConflict
 	}
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {

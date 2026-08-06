@@ -131,6 +131,60 @@ func TestDuplicateDeliveryCreatesOneAttempt(t *testing.T) {
 	}
 }
 
+func TestRetriedAttemptReportsProgressFromItsOwnSequence(t *testing.T) {
+	service, pool, workspace := newTestService(t)
+	ctx := context.Background()
+	runA, runB := readyRun(t, pool, workspace), readyRun(t, pool, workspace)
+	principal := controlplane.Principal{WorkspaceID: workspace, Scopes: map[string]bool{"jobs:write": true}}
+	profile := "lexical-v1"
+	job, _, err := service.CreateJob(ctx, principal, "progress-"+runA, controlplane.JobRequest{Operation: "diff", RunIDs: []string{runA, runB}, Profile: &profile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, _, err := service.CreateWorkerCredential(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := service.Claim(ctx, worker, job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sequence := range []int64{1, 2} {
+		if err := service.UpdateProgress(ctx, job.ID, 1, first.AttemptToken, controlplane.Progress{Sequence: sequence, Stage: "analyzing", Message: "working"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := pool.Exec(ctx, "UPDATE job_attempts SET lease_expires_at=transaction_timestamp()-interval '1 second' WHERE job_id=$1 AND attempt_number=1", job.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Reconcile(ctx, 100); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, "UPDATE jobs SET retry_at=transaction_timestamp()-interval '1 second' WHERE id=$1", job.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Reconcile(ctx, 100); err != nil {
+		t.Fatal(err)
+	}
+	second, err := service.Claim(ctx, worker, job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.UpdateProgress(ctx, job.ID, second.Attempt, second.AttemptToken, controlplane.Progress{Sequence: 1, Stage: "downloading", Message: "downloading immutable inputs"}); err != nil {
+		t.Fatalf("retried attempt could not report progress: %v", err)
+	}
+	view, err := service.GetJob(ctx, principal, job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Progress == nil || view.Progress.AttemptNumber != second.Attempt || view.Progress.Sequence != 1 {
+		t.Fatalf("progress=%#v", view.Progress)
+	}
+	if err := service.UpdateProgress(ctx, job.ID, 1, first.AttemptToken, controlplane.Progress{Sequence: 3, Stage: "analyzing", Message: "stale"}); !errors.Is(err, controlplane.ErrLeaseLost) {
+		t.Fatalf("stale attempt reported progress: %v", err)
+	}
+}
+
 func TestOutboxPayloadsCarryNoSensitiveContent(t *testing.T) {
 	service, pool, workspace := newTestService(t)
 	ctx := context.Background()

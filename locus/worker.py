@@ -343,6 +343,7 @@ def run_once(client: WorkerClient, notifications: Any = None) -> bool:
     except LeaseLost:
         # A superseded attempt leaves the notification for redelivery rather
         # than deleting work the current attempt may still need.
+        log.warning("job %s attempt %d abandoned: lease is no longer current", job, attempt)
         return True
     except ValueError:
         client.json(
