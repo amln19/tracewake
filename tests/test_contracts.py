@@ -50,6 +50,7 @@ def test_failure_codes_are_a_closed_versioned_set() -> None:
         "artifact_commit_failed",
         "transient_dependency",
         "internal",
+        "retry_exhausted",
     }
     assert {code.value for code in FailureCode} == expected
 

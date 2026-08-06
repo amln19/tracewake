@@ -191,7 +191,7 @@ func validateFailure(data []byte) string {
 	if value.SchemaVersion != 1 || len(value.Message) < 1 || len(value.Message) > 512 || !oneOf(
 		value.Code,
 		"invalid_bundle", "unsupported_version", "invalid_result", "unauthorized_input",
-		"cancelled", "lease_lost", "artifact_commit_failed", "transient_dependency", "internal",
+		"cancelled", "lease_lost", "artifact_commit_failed", "transient_dependency", "internal", "retry_exhausted",
 	) {
 		return "invalid_message"
 	}

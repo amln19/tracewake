@@ -133,6 +133,17 @@ def fixture_bytes() -> tuple[dict[str, bytes], list[dict[str, object]]]:
                 )
             ),
         ),
+        "accepted/failure-retry-exhausted.json": (
+            "failure",
+            _json(
+                Failure(
+                    schema_version=1,
+                    code=FailureCode.RETRY_EXHAUSTED,
+                    message="retry limit reached",
+                    retryable=False,
+                )
+            ),
+        ),
         "accepted/job-notification.json": ("job-notification", _json(notification)),
         "accepted/claim-request.json": (
             "claim-request",

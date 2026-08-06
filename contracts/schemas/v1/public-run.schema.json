@@ -41,7 +41,8 @@
         "lease_lost",
         "artifact_commit_failed",
         "transient_dependency",
-        "internal"
+        "internal",
+        "retry_exhausted"
       ],
       "title": "FailureCode",
       "type": "string"

@@ -38,6 +38,7 @@ class FailureCode(StrEnum):
     ARTIFACT_COMMIT_FAILED = "artifact_commit_failed"
     TRANSIENT_DEPENDENCY = "transient_dependency"
     INTERNAL = "internal"
+    RETRY_EXHAUSTED = "retry_exhausted"
 
 
 class Failure(ContractModel):

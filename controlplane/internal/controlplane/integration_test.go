@@ -151,7 +151,47 @@ func TestPostgresLifecycle(t *testing.T) {
 	if err != nil || view.State != "succeeded" {
 		t.Fatalf("immutable success: %#v %v", view, err)
 	}
-	strandedRequest := controlplane.JobRequest{Operation: "diff", RunIDs: []string{runA, runC}, Profile: &profile}
+	exhaustedRequest := controlplane.JobRequest{Operation: "diff", RunIDs: []string{runA, runC}, Profile: &profile}
+	exhausted, _, err := service.CreateJob(ctx, principal, "retry-exhausted", exhaustedRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for expectedAttempt := 1; expectedAttempt <= 3; expectedAttempt++ {
+		claim, err := service.Claim(ctx, worker, exhausted.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if claim.Attempt != expectedAttempt {
+			t.Fatalf("attempt=%d want=%d", claim.Attempt, expectedAttempt)
+		}
+		state, err := service.FailAttempt(ctx, exhausted.ID, claim.Attempt, claim.AttemptToken, "internal", "temporary dependency failure", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if expectedAttempt < 3 {
+			if state != "retry_wait" {
+				t.Fatalf("retry state=%s", state)
+			}
+			if _, err = database.Pool().Exec(ctx, "UPDATE jobs SET retry_at=transaction_timestamp()-interval '1 second' WHERE id=$1", exhausted.ID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = service.Reconcile(ctx, 100); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		if state != "failed" {
+			t.Fatalf("exhaustion state=%s", state)
+		}
+	}
+	exhaustedView, err := service.GetJob(ctx, principal, exhausted.ID)
+	if err != nil || exhaustedView.State != "failed" || exhaustedView.Failure == nil || exhaustedView.Failure.Code != "retry_exhausted" || exhaustedView.Failure.Retryable {
+		t.Fatalf("retry exhaustion view: %#v %v", exhaustedView, err)
+	}
+	if len(exhaustedView.Attempts) != 3 || exhaustedView.Attempts[2].Failure == nil || exhaustedView.Attempts[2].Failure.Code != "retry_exhausted" {
+		t.Fatalf("retry exhaustion attempts: %#v", exhaustedView.Attempts)
+	}
+	strandedRequest := controlplane.JobRequest{Operation: "diff", RunIDs: []string{runC, runA}, Profile: &profile}
 	stranded, _, err := service.CreateJob(ctx, principal, "stranded", strandedRequest)
 	if err != nil {
 		t.Fatal(err)
