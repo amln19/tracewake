@@ -24,6 +24,7 @@ func New(service *controlplane.Service, artifactStore artifacts.Store, baseURL s
 
 func (a *API) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /internal/v1/identity", a.identity)
 	mux.HandleFunc("GET /internal/v1/notifications/next", a.next)
 	mux.HandleFunc("POST /internal/v1/notifications/{id}/ack", a.ack)
 	mux.HandleFunc("POST /internal/v1/claims", a.claim)
@@ -49,6 +50,16 @@ func (a *API) worker(w http.ResponseWriter, r *http.Request) (string, bool) {
 		return "", false
 	}
 	return id, true
+}
+
+// identity lets a worker that received only a credential learn the worker ID
+// its claims must carry.
+func (a *API) identity(w http.ResponseWriter, r *http.Request) {
+	worker, ok := a.worker(w, r)
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"protocol_version": 1, "worker_id": worker})
 }
 
 func (a *API) next(w http.ResponseWriter, r *http.Request) {

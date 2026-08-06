@@ -372,6 +372,8 @@ def main() -> None:
         os.environ.get("LOCUS_WORKER_ID", credentials.get("worker_id", "")),
         os.environ.get("LOCUS_WORKER_TOKEN", credentials.get("worker_token", "")),
     )
+    if not client.worker_id:
+        client.worker_id = client.json("GET", "/internal/v1/identity")["worker_id"]
     queue_url = os.environ.get("LOCUS_JOB_QUEUE_URL", "")
     notifications: Any = QueueNotifications(queue_url) if queue_url else ControlPlaneNotifications(client)
     try:

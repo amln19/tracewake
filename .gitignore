@@ -15,4 +15,13 @@ corpus/*
 !corpus/runs.jsonl
 !corpus/tasks.json
 !corpus/README.txt
+# Terraform working directories hold provider binaries; state and variable
+# files hold database and token material.
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+
 .DS_Store
