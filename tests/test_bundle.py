@@ -16,7 +16,8 @@ from locus.bundle import (
     validate_bundle,
 )
 from locus.cassette import export_cassette
-from locus.events import sha256_hex
+from locus.cassette import CassetteHeader
+from locus.events import EVENT_SCHEMA_VERSION, run_digest, sha256_hex
 from locus.store import Store
 
 
@@ -92,3 +93,27 @@ def test_bundle_validation_is_write_free(tmp_path: Path) -> None:
     validate_bundle(bundle)
 
     assert sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*")) == before
+
+
+def test_bundle_supports_an_empty_event_stream(tmp_path: Path) -> None:
+    cassette = tmp_path / "empty"
+    cassette.mkdir()
+    header = CassetteHeader(
+        locus_version="0.2.0",
+        schema_version=EVENT_SCHEMA_VERSION,
+        run_id="empty-run",
+        name="empty",
+        recorded_at=1_700_000_000.0,
+        status="running",
+        models=[],
+        event_count=0,
+        digest=run_digest([]),
+    )
+    (cassette / "cassette.jsonl").write_text(
+        header.model_dump_json() + "\n", encoding="utf-8"
+    )
+
+    validated = validate_bundle(build_bundle(cassette, tmp_path / "empty.locus"))
+
+    assert validated.events == ()
+    assert validated.manifest.events.size == 0

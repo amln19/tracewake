@@ -110,9 +110,8 @@ def _bundle_bytes(entries: dict[str, bytes]) -> bytes:
 
 def build_bundle(cassette: str | Path, destination: str | Path) -> Path:
     validated = _validate_cassette(cassette)
-    event_data = ("\n".join(_line(event) for event in validated.events) + "\n").encode(
-        "utf-8"
-    )
+    event_text = "\n".join(_line(event) for event in validated.events)
+    event_data = (event_text + ("\n" if event_text else "")).encode("utf-8")
     if len(event_data) > MAX_EVENT_BYTES:
         raise ValueError(
             f"bundle event data is {len(event_data)} bytes; limit is {MAX_EVENT_BYTES}"
