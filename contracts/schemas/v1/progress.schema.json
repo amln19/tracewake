@@ -1,0 +1,48 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "attempt_number": {
+      "maximum": 3,
+      "minimum": 1,
+      "title": "Attempt Number",
+      "type": "integer"
+    },
+    "message": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Message",
+      "type": "string"
+    },
+    "protocol_version": {
+      "const": 1,
+      "title": "Protocol Version",
+      "type": "integer"
+    },
+    "sequence": {
+      "minimum": 1,
+      "title": "Sequence",
+      "type": "integer"
+    },
+    "stage": {
+      "enum": [
+        "claiming",
+        "downloading",
+        "validating",
+        "analyzing",
+        "uploading",
+        "committing"
+      ],
+      "title": "Stage",
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocol_version",
+    "attempt_number",
+    "sequence",
+    "stage",
+    "message"
+  ],
+  "title": "Progress",
+  "type": "object"
+}

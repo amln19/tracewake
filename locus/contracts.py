@@ -1,0 +1,287 @@
+from __future__ import annotations
+
+import argparse
+import json
+from datetime import datetime
+from enum import StrEnum
+from pathlib import Path
+from typing import Annotated, Literal
+from uuid import UUID
+
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
+
+CONTRACT_SCHEMA_VERSION = 1
+WORKER_PROTOCOL_VERSION = 1
+
+Digest = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+ObjectKey = Annotated[str, StringConstraints(min_length=1, max_length=512)]
+BoundedMessage = Annotated[str, StringConstraints(min_length=1, max_length=512)]
+
+
+class ContractModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class FailureCode(StrEnum):
+    INVALID_BUNDLE = "invalid_bundle"
+    UNSUPPORTED_VERSION = "unsupported_version"
+    INVALID_RESULT = "invalid_result"
+    UNAUTHORIZED_INPUT = "unauthorized_input"
+    CANCELLED = "cancelled"
+    LEASE_LOST = "lease_lost"
+    ARTIFACT_COMMIT_FAILED = "artifact_commit_failed"
+    TRANSIENT_DEPENDENCY = "transient_dependency"
+    INTERNAL = "internal"
+
+
+class Failure(ContractModel):
+    schema_version: Literal[CONTRACT_SCHEMA_VERSION]
+    code: FailureCode
+    message: BoundedMessage
+    retryable: bool
+
+
+class ArtifactRef(ContractModel):
+    artifact_id: UUID
+    object_key: ObjectKey
+    object_version: Annotated[str, StringConstraints(min_length=1, max_length=256)]
+    digest: Digest
+    size: int = Field(ge=0)
+    media_type: Annotated[str, StringConstraints(min_length=1, max_length=128)]
+    schema_name: Annotated[str, StringConstraints(min_length=1, max_length=64)] | None = None
+    schema_version: int | None = Field(default=None, ge=1)
+
+
+class RunProvenance(ContractModel):
+    run_id: UUID
+    logical_run_digest: Digest
+    bundle_digest: Digest
+    bundle_object_key: ObjectKey
+    bundle_object_version: Annotated[str, StringConstraints(min_length=1, max_length=256)]
+    event_schema_version: int = Field(ge=1)
+    cassette_format_version: int = Field(ge=1)
+    bundle_format_version: int = Field(ge=1)
+
+
+class ResultProvenance(ContractModel):
+    inputs: list[RunProvenance] = Field(min_length=1, max_length=2)
+    analysis_profile: Annotated[str, StringConstraints(min_length=1, max_length=64)]
+    locus_version: Annotated[str, StringConstraints(min_length=1, max_length=64)]
+    worker_build: Annotated[str, StringConstraints(min_length=1, max_length=128)]
+    produced_at: AwareDatetime
+
+
+class ValidationResult(ContractModel):
+    kind: Literal["validation"] = "validation"
+    schema_version: Literal[CONTRACT_SCHEMA_VERSION]
+    valid: Literal[True]
+    run_id: UUID
+    event_count: int = Field(ge=0)
+    logical_run_digest: Digest
+    bundle_digest: Digest
+
+
+class AlignmentColumn(ContractModel):
+    good_index: int | None = Field(default=None, ge=0)
+    bad_index: int | None = Field(default=None, ge=0)
+    similarity: float | None = Field(default=None, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _has_a_side(self) -> AlignmentColumn:
+        if self.good_index is None and self.bad_index is None:
+            raise ValueError("an alignment column must contain at least one side")
+        return self
+
+
+class DiffResult(ContractModel):
+    kind: Literal["diff"] = "diff"
+    schema_version: Literal[CONTRACT_SCHEMA_VERSION]
+    profile: Literal["lexical-v1"]
+    score: float
+    divergence: int | None = Field(default=None, ge=1)
+    good_step_count: int = Field(ge=0)
+    bad_step_count: int = Field(ge=1)
+    alignment: list[AlignmentColumn]
+    provenance: ResultProvenance
+    html: ArtifactRef
+
+
+class OtlpResult(ContractModel):
+    kind: Literal["otlp"] = "otlp"
+    schema_version: Literal[CONTRACT_SCHEMA_VERSION]
+    span_count: int = Field(ge=1)
+    provenance: ResultProvenance
+    artifact: ArtifactRef
+
+
+class PprofResult(ContractModel):
+    kind: Literal["pprof"] = "pprof"
+    schema_version: Literal[CONTRACT_SCHEMA_VERSION]
+    sample_count: int = Field(ge=0)
+    provenance: ResultProvenance
+    artifact: ArtifactRef
+
+
+SemanticResult = Annotated[
+    ValidationResult | DiffResult | OtlpResult | PprofResult,
+    Field(discriminator="kind"),
+]
+
+
+class ResultEnvelope(ContractModel):
+    protocol_version: Literal[WORKER_PROTOCOL_VERSION]
+    status: Literal["succeeded", "failed"]
+    result: SemanticResult | None = None
+    failure: Failure | None = None
+
+    @model_validator(mode="after")
+    def _one_outcome(self) -> ResultEnvelope:
+        if self.status == "succeeded" and (self.result is None or self.failure is not None):
+            raise ValueError("a succeeded envelope requires only result")
+        if self.status == "failed" and (self.failure is None or self.result is not None):
+            raise ValueError("a failed envelope requires only failure")
+        return self
+
+
+class AnalysisProfile(ContractModel):
+    name: Literal["lexical-v1"]
+    version: Literal[1]
+    token_pattern: Literal[r"[A-Za-z0-9_./-]+"]
+    case: Literal["lower"]
+    blank_token: Literal["."]
+    weights: dict[Literal["tool", "args", "reasoning", "files"], float]
+    argument_weights: dict[Literal["target", "rest"], float]
+    line_falloff: Literal[50.0]
+    gap_open: Literal[-1.0]
+    gap_extend: Literal[-0.2]
+    score_transform: Literal["2*s-1"]
+    divergence_rule: Literal["last-target-agreement"]
+
+
+class JobNotification(ContractModel):
+    protocol_version: Literal[WORKER_PROTOCOL_VERSION]
+    job_id: UUID
+    job_version: int = Field(ge=1)
+    operation: Literal["validate", "diff", "otlp", "pprof"]
+
+
+class ClaimRequest(ContractModel):
+    protocol_version: Literal[WORKER_PROTOCOL_VERSION]
+    notification: JobNotification
+    worker_id: UUID
+
+
+class Claim(ContractModel):
+    protocol_version: Literal[WORKER_PROTOCOL_VERSION]
+    job_id: UUID
+    attempt_number: int = Field(ge=1, le=3)
+    attempt_token: Annotated[str, StringConstraints(min_length=43, max_length=256)]
+    lease_expires_at: AwareDatetime
+    input_artifacts: list[ArtifactRef] = Field(min_length=1, max_length=2)
+    operation: Literal["validate", "diff", "otlp", "pprof"]
+    profile: Literal["lexical-v1"] | None = None
+
+
+class Heartbeat(ContractModel):
+    protocol_version: Literal[WORKER_PROTOCOL_VERSION]
+    attempt_number: int = Field(ge=1, le=3)
+    observed_lease_expires_at: AwareDatetime
+
+
+class Progress(ContractModel):
+    protocol_version: Literal[WORKER_PROTOCOL_VERSION]
+    attempt_number: int = Field(ge=1, le=3)
+    sequence: int = Field(ge=1)
+    stage: Literal[
+        "claiming",
+        "downloading",
+        "validating",
+        "analyzing",
+        "uploading",
+        "committing",
+    ]
+    message: BoundedMessage
+
+
+class ArtifactCommit(ContractModel):
+    protocol_version: Literal[WORKER_PROTOCOL_VERSION]
+    attempt_number: int = Field(ge=1, le=3)
+    artifact: ArtifactRef
+    result: SemanticResult
+
+
+class PublicJobRequest(ContractModel):
+    operation: Literal["diff", "otlp", "pprof"]
+    run_ids: list[UUID] = Field(min_length=1, max_length=2)
+    profile: Literal["lexical-v1"] | None = None
+
+    @model_validator(mode="after")
+    def _operation_shape(self) -> PublicJobRequest:
+        expected = 2 if self.operation == "diff" else 1
+        if len(self.run_ids) != expected:
+            raise ValueError(f"{self.operation} requires {expected} run id(s)")
+        if self.operation == "diff" and self.profile != "lexical-v1":
+            raise ValueError("diff requires profile lexical-v1")
+        if self.operation != "diff" and self.profile is not None:
+            raise ValueError("only diff accepts a profile")
+        return self
+
+
+_SCHEMA_MODELS: dict[str, type[BaseModel]] = {
+    "analysis-profile": AnalysisProfile,
+    "artifact-commit": ArtifactCommit,
+    "claim": Claim,
+    "claim-request": ClaimRequest,
+    "failure": Failure,
+    "heartbeat": Heartbeat,
+    "job-notification": JobNotification,
+    "progress": Progress,
+    "public-job-request": PublicJobRequest,
+    "result-envelope": ResultEnvelope,
+}
+
+
+def schema_documents() -> dict[str, dict[str, object]]:
+    return {
+        f"{name}.schema.json": model.model_json_schema(mode="serialization")
+        for name, model in sorted(_SCHEMA_MODELS.items())
+    }
+
+
+def write_schema_documents(root: Path, *, check: bool = False) -> None:
+    expected = {
+        name: json.dumps(schema, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
+        for name, schema in schema_documents().items()
+    }
+    if check:
+        actual = {
+            path.name: path.read_text(encoding="utf-8") for path in root.glob("*.json")
+        }
+        if actual != expected:
+            raise SystemExit(f"generated contract schemas differ from committed files in {root}")
+        return
+    root.mkdir(parents=True, exist_ok=True)
+    for path in root.glob("*.json"):
+        if path.name not in expected:
+            path.unlink()
+    for name, text in expected.items():
+        (root / name).write_text(text, encoding="utf-8")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Generate Locus contract JSON Schemas")
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--check", action="store_true")
+    args = parser.parse_args()
+    write_schema_documents(args.output, check=args.check)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,38 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "job_id": {
+      "format": "uuid",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "job_version": {
+      "minimum": 1,
+      "title": "Job Version",
+      "type": "integer"
+    },
+    "operation": {
+      "enum": [
+        "validate",
+        "diff",
+        "otlp",
+        "pprof"
+      ],
+      "title": "Operation",
+      "type": "string"
+    },
+    "protocol_version": {
+      "const": 1,
+      "title": "Protocol Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "protocol_version",
+    "job_id",
+    "job_version",
+    "operation"
+  ],
+  "title": "JobNotification",
+  "type": "object"
+}

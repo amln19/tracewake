@@ -1,0 +1,48 @@
+{
+  "$defs": {
+    "FailureCode": {
+      "enum": [
+        "invalid_bundle",
+        "unsupported_version",
+        "invalid_result",
+        "unauthorized_input",
+        "cancelled",
+        "lease_lost",
+        "artifact_commit_failed",
+        "transient_dependency",
+        "internal"
+      ],
+      "title": "FailureCode",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "code": {
+      "$ref": "#/$defs/FailureCode"
+    },
+    "message": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Message",
+      "type": "string"
+    },
+    "retryable": {
+      "title": "Retryable",
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "code",
+    "message",
+    "retryable"
+  ],
+  "title": "Failure",
+  "type": "object"
+}

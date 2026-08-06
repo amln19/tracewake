@@ -1,0 +1,476 @@
+{
+  "$defs": {
+    "AlignmentColumn": {
+      "additionalProperties": false,
+      "properties": {
+        "bad_index": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bad Index"
+        },
+        "good_index": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Good Index"
+        },
+        "similarity": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Similarity"
+        }
+      },
+      "title": "AlignmentColumn",
+      "type": "object"
+    },
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "format": "uuid",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "media_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "object_key": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Object Key",
+          "type": "string"
+        },
+        "object_version": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Object Version",
+          "type": "string"
+        },
+        "schema_name": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Schema Name"
+        },
+        "schema_version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Schema Version"
+        },
+        "size": {
+          "minimum": 0,
+          "title": "Size",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "object_key",
+        "object_version",
+        "digest",
+        "size",
+        "media_type"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "DiffResult": {
+      "additionalProperties": false,
+      "properties": {
+        "alignment": {
+          "items": {
+            "$ref": "#/$defs/AlignmentColumn"
+          },
+          "title": "Alignment",
+          "type": "array"
+        },
+        "bad_step_count": {
+          "minimum": 1,
+          "title": "Bad Step Count",
+          "type": "integer"
+        },
+        "divergence": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Divergence"
+        },
+        "good_step_count": {
+          "minimum": 0,
+          "title": "Good Step Count",
+          "type": "integer"
+        },
+        "html": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "kind": {
+          "const": "diff",
+          "default": "diff",
+          "title": "Kind",
+          "type": "string"
+        },
+        "profile": {
+          "const": "lexical-v1",
+          "title": "Profile",
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/ResultProvenance"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "score": {
+          "title": "Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "schema_version",
+        "profile",
+        "score",
+        "good_step_count",
+        "bad_step_count",
+        "alignment",
+        "provenance",
+        "html"
+      ],
+      "title": "DiffResult",
+      "type": "object"
+    },
+    "OtlpResult": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "kind": {
+          "const": "otlp",
+          "default": "otlp",
+          "title": "Kind",
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/ResultProvenance"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "span_count": {
+          "minimum": 1,
+          "title": "Span Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "span_count",
+        "provenance",
+        "artifact"
+      ],
+      "title": "OtlpResult",
+      "type": "object"
+    },
+    "PprofResult": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "kind": {
+          "const": "pprof",
+          "default": "pprof",
+          "title": "Kind",
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/ResultProvenance"
+        },
+        "sample_count": {
+          "minimum": 0,
+          "title": "Sample Count",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "sample_count",
+        "provenance",
+        "artifact"
+      ],
+      "title": "PprofResult",
+      "type": "object"
+    },
+    "ResultProvenance": {
+      "additionalProperties": false,
+      "properties": {
+        "analysis_profile": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Analysis Profile",
+          "type": "string"
+        },
+        "inputs": {
+          "items": {
+            "$ref": "#/$defs/RunProvenance"
+          },
+          "maxItems": 2,
+          "minItems": 1,
+          "title": "Inputs",
+          "type": "array"
+        },
+        "locus_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Locus Version",
+          "type": "string"
+        },
+        "produced_at": {
+          "format": "date-time",
+          "title": "Produced At",
+          "type": "string"
+        },
+        "worker_build": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Worker Build",
+          "type": "string"
+        }
+      },
+      "required": [
+        "inputs",
+        "analysis_profile",
+        "locus_version",
+        "worker_build",
+        "produced_at"
+      ],
+      "title": "ResultProvenance",
+      "type": "object"
+    },
+    "RunProvenance": {
+      "additionalProperties": false,
+      "properties": {
+        "bundle_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Bundle Digest",
+          "type": "string"
+        },
+        "bundle_format_version": {
+          "minimum": 1,
+          "title": "Bundle Format Version",
+          "type": "integer"
+        },
+        "bundle_object_key": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Bundle Object Key",
+          "type": "string"
+        },
+        "bundle_object_version": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Bundle Object Version",
+          "type": "string"
+        },
+        "cassette_format_version": {
+          "minimum": 1,
+          "title": "Cassette Format Version",
+          "type": "integer"
+        },
+        "event_schema_version": {
+          "minimum": 1,
+          "title": "Event Schema Version",
+          "type": "integer"
+        },
+        "logical_run_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Logical Run Digest",
+          "type": "string"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "logical_run_digest",
+        "bundle_digest",
+        "bundle_object_key",
+        "bundle_object_version",
+        "event_schema_version",
+        "cassette_format_version",
+        "bundle_format_version"
+      ],
+      "title": "RunProvenance",
+      "type": "object"
+    },
+    "ValidationResult": {
+      "additionalProperties": false,
+      "properties": {
+        "bundle_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Bundle Digest",
+          "type": "string"
+        },
+        "event_count": {
+          "minimum": 0,
+          "title": "Event Count",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "validation",
+          "default": "validation",
+          "title": "Kind",
+          "type": "string"
+        },
+        "logical_run_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Logical Run Digest",
+          "type": "string"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "valid": {
+          "const": true,
+          "title": "Valid",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "schema_version",
+        "valid",
+        "run_id",
+        "event_count",
+        "logical_run_digest",
+        "bundle_digest"
+      ],
+      "title": "ValidationResult",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "artifact": {
+      "$ref": "#/$defs/ArtifactRef"
+    },
+    "attempt_number": {
+      "maximum": 3,
+      "minimum": 1,
+      "title": "Attempt Number",
+      "type": "integer"
+    },
+    "protocol_version": {
+      "const": 1,
+      "title": "Protocol Version",
+      "type": "integer"
+    },
+    "result": {
+      "discriminator": {
+        "mapping": {
+          "diff": "#/$defs/DiffResult",
+          "otlp": "#/$defs/OtlpResult",
+          "pprof": "#/$defs/PprofResult",
+          "validation": "#/$defs/ValidationResult"
+        },
+        "propertyName": "kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ValidationResult"
+        },
+        {
+          "$ref": "#/$defs/DiffResult"
+        },
+        {
+          "$ref": "#/$defs/OtlpResult"
+        },
+        {
+          "$ref": "#/$defs/PprofResult"
+        }
+      ],
+      "title": "Result"
+    }
+  },
+  "required": [
+    "protocol_version",
+    "attempt_number",
+    "artifact",
+    "result"
+  ],
+  "title": "ArtifactCommit",
+  "type": "object"
+}

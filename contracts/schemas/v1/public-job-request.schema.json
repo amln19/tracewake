@@ -1,0 +1,43 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "operation": {
+      "enum": [
+        "diff",
+        "otlp",
+        "pprof"
+      ],
+      "title": "Operation",
+      "type": "string"
+    },
+    "profile": {
+      "anyOf": [
+        {
+          "const": "lexical-v1",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Profile"
+    },
+    "run_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "maxItems": 2,
+      "minItems": 1,
+      "title": "Run Ids",
+      "type": "array"
+    }
+  },
+  "required": [
+    "operation",
+    "run_ids"
+  ],
+  "title": "PublicJobRequest",
+  "type": "object"
+}

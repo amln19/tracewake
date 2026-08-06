@@ -1,0 +1,99 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "argument_weights": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "propertyNames": {
+        "enum": [
+          "target",
+          "rest"
+        ]
+      },
+      "title": "Argument Weights",
+      "type": "object"
+    },
+    "blank_token": {
+      "const": ".",
+      "title": "Blank Token",
+      "type": "string"
+    },
+    "case": {
+      "const": "lower",
+      "title": "Case",
+      "type": "string"
+    },
+    "divergence_rule": {
+      "const": "last-target-agreement",
+      "title": "Divergence Rule",
+      "type": "string"
+    },
+    "gap_extend": {
+      "const": -0.2,
+      "title": "Gap Extend",
+      "type": "number"
+    },
+    "gap_open": {
+      "const": -1.0,
+      "title": "Gap Open",
+      "type": "number"
+    },
+    "line_falloff": {
+      "const": 50.0,
+      "title": "Line Falloff",
+      "type": "number"
+    },
+    "name": {
+      "const": "lexical-v1",
+      "title": "Name",
+      "type": "string"
+    },
+    "score_transform": {
+      "const": "2*s-1",
+      "title": "Score Transform",
+      "type": "string"
+    },
+    "token_pattern": {
+      "const": "[A-Za-z0-9_./-]+",
+      "title": "Token Pattern",
+      "type": "string"
+    },
+    "version": {
+      "const": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "weights": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "propertyNames": {
+        "enum": [
+          "tool",
+          "args",
+          "reasoning",
+          "files"
+        ]
+      },
+      "title": "Weights",
+      "type": "object"
+    }
+  },
+  "required": [
+    "name",
+    "version",
+    "token_pattern",
+    "case",
+    "blank_token",
+    "weights",
+    "argument_weights",
+    "line_falloff",
+    "gap_open",
+    "gap_extend",
+    "score_transform",
+    "divergence_rule"
+  ],
+  "title": "AnalysisProfile",
+  "type": "object"
+}

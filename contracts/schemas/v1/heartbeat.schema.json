@@ -1,0 +1,28 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "attempt_number": {
+      "maximum": 3,
+      "minimum": 1,
+      "title": "Attempt Number",
+      "type": "integer"
+    },
+    "observed_lease_expires_at": {
+      "format": "date-time",
+      "title": "Observed Lease Expires At",
+      "type": "string"
+    },
+    "protocol_version": {
+      "const": 1,
+      "title": "Protocol Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "protocol_version",
+    "attempt_number",
+    "observed_lease_expires_at"
+  ],
+  "title": "Heartbeat",
+  "type": "object"
+}
