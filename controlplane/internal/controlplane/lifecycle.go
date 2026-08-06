@@ -106,6 +106,18 @@ func (s *Service) CompleteUpload(ctx context.Context, principal Principal, runID
 	return tx.Commit(ctx)
 }
 
+func (s *Service) UploadFor(ctx context.Context, principal Principal, runID string) (Upload, error) {
+	var upload Upload
+	err := s.pool.QueryRow(ctx, `SELECT id,bundle_object_key,declared_bundle_digest,declared_bundle_size FROM runs WHERE id=$1 AND workspace_id=$2 AND state='pending'`, runID, principal.WorkspaceID).Scan(&upload.RunID, &upload.Key, &upload.Digest, &upload.Size)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Upload{}, ErrConflict
+	}
+	if err != nil {
+		return Upload{}, fmt.Errorf("read upload: %w", err)
+	}
+	return upload, nil
+}
+
 func normalizedDigest(request JobRequest) (string, error) {
 	if request.Operation != "diff" && request.Operation != "otlp" && request.Operation != "pprof" {
 		return "", errors.New("unsupported job operation")
