@@ -199,6 +199,29 @@ using the local SQLite store and do not require the service. Remove the local
 stack and all its volumes with `docker compose down --volumes` when its retained
 test data is no longer needed.
 
+Bundles and results never travel through the API itself. A client declares an
+exact digest and size, receives a short-lived URL for one server-generated
+object key, transfers the bytes directly, and reports the immutable object
+version the store assigned. The control plane commits only that exact version
+after verifying digest and size, and a run becomes usable only after mandatory
+validation confirms its stored bytes match the declaration.
+
+## Hosted deployment
+
+`deploy/aws/` is one Terraform environment: a VPC with private subnets, a
+public load balancer for tenants, a separate internal load balancer for the
+worker API, ECS/Fargate services for the control plane and the Python worker,
+RDS PostgreSQL, a private versioned S3 bucket, an SQS job queue with a
+dead-letter queue, ECR repositories, Secrets Manager secrets, least-privilege
+roles, and CloudWatch log groups. Deployment, migration, rollback, and teardown
+are documented in `deploy/aws/README.md`.
+
+The deployed system runs the same code as the local stack. Object storage
+replaces the local filesystem store and the queue replaces direct outbox
+polling; the lifecycle, semantics, and result schemas are unchanged. Locus
+itself remains local-first: none of this is required to record, replay,
+verify, import, export, or compare runs.
+
 ## Persistent formats
 
 Event schema 3, SQLite store schema 3, cassette directory format 1, and bundle

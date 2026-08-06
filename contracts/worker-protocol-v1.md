@@ -49,10 +49,17 @@ All paths include the claim's job ID and attempt number:
 * `GET /internal/v1/jobs/{job}/attempts/{attempt}/cancellation` returns
   `{"protocol_version":1,"cancel_requested":boolean}`. A worker also stops on
   lease loss without waiting for cancellation.
-* `POST /internal/v1/jobs/{job}/attempts/{attempt}/artifacts` declares media
-  type, schema name and version, and expected size. It returns a server-created
-  attempt-scoped key, required SHA-256 checksum, short-lived upload URL, and
-  expiry. The worker cannot supply or alter the key.
+* `POST /internal/v1/jobs/{job}/attempts/{attempt}/artifacts` declares kind,
+  media type, and expected digest and size. It returns a server-created
+  attempt-scoped key, required SHA-256 checksum, short-lived upload URL and
+  method, any headers the URL's signature covers, and expiry. The worker cannot
+  supply or alter the key. It reports the immutable object version the store
+  returns; a local deployment reports the content digest.
+* `GET /internal/v1/jobs/{job}/attempts/{attempt}/inputs/{artifact}` returns the
+  immutable input reference and a short-lived download URL for it. Input bytes
+  never pass through the control plane.
+* `GET /internal/v1/identity` returns the authenticated worker ID for claims,
+  so a worker that received only a credential needs no second configured value.
 * `POST /internal/v1/jobs/{job}/attempts/{attempt}/complete` accepts the
   artifact-commit schema after upload. The control plane verifies immutable
   object version, digest, size, semantic schema, and canonical result before

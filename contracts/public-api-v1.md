@@ -36,8 +36,9 @@ private paths, URLs, tokens, prompts, source, blobs, and stack traces.
 `POST /v1/runs/uploads` with `runs:write` creates an upload in `pending` state.
 The request declares bundle format, exact byte size, and exact bundle digest.
 The response supplies a server-generated upload identity, object key hidden
-behind a short-lived upload URL, required checksum, and expiry. Maximum size is
-the bundle v1 limit.
+behind a short-lived upload URL, required checksum, any headers that URL's
+signature covers, and expiry. Maximum size is the bundle v1 limit. Bytes go to
+the object store, never through the API.
 
 `POST /v1/runs/uploads/{upload_id}/complete` records the immutable object
 version and queues mandatory validation transactionally. It is idempotent for
@@ -84,7 +85,8 @@ reconnect or refresh, clients reconstruct state with `GET /v1/jobs/{job_id}`.
 
 `GET /v1/artifacts/{artifact_id}/download` with `artifacts:read` checks current
 workspace ownership and retention, then returns a download URL valid for at
-most 15 minutes. The URL is never included in logs, audit payloads, or SSE.
+most 15 minutes. The URL serves the artifact as an attachment rather than
+inline. The URL is never included in logs, audit payloads, or SSE.
 
 `GET /v1/audit?cursor=...&limit=...` with `audit:read` returns at most 100
 workspace-scoped meaningful lifecycle records per page. It excludes heartbeat
