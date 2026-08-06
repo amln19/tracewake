@@ -81,6 +81,24 @@ func (s *Store) Open(key, version string) (*os.File, error) {
 	return file, nil
 }
 
+func (s *Store) Verify(key, version, expectedDigest string, expectedSize int64) error {
+	file, err := s.Open(key, version)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	hash := sha256.New()
+	size, err := io.Copy(hash, file)
+	if err != nil {
+		return fmt.Errorf("hash artifact: %w", err)
+	}
+	digest := hex.EncodeToString(hash.Sum(nil))
+	if size != expectedSize || digest != expectedDigest || version != digest {
+		return errors.New("artifact identity does not match stored bytes")
+	}
+	return nil
+}
+
 func safeKey(key string) bool {
 	return key != "" && !strings.HasPrefix(key, "/") && filepath.ToSlash(filepath.Clean(key)) == key && !strings.Contains(key, "..")
 }

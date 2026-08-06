@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -11,7 +12,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/amln19/locus/controlplane/internal/artifacts"
+	"github.com/amln19/locus/controlplane/internal/controlplane"
+	"github.com/amln19/locus/controlplane/internal/httpapi"
 	"github.com/amln19/locus/controlplane/internal/store"
+	"github.com/amln19/locus/controlplane/internal/workerapi"
 )
 
 func main() {
@@ -29,21 +34,70 @@ func main() {
 	if err := database.Migrate(ctx); err != nil {
 		log.Fatal(err)
 	}
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
-	server := &http.Server{Addr: envOr("LOCUS_LISTEN_ADDR", "127.0.0.1:8080"), Handler: mux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	service, err := controlplane.New(database.Pool(), keyRing("LOCUS_TOKEN_PEPPER"), keyRing("LOCUS_WORKER_PEPPER"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	artifactStore, err := artifacts.New(envOr("LOCUS_ARTIFACT_ROOT", ".locus-hosted/artifacts"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	if len(os.Args) > 1 && os.Args[1] == "bootstrap" {
+		workspace, token, err := service.CreateWorkspace(ctx, "local", []string{"runs:read", "runs:write", "jobs:read", "jobs:write", "artifacts:read", "audit:read"})
+		if err != nil {
+			log.Fatal(err)
+		}
+		workerID, workerToken, err := service.CreateWorkerCredential(ctx)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("workspace_id=%s\ntoken=%s\nworker_id=%s\nworker_token=%s\n", workspace, token, workerID, workerToken)
+		return
+	}
+	publicMux := http.NewServeMux()
+	publicMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	publicMux.Handle("/", httpapi.New(service, artifactStore).Handler())
+	publicServer := &http.Server{Addr: envOr("LOCUS_LISTEN_ADDR", "127.0.0.1:8080"), Handler: publicMux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	workerServer := &http.Server{Addr: envOr("LOCUS_WORKER_LISTEN_ADDR", "127.0.0.1:8081"), Handler: workerapi.New(service, artifactStore).Handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	for _, server := range []*http.Server{publicServer, workerServer} {
+		server := server
+		go func() {
+			if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Printf("serve %s: %v", server.Addr, err)
+				stop()
+			}
+		}()
+	}
 	go func() {
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("serve: %v", err)
-			stop()
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if _, err := service.Reconcile(ctx, 100); err != nil && !errors.Is(err, context.Canceled) {
+					log.Printf("reconcile: %v", err)
+				}
+			}
 		}
 	}()
 	<-ctx.Done()
 	shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := server.Shutdown(shutdown); err != nil {
-		log.Printf("shutdown: %v", err)
+	for _, server := range []*http.Server{publicServer, workerServer} {
+		if err := server.Shutdown(shutdown); err != nil {
+			log.Printf("shutdown %s: %v", server.Addr, err)
+		}
 	}
+}
+
+func keyRing(name string) controlplane.KeyRing {
+	value := os.Getenv(name)
+	if len(value) < 32 {
+		log.Fatalf("%s must contain at least 32 bytes", name)
+	}
+	return controlplane.KeyRing{CurrentVersion: 1, Current: []byte(value)}
 }
 
 func envOr(name, fallback string) string {
