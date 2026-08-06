@@ -96,3 +96,7 @@ jobs:
       - run: uv run --python 3.13 python -m contracttest.generate_fixtures --output contracttest/fixtures/v1 --check
       - run: go test ./...
         working-directory: contracttest/go
+      - run: go test -race ./...
+        working-directory: contracttest/go
+      - run: go test -fuzz=FuzzContractValidatorsDoNotPanic -fuzztime=3s
+        working-directory: contracttest/go

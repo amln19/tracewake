@@ -505,3 +505,23 @@ func TestGoAgreesWithEverySharedFixture(t *testing.T) {
 		})
 	}
 }
+
+func FuzzContractValidatorsDoNotPanic(f *testing.F) {
+	f.Add([]byte(`{"protocol_version":1}`))
+	f.Add([]byte{0x1f, 0x8b})
+	f.Fuzz(func(t *testing.T, data []byte) {
+		for _, validator := range []string{
+			"bundle",
+			"failure",
+			"job-notification",
+			"claim-request",
+			"claim",
+			"progress",
+			"public-job-request",
+			"result-envelope",
+			"upload-declaration",
+		} {
+			validateFixture(data, validator)
+		}
+	})
+}
