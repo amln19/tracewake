@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -87,6 +88,39 @@ def test_export_and_import_move_a_run_between_stores(tmp_path: Path) -> None:
     db = Store(target)
     assert db.run(run_id).name == "demo"
     db.close()
+
+
+def test_verify_accepts_a_valid_cassette_without_opening_a_store(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    run_id = _record(source)
+    cassette = tmp_path / "cassette"
+    assert _locus("export", run_id, "-o", str(cassette), "--store", str(source)).returncode == 0
+
+    result = _locus("verify", str(cassette))
+
+    assert result.returncode == 0, result.stderr
+    assert "verified" in result.stdout
+    assert "events" in result.stdout and "blobs" in result.stdout
+    assert not (cassette / ".locus").exists()
+
+
+def test_verify_returns_nonzero_for_corruption(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    run_id = _record(source)
+    cassette = tmp_path / "cassette"
+    _locus("export", run_id, "-o", str(cassette), "--store", str(source))
+    path = cassette / "cassette.jsonl"
+    lines = path.read_text(encoding="utf-8").splitlines()
+    header = json.loads(lines[0])
+    header["event_count"] += 1
+    lines[0] = json.dumps(header)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    result = _locus("verify", str(cassette))
+
+    assert result.returncode != 0
+    assert "wrong event count" in result.stderr
+    assert "Traceback" not in result.stderr
 
 
 def test_export_accepts_a_cassette_name(tmp_path: Path) -> None:

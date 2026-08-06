@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import time
 import warnings
 from pathlib import Path
+from typing import Any, Callable
 
 import pytest
 
@@ -18,7 +21,8 @@ from locus import (
     Usage,
     run_digest,
 )
-from locus.cassette import export_cassette, import_cassette, read_header
+from locus.cassette import _validate_cassette, export_cassette, import_cassette, read_header
+from locus.events import EVENT_ADAPTER, StoredEvent, sha256_hex
 
 
 def _create(model_id: str, messages: list[Message], params: DecodeParams) -> ModelResponse:
@@ -36,8 +40,35 @@ def _record(store: Path, name: str = "trip") -> str:
             ToolCallRequest(id="t0", name="read", args={"path": "a.py"}, batch_index=0),
         )
         rec.clock.time()
-        rec.outcome(status="ok", usage=Usage(input_tokens=3))
+        rec.outcome(status="ok", usage=Usage(input_tokens=3), patch="recorded patch")
         return rec.run_id
+
+
+def _exported(tmp_path: Path) -> tuple[Path, str]:
+    run_id = _record(tmp_path / "source")
+    db = Store(tmp_path / "source")
+    cassette = export_cassette(db, run_id, tmp_path / "cassette")
+    db.close()
+    return cassette, run_id
+
+
+def _rewrite(
+    cassette: Path,
+    change: Callable[[dict[str, Any], list[dict[str, Any]]], None],
+) -> None:
+    path = cassette / "cassette.jsonl"
+    lines = path.read_text(encoding="utf-8").splitlines()
+    header = json.loads(lines[0])
+    events = [json.loads(line) for line in lines[1:]]
+    change(header, events)
+    path.write_text(
+        "\n".join(json.dumps(value) for value in [header, *events]) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _blob_paths(cassette: Path) -> list[Path]:
+    return [path for path in (cassette / "blobs").rglob("*") if path.is_file()]
 
 
 def test_a_cassette_round_trips_without_changing_the_run(tmp_path: Path) -> None:
@@ -132,7 +163,7 @@ def test_an_edited_cassette_is_refused(tmp_path: Path) -> None:
     path.write_text("\n".join(lines) + "\n")
 
     into = Store(tmp_path / "b")
-    with pytest.raises(ValueError, match="did not survive the round trip"):
+    with pytest.raises(ValueError, match="wrong logical digest"):
         import_cassette(tmp_path / "cassette", into)
     # Refused before anything was written. A half-imported run would make the
     # retry fail with "already in the store" about a run that never imported.
@@ -196,6 +227,210 @@ def test_import_refuses_a_cassette_whose_blob_is_missing(tmp_path: Path) -> None
         import_cassette(tmp_path / "cassette", into)
     assert into.runs() == []
     into.close()
+
+
+def test_validation_hashes_blob_bytes_instead_of_trusting_the_filename(
+    tmp_path: Path,
+) -> None:
+    cassette, _ = _exported(tmp_path)
+    blob = _blob_paths(cassette)[0]
+    blob.write_bytes(b"x" * blob.stat().st_size)
+
+    with pytest.raises(ValueError, match=r"blob.*expected digest.*actual digest"):
+        _validate_cassette(cassette)
+
+
+def test_validation_checks_blob_size_against_every_reference(tmp_path: Path) -> None:
+    cassette, _ = _exported(tmp_path)
+
+    def change(header: dict[str, Any], events: list[dict[str, Any]]) -> None:
+        for event in events:
+            if event["type"] == "tool_call":
+                event["result"]["size"] += 1
+        stored = []
+        for event in events:
+            data = dict(event)
+            seq = data.pop("seq")
+            stored.append(
+                StoredEvent(
+                    run_id=header["run_id"],
+                    seq=seq,
+                    event=EVENT_ADAPTER.validate_python(data),
+                )
+            )
+        header["digest"] = run_digest(stored)
+
+    _rewrite(cassette, change)
+    with pytest.raises(ValueError, match=r"expected size.*actual size"):
+        _validate_cassette(cassette)
+
+
+def test_validation_rejects_a_negative_blob_size(tmp_path: Path) -> None:
+    cassette, _ = _exported(tmp_path)
+
+    def change(header: dict[str, Any], events: list[dict[str, Any]]) -> None:
+        for event in events:
+            if event["type"] == "tool_call":
+                event["result"]["size"] = -1
+
+    _rewrite(cassette, change)
+    with pytest.raises(ValueError, match=r"cassette.jsonl line.*valid locus event"):
+        _validate_cassette(cassette)
+
+
+def test_validation_rejects_an_unexpected_blob_path(tmp_path: Path) -> None:
+    cassette, _ = _exported(tmp_path)
+    unexpected = cassette / "blobs" / "unexpected"
+    unexpected.write_bytes(b"not referenced")
+
+    with pytest.raises(ValueError, match=r"unexpected entry.*blobs/unexpected"):
+        _validate_cassette(cassette)
+
+
+def test_validation_rejects_a_duplicate_noncanonical_blob_path(tmp_path: Path) -> None:
+    cassette, _ = _exported(tmp_path)
+    blob = _blob_paths(cassette)[0]
+    duplicate = cassette / "blobs" / "ff" / "ff" / blob.name
+    duplicate.parent.mkdir(parents=True)
+    shutil.copyfile(blob, duplicate)
+
+    with pytest.raises(ValueError, match=r"duplicate blob.*blobs/ff/ff"):
+        _validate_cassette(cassette)
+
+
+def test_validation_rejects_symlinks(tmp_path: Path) -> None:
+    cassette, _ = _exported(tmp_path)
+    blob = _blob_paths(cassette)[0]
+    link = cassette / "blobs" / "linked"
+    os.symlink(blob, link)
+
+    with pytest.raises(ValueError, match=r"blobs/linked.*symlink"):
+        _validate_cassette(cassette)
+
+
+def test_validation_checks_the_header_event_count(tmp_path: Path) -> None:
+    cassette, _ = _exported(tmp_path)
+
+    def change(header: dict[str, Any], events: list[dict[str, Any]]) -> None:
+        header["event_count"] += 1
+
+    _rewrite(cassette, change)
+    with pytest.raises(ValueError, match=r"event count.*expected.*actual"):
+        _validate_cassette(cassette)
+
+
+@pytest.mark.parametrize(
+    ("seqs", "kind"),
+    [
+        ([-1, 1], "negative"),
+        ([0, 0], "duplicated"),
+        ([0, 2], "missing"),
+        ([1, 0], "out of order"),
+    ],
+)
+def test_validation_requires_dense_ordered_event_sequences(
+    tmp_path: Path, seqs: list[int], kind: str
+) -> None:
+    cassette, _ = _exported(tmp_path)
+
+    def change(header: dict[str, Any], events: list[dict[str, Any]]) -> None:
+        for event, seq in zip(events, seqs, strict=False):
+            event["seq"] = seq
+
+    _rewrite(cassette, change)
+    with pytest.raises(ValueError, match=rf"{kind}.*sequence.*expected.*actual"):
+        _validate_cassette(cassette)
+
+
+def test_validation_checks_the_logical_run_digest(tmp_path: Path) -> None:
+    cassette, _ = _exported(tmp_path)
+
+    def change(header: dict[str, Any], events: list[dict[str, Any]]) -> None:
+        header["digest"] = "0" * 64
+
+    _rewrite(cassette, change)
+    with pytest.raises(ValueError, match=r"logical digest.*expected.*actual"):
+        _validate_cassette(cassette)
+
+
+def test_validation_failure_does_not_change_store_state(tmp_path: Path) -> None:
+    cassette, _ = _exported(tmp_path)
+    _blob_paths(cassette)[0].unlink()
+    target = Store(tmp_path / "target")
+    target.blobs.put(b"already here")
+    before_runs = target.runs()
+    before_blobs = sorted(path.relative_to(target.root) for path in target.root.rglob("*") if path.is_file())
+
+    with pytest.raises(ValueError):
+        import_cassette(cassette, target)
+
+    after_blobs = sorted(path.relative_to(target.root) for path in target.root.rglob("*") if path.is_file())
+    assert target.runs() == before_runs
+    assert after_blobs == before_blobs
+    target.close()
+
+
+def test_export_refuses_corrupted_stored_blob_bytes_and_preserves_destination(
+    tmp_path: Path,
+) -> None:
+    run_id = _record(tmp_path / "source")
+    db = Store(tmp_path / "source")
+    first = export_cassette(db, run_id, tmp_path / "cassette")
+    marker = first / "keep.txt"
+    marker.write_text("old export", encoding="utf-8")
+    event = next(stored.event for stored in db.events(run_id) if stored.event.type == "tool_call")
+    stored = db.blobs._path(event.result.digest)
+    stored.write_bytes(b"x" * event.result.size)
+
+    with pytest.raises(ValueError, match=r"(?i)stored blob.*expected digest.*repair"):
+        export_cassette(db, run_id, tmp_path / "cassette")
+
+    assert marker.read_text(encoding="utf-8") == "old export"
+    db.close()
+
+
+def test_handled_import_failure_removes_only_new_blobs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cassette, run_id = _exported(tmp_path)
+    target = Store(tmp_path / "target")
+    source_blobs = {path.name: path.read_bytes() for path in _blob_paths(cassette)}
+    preserved_digest, preserved_bytes = next(iter(source_blobs.items()))
+    target.blobs.put(preserved_bytes)
+
+    def fail(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("injected insert failure")
+
+    monkeypatch.setattr(target, "_insert_import_event", fail)
+    with pytest.raises(RuntimeError, match="injected"):
+        import_cassette(cassette, target)
+
+    assert target.find(run_id) is None
+    assert target.blobs.get(preserved_digest) == preserved_bytes
+    for digest in source_blobs.keys() - {preserved_digest}:
+        assert not target.blobs.has(digest)
+    target.close()
+
+
+def test_store_startup_cleans_blob_links_from_an_abandoned_import(tmp_path: Path) -> None:
+    root = tmp_path / "target"
+    store = Store(root)
+    data = b"orphaned import bytes"
+    digest = sha256_hex(data)
+    stage = root / ".imports" / "import-crashed"
+    staged = stage / "blobs" / digest[:2] / digest[2:4] / digest
+    staged.parent.mkdir(parents=True)
+    staged.write_bytes(data)
+    (stage / ".lock").touch()
+    target = store.blobs._path(digest)
+    target.parent.mkdir(parents=True)
+    os.link(staged, target)
+    store.close()
+
+    recovered = Store(root)
+    assert not target.exists()
+    assert not stage.exists()
+    recovered.close()
 
 
 def test_an_old_cassette_warns_before_it_replays(tmp_path: Path) -> None:

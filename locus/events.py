@@ -49,7 +49,7 @@ def sha256_hex(data: bytes) -> str:
 
 class BlobRef(BaseModel):
     digest: Annotated[str, StringConstraints(pattern=DIGEST_PATTERN)]
-    size: int
+    size: int = Field(ge=0)
 
 
 class EventMeta(BaseModel):

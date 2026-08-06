@@ -15,7 +15,7 @@ from typing import Annotated
 import typer
 
 from .align import DiffResult, LexicalEmbedder, MlxEmbedder, diff_runs, format_diff
-from .cassette import export_cassette, import_cassette, read_header
+from .cassette import _validate_cassette, export_cassette, import_cassette, read_header
 from .config import RECORD_MODES, Config, RecordMode
 from .events import RunHeader, StoredEvent
 from .matching import ReplayReport
@@ -365,6 +365,18 @@ def import_(
     header = import_cassette(source, db)
     db.close()
     typer.echo(f"imported run {header.run_id} as cassette {header.name!r}")
+
+
+@app.command()
+def verify(
+    source: Annotated[Path, typer.Argument(help="Cassette directory.")],
+) -> None:
+    """Check a cassette without changing the local store."""
+    validated = _validate_cassette(source)
+    typer.echo(
+        f"verified {validated.header.event_count} events and {len(validated.blobs)} blobs "
+        f"in {source} ({validated.header.digest[:12]})"
+    )
 
 
 @app.command("ls")

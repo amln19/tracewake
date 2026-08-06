@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
 import sqlite3
 import tempfile
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+
+import fcntl
 
 from .events import (
     DIGEST_PATTERN,
@@ -22,6 +28,9 @@ from .events import (
 )
 
 _DIGEST_RE = re.compile(DIGEST_PATTERN)
+_IMPORTS_DIR = ".imports"
+_IMPORT_PREFIX = "import-"
+_IMPORT_LOCK = ".lock"
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS runs (
@@ -111,6 +120,7 @@ class Store:
         self._db.execute("PRAGMA foreign_keys=ON")
         self._open_schema()
         self._lock = threading.Lock()
+        self._cleanup_import_staging()
 
     def _open_schema(self) -> None:
         existing = self._db.execute(
@@ -132,25 +142,100 @@ class Store:
     def close(self) -> None:
         self._db.close()
 
+    @contextmanager
+    def _import_staging(self) -> Iterator[Path]:
+        root = self.root / _IMPORTS_DIR
+        root.mkdir(parents=True, exist_ok=True)
+        stage = Path(tempfile.mkdtemp(prefix=_IMPORT_PREFIX, dir=root))
+        lock = (stage / _IMPORT_LOCK).open("a+")
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            yield stage
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+            lock.close()
+            shutil.rmtree(stage, ignore_errors=True)
+            try:
+                root.rmdir()
+            except OSError:
+                pass
+
+    def _cleanup_import_staging(self) -> None:
+        root = self.root / _IMPORTS_DIR
+        if not root.is_dir():
+            return
+        for stage in root.iterdir():
+            if not stage.name.startswith(_IMPORT_PREFIX) or not stage.is_dir() or stage.is_symlink():
+                continue
+            lock = (stage / _IMPORT_LOCK).open("a+")
+            try:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    continue
+                staged_blobs = stage / "blobs"
+                if staged_blobs.is_dir():
+                    for staged in staged_blobs.rglob("*"):
+                        if not staged.is_file() or staged.is_symlink():
+                            continue
+                        digest = staged.name
+                        if not _DIGEST_RE.fullmatch(digest):
+                            continue
+                        expected = staged_blobs / digest[:2] / digest[2:4] / digest
+                        if staged != expected:
+                            continue
+                        target = self.blobs._path(digest)
+                        if (
+                            target.exists()
+                            and os.path.samefile(staged, target)
+                            and not self._blob_is_referenced(digest)
+                        ):
+                            target.unlink()
+                            self._prune_blob_parents(target)
+                shutil.rmtree(stage)
+            finally:
+                lock.close()
+        try:
+            root.rmdir()
+        except OSError:
+            pass
+
+    def _blob_is_referenced(self, digest: str) -> bool:
+        row = self._db.execute(
+            "SELECT 1 FROM events WHERE instr(canonical_json, ?) > 0 LIMIT 1",
+            (digest,),
+        ).fetchone()
+        return row is not None
+
+    def _prune_blob_parents(self, path: Path) -> None:
+        for parent in (path.parent, path.parent.parent):
+            try:
+                parent.rmdir()
+            except OSError:
+                break
+
+    def _insert_run(self, header: RunHeader) -> None:
+        self._db.execute(
+            "INSERT INTO runs (run_id, name, started_at, finished_at, status, "
+            "schema_version, models_json, command_json, redacted, task_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                header.run_id,
+                header.name,
+                header.started_at,
+                header.finished_at,
+                header.status,
+                header.schema_version,
+                json.dumps([m.model_dump(mode="json") for m in header.models]),
+                json.dumps(header.command) if header.command is not None else None,
+                int(header.redacted),
+                header.task_id,
+            ),
+        )
+
     def create_run(self, header: RunHeader) -> None:
         with self._lock, self._db:
-            self._db.execute(
-                "INSERT INTO runs (run_id, name, started_at, finished_at, status, "
-                "schema_version, models_json, command_json, redacted, task_id) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    header.run_id,
-                    header.name,
-                    header.started_at,
-                    header.finished_at,
-                    header.status,
-                    header.schema_version,
-                    json.dumps([m.model_dump(mode="json") for m in header.models]),
-                    json.dumps(header.command) if header.command is not None else None,
-                    int(header.redacted),
-                    header.task_id,
-                ),
-            )
+            self._insert_run(header)
 
     def drop_run(self, run_id: str) -> None:
         """Remove a run row and its events. Blobs stay (content-addressed, shared)."""
@@ -276,35 +361,35 @@ class Store:
         return [r[0] for r in rows]
 
     def append(self, run_id: str, event: AnyEvent) -> int:
-        canonical = event.canonical_bytes().decode("utf-8")
-        meta = event.meta.model_dump_json()
-        call_id = event.call_id if isinstance(event, ModelCallEvent) else None
-        model_id = event.model_id if isinstance(event, ModelCallEvent) else None
-        messages_hash = event.messages_hash if isinstance(event, ModelCallEvent) else None
-        batch_index = event.batch_index if isinstance(event, ToolCallEvent) else None
         with self._lock, self._db:
             (seq,) = self._db.execute(
                 "SELECT COALESCE(MAX(seq), -1) + 1 FROM events WHERE run_id = ?", (run_id,)
             ).fetchone()
-            self._db.execute(
-                "INSERT INTO events (run_id, seq, type, call_id, parent_call_id, "
-                "tool_call_id, batch_index, model_id, messages_hash, canonical_json, "
-                "meta_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    run_id,
-                    seq,
-                    event.type,
-                    call_id,
-                    event.parent_call_id,
-                    event.tool_call_id,
-                    batch_index,
-                    model_id,
-                    messages_hash,
-                    canonical,
-                    meta,
-                ),
-            )
+            self._insert_event(run_id, seq, event)
         return seq
+
+    def _insert_event(self, run_id: str, seq: int, event: AnyEvent) -> None:
+        self._db.execute(
+            "INSERT INTO events (run_id, seq, type, call_id, parent_call_id, "
+            "tool_call_id, batch_index, model_id, messages_hash, canonical_json, "
+            "meta_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                run_id,
+                seq,
+                event.type,
+                event.call_id if isinstance(event, ModelCallEvent) else None,
+                event.parent_call_id,
+                event.tool_call_id,
+                event.batch_index if isinstance(event, ToolCallEvent) else None,
+                event.model_id if isinstance(event, ModelCallEvent) else None,
+                event.messages_hash if isinstance(event, ModelCallEvent) else None,
+                event.canonical_bytes().decode("utf-8"),
+                event.meta.model_dump_json(),
+            ),
+        )
+
+    def _insert_import_event(self, stored: StoredEvent) -> None:
+        self._insert_event(stored.run_id, stored.seq, stored.event)
 
     def events(self, run_id: str) -> list[StoredEvent]:
         rows = self._db.execute(
