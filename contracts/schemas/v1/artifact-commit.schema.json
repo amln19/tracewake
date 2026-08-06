@@ -394,6 +394,9 @@
           "title": "Logical Run Digest",
           "type": "string"
         },
+        "provenance": {
+          "$ref": "#/$defs/ResultProvenance"
+        },
         "run_id": {
           "format": "uuid",
           "title": "Run Id",
@@ -416,7 +419,8 @@
         "run_id",
         "event_count",
         "logical_run_digest",
-        "bundle_digest"
+        "bundle_digest",
+        "provenance"
       ],
       "title": "ValidationResult",
       "type": "object"

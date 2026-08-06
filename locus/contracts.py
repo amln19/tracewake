@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal
@@ -86,6 +85,7 @@ class ValidationResult(ContractModel):
     event_count: int = Field(ge=0)
     logical_run_digest: Digest
     bundle_digest: Digest
+    provenance: ResultProvenance
 
 
 class AlignmentColumn(ContractModel):

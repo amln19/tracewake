@@ -67,6 +67,24 @@ def test_result_envelope_discriminates_success_and_failure() -> None:
                 "event_count": 0,
                 "logical_run_digest": "0" * 64,
                 "bundle_digest": "1" * 64,
+                "provenance": {
+                    "inputs": [
+                        {
+                            "run_id": "018f7f28-df62-7bc4-9f45-6e6c32a19484",
+                            "logical_run_digest": "0" * 64,
+                            "bundle_digest": "1" * 64,
+                            "bundle_object_key": "workspaces/w/runs/r/bundle",
+                            "bundle_object_version": "v1",
+                            "event_schema_version": 3,
+                            "cassette_format_version": 1,
+                            "bundle_format_version": 1,
+                        }
+                    ],
+                    "analysis_profile": "bundle-validation-v1",
+                    "locus_version": "0.2.0",
+                    "worker_build": "test-build",
+                    "produced_at": "2026-08-06T12:00:00Z",
+                },
             },
         }
     )
