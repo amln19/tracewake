@@ -135,9 +135,10 @@ embeddings lexical@unpinned
   fact.
 - **Cassettes** export to JSONL + blobs (`locus export` / `import`). The header
   carries model id and date so a stale cassette can warn rather than pass quietly.
-  Its digest identifies canonical logical event content. It is not a digest of
-  every transport byte; a separate bundle digest belongs to a future archive
-  format.
+  Its digest identifies canonical logical event content. Deterministic bundle
+  v1 packages validated cassette content as uncompressed USTAR; its separate
+  digest identifies every transport byte. Bundle production and pure validation
+  are available through `locus.bundle`.
 
 ## Commands
 
@@ -164,8 +165,8 @@ context grouping and the pprof leaves; untagged blocks collapse to one bucket.
 
 ## Persistent formats
 
-Event schema 3, SQLite store schema 3, and cassette directory format 1 are
-independent contracts even though two currently share the number 3. Unsupported
+Event schema 3, SQLite store schema 3, cassette directory format 1, and bundle
+format 1 are independent contracts even when values coincide. Unsupported
 versions are rejected with instructions to use a matching Locus version; no old
 version is silently reinterpreted. `SCHEMA_VERSION` remains a compatibility
 alias for `EVENT_SCHEMA_VERSION`, and `CASSETTE_FORMAT` remains an alias for
@@ -201,6 +202,9 @@ python -m bench external score       # after filling corpus/labels/external/labe
 ```
 uv sync
 PYTHONHASHSEED=0 uv run --python 3.13 pytest
+python -m locus.contracts --output contracts/schemas/v1 --check
+python -m contracttest.generate_fixtures --output contracttest/fixtures/v1 --check
+(cd contracttest/go && go test ./...)
 uv build
 ```
 

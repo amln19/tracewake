@@ -73,3 +73,26 @@ jobs:
           replayed=$("$RUNNER_TEMP/locus-wheel/bin/locus" replay smoke --store "$smoke/store")
           test "$(printf '%s\n' "$recorded" | head -n 1)" = \
             "$(printf '%s\n' "$replayed" | head -n 1)"
+
+  contracts:
+    name: Contract compatibility / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: contracttest/go/go.mod
+          cache: false
+      - run: uv sync --locked --python 3.13
+      - run: uv run --python 3.13 python -m locus.contracts --output contracts/schemas/v1 --check
+      - run: uv run --python 3.13 python -m contracttest.generate_fixtures --output contracttest/fixtures/v1 --check
+      - run: go test ./...
+        working-directory: contracttest/go
