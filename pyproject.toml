@@ -10,6 +10,7 @@ dependencies = ["pydantic>=2.11", "typer>=0.15"]
 
 [project.scripts]
 locus = "locus.cli:main"
+locus-worker = "locus.worker:main"
 
 [project.entry-points.pytest11]
 locus = "locus.pytest_plugin"

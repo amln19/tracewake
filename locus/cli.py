@@ -21,6 +21,7 @@ from .events import RunHeader, StoredEvent
 from .matching import ReplayReport
 from .patches import LocusError
 from .redaction import Redactor
+from .remote import app as remote_app
 from .report import PAYLOAD_BUDGET, write_report
 from .session import Intervention
 from .store import Store
@@ -30,6 +31,7 @@ app = typer.Typer(
     no_args_is_help=True,
     help="Record an agent run once, replay it offline for free.",
 )
+app.add_typer(remote_app, name="remote")
 
 BOOTSTRAP = """\
 import os
