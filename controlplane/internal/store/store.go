@@ -69,6 +69,13 @@ func (s *Store) Migrate(ctx context.Context) error {
 		byVersion[version] = string(contents)
 	}
 	sort.Ints(versions)
+	var databaseVersion int
+	if err := s.pool.QueryRow(ctx, "SELECT COALESCE(max(version),0) FROM schema_migrations").Scan(&databaseVersion); err != nil {
+		return fmt.Errorf("read current schema version: %w", err)
+	}
+	if len(versions) == 0 || databaseVersion > versions[len(versions)-1] {
+		return fmt.Errorf("database schema version %d is newer than this control plane", databaseVersion)
+	}
 	for _, version := range versions {
 		var applied bool
 		if err := s.pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)", version).Scan(&applied); err != nil {
@@ -77,8 +84,10 @@ func (s *Store) Migrate(ctx context.Context) error {
 		if applied {
 			continue
 		}
-		if _, err := s.pool.Exec(ctx, byVersion[version]); err != nil {
-			return fmt.Errorf("apply hosted schema migration %d: %w", version, err)
+		for _, statement := range strings.Split(byVersion[version], "-- locus-statement-break") {
+			if _, err := s.pool.Exec(ctx, statement); err != nil {
+				return fmt.Errorf("apply hosted schema migration %d: %w", version, err)
+			}
 		}
 		if _, err := s.pool.Exec(ctx, "INSERT INTO schema_migrations (version) VALUES ($1)", version); err != nil {
 			return fmt.Errorf("record migration %d: %w", version, err)

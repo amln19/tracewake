@@ -1,4 +1,6 @@
-ALTER TYPE job_operation ADD VALUE 'validate';
+ALTER TYPE job_operation ADD VALUE IF NOT EXISTS 'validate';
+
+-- locus-statement-break
 
 BEGIN;
 
