@@ -29,6 +29,7 @@ type Completion struct {
 	Size           int64               `json:"size"`
 	SchemaVersion  int                 `json:"schema_version"`
 	LogicalDigest  string              `json:"logical_run_digest"`
+	BundleDigest   string              `json:"bundle_digest"`
 	EventCount     int                 `json:"event_count"`
 	BundleFormat   int                 `json:"bundle_format_version"`
 	CassetteFormat int                 `json:"cassette_format_version"`
@@ -292,13 +293,13 @@ func (s *Service) CompleteAttempt(ctx context.Context, jobID string, attempt int
 		return fmt.Errorf("register artifact: %w", err)
 	}
 	if operation == "validate" {
-		command, updateErr := tx.Exec(ctx, `UPDATE runs r SET state='ready',validated_bundle_format=$2,cassette_format_version=$3,event_schema_version=$4,logical_run_digest=$5,event_count=$6,ready_at=transaction_timestamp(),row_version=row_version+1 FROM job_inputs i WHERE i.id=(SELECT input_id FROM jobs WHERE id=$1) AND r.id=i.run_a_id AND r.state='validating'`, jobID, result.BundleFormat, result.CassetteFormat, result.EventSchema, result.LogicalDigest, result.EventCount)
+		command, updateErr := tx.Exec(ctx, `UPDATE runs r SET state='ready',validated_bundle_format=$2,cassette_format_version=$3,event_schema_version=$4,logical_run_digest=$5,event_count=$6,ready_at=transaction_timestamp(),row_version=row_version+1 FROM job_inputs i WHERE i.id=(SELECT input_id FROM jobs WHERE id=$1) AND r.id=i.run_a_id AND r.state='validating' AND r.declared_bundle_digest=$7`, jobID, result.BundleFormat, result.CassetteFormat, result.EventSchema, result.LogicalDigest, result.EventCount, result.BundleDigest)
 		err = updateErr
 		if err != nil {
 			return err
 		}
 		if command.RowsAffected() != 1 {
-			return errors.New("validation result did not match one validating run")
+			return errors.New("validated bundle digest did not match one validating run")
 		}
 	}
 	_, err = tx.Exec(ctx, `UPDATE job_attempts SET state='succeeded',finished_at=transaction_timestamp() WHERE job_id=$1 AND attempt_number=$2`, jobID, attempt)

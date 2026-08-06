@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -39,10 +42,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	artifactStore, err := artifacts.New(envOr("LOCUS_ARTIFACT_ROOT", ".locus-hosted/artifacts"))
+	localStore, err := artifacts.NewFilesystem(envOr("LOCUS_ARTIFACT_ROOT", ".locus-hosted/artifacts"), objectSigningKey())
 	if err != nil {
 		log.Fatal(err)
 	}
+	var artifactStore artifacts.Store = localStore
 	if len(os.Args) > 1 && os.Args[1] == "bootstrap" {
 		workspace, token, err := service.CreateWorkspace(ctx, "local", []string{"runs:read", "runs:write", "jobs:read", "jobs:write", "artifacts:read", "audit:read"})
 		if err != nil {
@@ -76,11 +80,22 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+	publicAddr := envOr("LOCUS_LISTEN_ADDR", "127.0.0.1:8080")
+	workerAddr := envOr("LOCUS_WORKER_LISTEN_ADDR", "127.0.0.1:8081")
+	publicBase := envOr("LOCUS_PUBLIC_BASE_URL", reachableURL(publicAddr))
+	workerBase := envOr("LOCUS_WORKER_BASE_URL", reachableURL(workerAddr))
 	publicMux := http.NewServeMux()
 	publicMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
-	publicMux.Handle("/", httpapi.New(service, artifactStore).Handler())
-	publicServer := &http.Server{Addr: envOr("LOCUS_LISTEN_ADDR", "127.0.0.1:8080"), Handler: publicMux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
-	workerServer := &http.Server{Addr: envOr("LOCUS_WORKER_LISTEN_ADDR", "127.0.0.1:8081"), Handler: workerapi.New(service, artifactStore).Handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	publicMux.Handle("/", httpapi.New(service, artifactStore, publicBase).Handler())
+	workerMux := http.NewServeMux()
+	workerMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	workerMux.Handle("/", workerapi.New(service, artifactStore, workerBase).Handler())
+	if localStore == artifactStore {
+		publicMux.Handle("/objects/", localStore.Handler())
+		workerMux.Handle("/objects/", localStore.Handler())
+	}
+	publicServer := &http.Server{Addr: publicAddr, Handler: publicMux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	workerServer := &http.Server{Addr: workerAddr, Handler: workerMux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	for _, server := range []*http.Server{publicServer, workerServer} {
 		server := server
 		go func() {
@@ -93,16 +108,23 @@ func main() {
 	go func() {
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
+		var lastRetention time.Time
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-ticker.C:
+			case now := <-ticker.C:
 				if _, err := service.Reconcile(ctx, 100); err != nil && !errors.Is(err, context.Canceled) {
 					log.Printf("reconcile: %v", err)
 				}
+				// Listing every stored object is cheap locally and billed in
+				// object storage, so retention runs on its own slower cadence.
+				if now.Sub(lastRetention) < retentionInterval {
+					continue
+				}
+				lastRetention = now
 				if keys, err := service.RetainedObjectKeys(ctx); err == nil {
-					if _, err = artifactStore.Cleanup(keys, time.Now().Add(-24*time.Hour)); err != nil {
+					if _, err = artifactStore.Cleanup(ctx, keys, time.Now().Add(-24*time.Hour)); err != nil {
 						log.Printf("artifact cleanup: %v", err)
 					}
 				} else if !errors.Is(err, context.Canceled) {
@@ -119,6 +141,27 @@ func main() {
 			log.Printf("shutdown %s: %v", server.Addr, err)
 		}
 	}
+}
+
+const retentionInterval = 10 * time.Minute
+
+// Signed object URLs are an extension of worker and tenant authentication, so
+// they are derived from the worker pepper rather than configured separately.
+func objectSigningKey() []byte {
+	mac := hmac.New(sha256.New, []byte(os.Getenv("LOCUS_WORKER_PEPPER")))
+	_, _ = mac.Write([]byte("locus-object-url-v1"))
+	return mac.Sum(nil)
+}
+
+func reachableURL(addr string) string {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "http://" + addr
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "127.0.0.1"
+	}
+	return "http://" + net.JoinHostPort(host, port)
 }
 
 func keyRing(name string) controlplane.KeyRing {

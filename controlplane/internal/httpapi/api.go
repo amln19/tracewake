@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -17,16 +16,17 @@ import (
 
 type API struct {
 	service   *controlplane.Service
-	artifacts *artifacts.Store
+	artifacts artifacts.Store
+	baseURL   string
 }
 
-func New(service *controlplane.Service, artifacts *artifacts.Store) *API {
-	return &API{service: service, artifacts: artifacts}
+func New(service *controlplane.Service, store artifacts.Store, baseURL string) *API {
+	return &API{service: service, artifacts: store, baseURL: baseURL}
 }
 func (a *API) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/runs/uploads", a.createUpload)
-	mux.HandleFunc("PUT /v1/local/uploads/{runID}", a.putUpload)
+	mux.HandleFunc("POST /v1/runs/uploads/{runID}/complete", a.completeUpload)
 	mux.HandleFunc("GET /v1/runs", a.listRuns)
 	mux.HandleFunc("GET /v1/runs/{runID}", a.getRun)
 	mux.HandleFunc("POST /v1/jobs", a.createJob)
@@ -37,9 +37,18 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/audit", a.audit)
 	return mux
 }
-func (a *API) putUpload(w http.ResponseWriter, r *http.Request) {
+func (a *API) completeUpload(w http.ResponseWriter, r *http.Request) {
 	principal, ok := a.principal(w, r, "runs:write")
 	if !ok {
+		return
+	}
+	var body struct {
+		ObjectVersion string `json:"object_version"`
+		Digest        string `json:"digest"`
+		Size          int64  `json:"size"`
+	}
+	if decode(w, r, &body) != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
 	upload, err := a.service.UploadFor(r.Context(), principal, r.PathValue("runID"))
@@ -47,16 +56,28 @@ func (a *API) putUpload(w http.ResponseWriter, r *http.Request) {
 		errorJSON(w, http.StatusNotFound, "not_found")
 		return
 	}
-	object, err := a.artifacts.Put(upload.Key, upload.Digest, upload.Size, http.MaxBytesReader(w, r.Body, upload.Size+1))
+	if body.Digest != upload.Digest || body.Size != upload.Size {
+		errorJSON(w, http.StatusConflict, "conflict")
+		return
+	}
+	if upload.State != "pending" {
+		if upload.Version == nil || *upload.Version != body.ObjectVersion {
+			errorJSON(w, http.StatusConflict, "conflict")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"run_id": upload.RunID, "state": upload.State})
+		return
+	}
+	object, err := a.artifacts.Commit(r.Context(), upload.Key, body.ObjectVersion, upload.Digest, upload.Size)
 	if err != nil {
-		errorJSON(w, http.StatusBadRequest, "invalid_request")
+		errorJSON(w, http.StatusConflict, "conflict")
 		return
 	}
 	if err := a.service.CompleteUpload(r.Context(), principal, upload.RunID, object.Version, object.Digest, object.Size); err != nil {
 		errorJSON(w, http.StatusConflict, "conflict")
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	writeJSON(w, http.StatusOK, map[string]any{"run_id": upload.RunID, "state": "validating"})
 }
 func (a *API) createUpload(w http.ResponseWriter, r *http.Request) {
 	principal, ok := a.principal(w, r, "runs:write")
@@ -77,7 +98,19 @@ func (a *API) createUpload(w http.ResponseWriter, r *http.Request) {
 		errorJSON(w, http.StatusConflict, "conflict")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"upload_id": upload.RunID, "run_id": upload.RunID, "required_digest": upload.Digest, "required_size": upload.Size, "upload_url": "/v1/local/uploads/" + upload.RunID, "expires_at": time.Now().UTC().Add(15 * time.Minute)})
+	grant, err := a.artifacts.PutGrant(r.Context(), upload.Key, upload.Digest, upload.Size, "application/x-tar")
+	if err != nil {
+		errorJSON(w, http.StatusConflict, "conflict")
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"upload_id":       upload.RunID,
+		"run_id":          upload.RunID,
+		"required_digest": upload.Digest,
+		"required_size":   upload.Size,
+		"upload_url":      artifacts.Absolute(a.baseURL, grant.URL),
+		"expires_at":      grant.ExpiresAt,
+	})
 }
 func (a *API) principal(w http.ResponseWriter, r *http.Request, scope string) (controlplane.Principal, bool) {
 	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
@@ -217,15 +250,19 @@ func (a *API) download(w http.ResponseWriter, r *http.Request) {
 		errorJSON(w, 404, "not_found")
 		return
 	}
-	file, err := a.artifacts.Open(artifact.Key, artifact.Version)
+	grant, err := a.artifacts.GetGrant(r.Context(), artifact.Key, artifact.Version, artifact.MediaType)
 	if err != nil {
 		errorJSON(w, 500, "internal")
 		return
 	}
-	defer file.Close()
-	w.Header().Set("Content-Type", artifact.MediaType)
-	w.Header().Set("Content-Length", strconv.FormatInt(artifact.Size, 10))
-	_, _ = io.Copy(w, file)
+	writeJSON(w, 200, map[string]any{
+		"artifact_id":  artifact.ID,
+		"download_url": artifacts.Absolute(a.baseURL, grant.URL),
+		"expires_at":   grant.ExpiresAt,
+		"digest":       artifact.Digest,
+		"size":         artifact.Size,
+		"media_type":   artifact.MediaType,
+	})
 }
 func (a *API) audit(w http.ResponseWriter, r *http.Request) {
 	p, ok := a.principal(w, r, "audit:read")

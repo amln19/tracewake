@@ -16,9 +16,9 @@ URL = Annotated[str, typer.Option("--url", envvar="LOCUS_REMOTE_URL")]
 Token = Annotated[str, typer.Option("--token", envvar="LOCUS_TOKEN", hide_input=True)]
 
 
-def _request(method: str, url: str, token: str, path: str, value: Any = None, data: bytes | None = None) -> Any:
+def _request(method: str, url: str, token: str, path: str, value: Any = None) -> Any:
     headers = {"Authorization": f"Bearer {token}"}
-    body = data
+    body = None
     if value is not None:
         body = json.dumps(value, separators=(",", ":")).encode()
         headers["Content-Type"] = "application/json"
@@ -45,8 +45,28 @@ def upload(bundle: Path, url: URL = "http://127.0.0.1:8080", token: Token = "") 
     raw = bundle.read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
     grant = _request("POST", url, token, "/v1/runs/uploads", {"bundle_format_version": 1, "bundle_digest": digest, "bundle_size": len(raw)})
-    _request("PUT", url, token, grant["upload_url"], data=raw)
+    version = _put_object(grant["upload_url"], raw)
+    _request(
+        "POST",
+        url,
+        token,
+        f"/v1/runs/uploads/{grant['upload_id']}/complete",
+        {"object_version": version, "digest": digest, "size": len(raw)},
+    )
     typer.echo(f"uploaded run {grant['run_id']} ({validated.logical_run_digest[:12]})")
+
+
+def _put_object(upload_url: str, data: bytes) -> str:
+    """Upload bundle bytes through the short-lived grant, never through the API."""
+    request = urllib.request.Request(upload_url, data=data, method="PUT")
+    try:
+        with urllib.request.urlopen(request, timeout=300) as response:
+            version = response.headers.get("x-amz-version-id") or response.headers.get("Locus-Object-Version")
+    except urllib.error.HTTPError as exc:
+        raise typer.BadParameter(f"bundle upload failed with HTTP {exc.code}") from exc
+    if not version:
+        raise typer.BadParameter("object store did not report an immutable object version")
+    return version
 
 
 @app.command("runs")

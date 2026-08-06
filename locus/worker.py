@@ -67,18 +67,34 @@ class WorkerClient:
                 raise LeaseLost("attempt lease is no longer current") from exc
             raise RuntimeError(f"worker request failed with HTTP {exc.code}") from exc
 
-    def json(self, method: str, path: str, value: Any, *, attempt_token: str | None = None) -> Any:
-        status, raw = self.request(
-            method,
-            path,
-            body=json.dumps(value, separators=(",", ":")).encode(),
-            attempt_token=attempt_token,
-        )
+    def json(self, method: str, path: str, value: Any = None, *, attempt_token: str | None = None) -> Any:
+        body = None if value is None else json.dumps(value, separators=(",", ":")).encode()
+        status, raw = self.request(method, path, body=body, attempt_token=attempt_token)
         return None if status == 204 or not raw else json.loads(raw)
 
 
 def _canonical(value: Any) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode()
+
+
+def _fetch_object(url: str) -> bytes:
+    with urllib.request.urlopen(urllib.request.Request(url, method="GET"), timeout=120) as response:
+        return response.read()
+
+
+def _store_object(grant: dict[str, Any], data: bytes) -> str:
+    """Upload through a short-lived grant and return the immutable object version."""
+    request = urllib.request.Request(
+        grant["upload_url"],
+        data=data,
+        headers=grant.get("upload_headers") or {},
+        method=grant.get("upload_method", "PUT"),
+    )
+    with urllib.request.urlopen(request, timeout=120) as response:
+        version = response.headers.get("x-amz-version-id") or response.headers.get("Locus-Object-Version")
+    if not version:
+        raise RuntimeError("object store did not report an immutable object version")
+    return version
 
 
 def _heartbeat(client: WorkerClient, job: str, attempt: int, token: str, stop: threading.Event) -> None:
@@ -91,16 +107,20 @@ def _heartbeat(client: WorkerClient, job: str, attempt: int, token: str, stop: t
             return
 
 
-def _validate(client: WorkerClient, claim: dict[str, Any], root: Path) -> dict[str, Any]:
-    artifact = claim["input_artifacts"][0]
+def _download_input(client: WorkerClient, claim: dict[str, Any], artifact: dict[str, Any], destination: Path) -> ValidatedBundle:
     job = claim["job_id"]
     attempt = claim["attempt_number"]
-    token = claim["attempt_token"]
     path = f"/internal/v1/jobs/{job}/attempts/{attempt}/inputs/{artifact['artifact_id']}"
-    _, raw = client.request("GET", path, attempt_token=token)
-    bundle_path = root / "bundle.tar"
-    bundle_path.write_bytes(raw)
-    validated = validate_bundle(bundle_path)
+    reference = client.json("GET", path, None, attempt_token=claim["attempt_token"])
+    destination.write_bytes(_fetch_object(reference["download_url"]))
+    return validate_bundle(destination)
+
+
+def _validate(client: WorkerClient, claim: dict[str, Any], root: Path) -> dict[str, Any]:
+    artifact = claim["input_artifacts"][0]
+    validated = _download_input(client, claim, artifact, root / "bundle.tar")
+    if validated.bundle_digest != artifact["digest"]:
+        raise ValueError("stored bundle bytes do not match the declared upload digest")
     manifest = validated.manifest
     provenance = ResultProvenance(
         inputs=[
@@ -137,6 +157,7 @@ def _validate(client: WorkerClient, claim: dict[str, Any], root: Path) -> dict[s
         "bundle_format_version": manifest.bundle_format_version,
         "cassette_format_version": manifest.cassette_format_version,
         "event_schema_version": manifest.event_schema_version,
+        "bundle_digest": validated.bundle_digest,
         "kind": "validation_json",
         "companions": [],
     }
@@ -147,10 +168,25 @@ def _provenance(artifact: dict[str, Any], bundle: ValidatedBundle) -> RunProvena
     return RunProvenance(run_id=artifact["artifact_id"],logical_run_digest=bundle.logical_run_digest,bundle_digest=bundle.bundle_digest,bundle_object_key=artifact["object_key"],bundle_object_version=artifact["object_version"],event_schema_version=manifest.event_schema_version,cassette_format_version=manifest.cassette_format_version,bundle_format_version=manifest.bundle_format_version)
 
 
-def _upload(client: WorkerClient,claim: dict[str,Any],kind: str,data: bytes,media_type: str) -> dict[str,Any]:
-    digest=hashlib.sha256(data).hexdigest();job=claim["job_id"];attempt=claim["attempt_number"]
-    _,raw=client.request("PUT",f"/internal/v1/jobs/{job}/attempts/{attempt}/artifacts/{kind}",body=data,attempt_token=claim["attempt_token"],headers={"Content-Type":media_type,"Locus-Artifact-Digest":digest,"Locus-Artifact-Size":str(len(data))})
-    return {**json.loads(raw),"artifact_id":str(uuid.uuid4()),"kind":kind,"media_type":media_type}
+def _upload(client: WorkerClient, claim: dict[str, Any], kind: str, data: bytes, media_type: str) -> dict[str, Any]:
+    digest = hashlib.sha256(data).hexdigest()
+    job = claim["job_id"]
+    attempt = claim["attempt_number"]
+    grant = client.json(
+        "POST",
+        f"/internal/v1/jobs/{job}/attempts/{attempt}/artifacts",
+        {"protocol_version": 1, "attempt_number": attempt, "kind": kind, "media_type": media_type, "digest": digest, "size": len(data)},
+        attempt_token=claim["attempt_token"],
+    )
+    return {
+        "artifact_id": str(uuid.uuid4()),
+        "kind": kind,
+        "media_type": media_type,
+        "object_key": grant["object_key"],
+        "object_version": _store_object(grant, data),
+        "digest": digest,
+        "size": len(data),
+    }
 
 
 def _header(bundle: ValidatedBundle) -> RunHeader:
@@ -160,10 +196,7 @@ def _header(bundle: ValidatedBundle) -> RunHeader:
 
 
 def _diff(client: WorkerClient,claim: dict[str,Any],root: Path) -> dict[str,Any]:
-    bundles=[]
-    for index,artifact in enumerate(claim["input_artifacts"]):
-        path=f"/internal/v1/jobs/{claim['job_id']}/attempts/{claim['attempt_number']}/inputs/{artifact['artifact_id']}"
-        _,raw=client.request("GET",path,attempt_token=claim["attempt_token"]);bundle_path=root/f"bundle-{index}.tar";bundle_path.write_bytes(raw);bundles.append(validate_bundle(bundle_path))
+    bundles=[_download_input(client,claim,artifact,root/f"bundle-{index}.tar") for index,artifact in enumerate(claim["input_artifacts"])]
     result=diff_runs(bundles[0].events,bundles[1].events,embed=LexicalEmbedder(),embedding_model="lexical-v1")
     html_path=root/"report.html";write_report(html_path,_header(bundles[0]),list(bundles[0].events),_header(bundles[1]),list(bundles[1].events),result,blobs=_BundleBlobs(bundles[0].blobs),blobs_b=_BundleBlobs(bundles[1].blobs))
     html_identity=_upload(client,claim,"diff_html",html_path.read_bytes(),"text/html; charset=utf-8")
@@ -173,7 +206,7 @@ def _diff(client: WorkerClient,claim: dict[str,Any],root: Path) -> dict[str,Any]
     semantic=ContractDiffResult(schema_version=1,profile="lexical-v1",score=result.score,divergence=result.divergence,good_step_count=len(result.good_steps),bad_step_count=len(result.bad_steps),alignment=columns,provenance=provenance,html=html_ref)
     envelope=ResultEnvelope(protocol_version=1,status="succeeded",result=semantic)
     companion={**html_identity,"schema_name":None,"schema_version":None}
-    return {"envelope":envelope.model_dump(mode="json"),"kind":"diff_json","companions":[companion],"logical_run_digest":"","event_count":0,"bundle_format_version":0,"cassette_format_version":0,"event_schema_version":0}
+    return {"envelope":envelope.model_dump(mode="json"),"kind":"diff_json","companions":[companion],"logical_run_digest":"","event_count":0,"bundle_digest":"","bundle_format_version":0,"cassette_format_version":0,"event_schema_version":0}
 
 
 def run_once(client: WorkerClient) -> bool:
@@ -222,6 +255,7 @@ def run_once(client: WorkerClient) -> bool:
                 "schema_version": 1,
                 "logical_run_digest": output["logical_run_digest"],
                 "event_count": output["event_count"],
+                "bundle_digest": output["bundle_digest"],
                 "bundle_format_version": output["bundle_format_version"],
                 "cassette_format_version": output["cassette_format_version"],
                 "event_schema_version": output["event_schema_version"],

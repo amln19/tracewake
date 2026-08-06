@@ -62,6 +62,8 @@ type InputArtifact struct {
 type Upload struct {
 	RunID, Key, Digest string
 	Size               int64
+	State              string
+	Version            *string
 }
 
 func (s *Service) CreateUpload(ctx context.Context, principal Principal, digest string, size int64) (Upload, error) {
@@ -121,7 +123,7 @@ func (s *Service) CompleteUpload(ctx context.Context, principal Principal, runID
 
 func (s *Service) UploadFor(ctx context.Context, principal Principal, runID string) (Upload, error) {
 	var upload Upload
-	err := s.pool.QueryRow(ctx, `SELECT id,bundle_object_key,declared_bundle_digest,declared_bundle_size FROM runs WHERE id=$1 AND workspace_id=$2 AND state='pending'`, runID, principal.WorkspaceID).Scan(&upload.RunID, &upload.Key, &upload.Digest, &upload.Size)
+	err := s.pool.QueryRow(ctx, `SELECT id,bundle_object_key,declared_bundle_digest,declared_bundle_size,state,bundle_object_version FROM runs WHERE id=$1 AND workspace_id=$2 AND state<>'deleted'`, runID, principal.WorkspaceID).Scan(&upload.RunID, &upload.Key, &upload.Digest, &upload.Size, &upload.State, &upload.Version)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Upload{}, ErrConflict
 	}

@@ -14,11 +14,12 @@ import (
 
 type API struct {
 	service   *controlplane.Service
-	artifacts *artifacts.Store
+	artifacts artifacts.Store
+	baseURL   string
 }
 
-func New(service *controlplane.Service, artifactStore *artifacts.Store) *API {
-	return &API{service: service, artifacts: artifactStore}
+func New(service *controlplane.Service, artifactStore artifacts.Store, baseURL string) *API {
+	return &API{service: service, artifacts: artifactStore, baseURL: baseURL}
 }
 
 func (a *API) Handler() http.Handler {
@@ -30,7 +31,7 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("PUT /internal/v1/jobs/{job}/attempts/{attempt}/progress", a.progress)
 	mux.HandleFunc("GET /internal/v1/jobs/{job}/attempts/{attempt}/cancellation", a.cancellation)
 	mux.HandleFunc("POST /internal/v1/jobs/{job}/attempts/{attempt}/fail", a.fail)
-	mux.HandleFunc("PUT /internal/v1/jobs/{job}/attempts/{attempt}/artifacts/{kind}", a.putArtifact)
+	mux.HandleFunc("POST /internal/v1/jobs/{job}/attempts/{attempt}/artifacts", a.declareArtifact)
 	mux.HandleFunc("POST /internal/v1/jobs/{job}/attempts/{attempt}/complete", a.complete)
 	mux.HandleFunc("GET /internal/v1/jobs/{job}/attempts/{attempt}/inputs/{artifact}", a.input)
 	return mux
@@ -196,7 +197,7 @@ func (a *API) fail(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, status, map[string]string{"state": state})
 }
-func (a *API) putArtifact(w http.ResponseWriter, r *http.Request) {
+func (a *API) declareArtifact(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.worker(w, r); !ok {
 		return
 	}
@@ -205,30 +206,40 @@ func (a *API) putArtifact(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_request")
 		return
 	}
+	var body struct {
+		ProtocolVersion int    `json:"protocol_version"`
+		Attempt         int    `json:"attempt_number"`
+		Kind            string `json:"kind"`
+		MediaType       string `json:"media_type"`
+		Digest          string `json:"digest"`
+		Size            int64  `json:"size"`
+	}
+	allowed := map[string]bool{"validation_json": true, "diff_json": true, "diff_html": true, "otlp_json": true, "pprof": true, "worker_diagnostic": true}
+	if decode(w, r, &body) != nil || body.ProtocolVersion != 1 || body.Attempt != attempt || !allowed[body.Kind] || body.MediaType == "" {
+		writeError(w, 400, "invalid_request")
+		return
+	}
 	workspace, err := a.service.AuthorizeAttempt(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Locus-Attempt-Token"))
 	if err != nil {
 		writeError(w, 409, "lease_lost")
 		return
 	}
-	kind := r.PathValue("kind")
-	allowed := map[string]bool{"validation_json": true, "diff_json": true, "diff_html": true, "otlp_json": true, "pprof": true, "worker_diagnostic": true}
-	if !allowed[kind] {
-		writeError(w, 400, "invalid_request")
-		return
-	}
-	digest := r.Header.Get("Locus-Artifact-Digest")
-	size, err := strconv.ParseInt(r.Header.Get("Locus-Artifact-Size"), 10, 64)
+	key := "workspaces/" + workspace + "/jobs/" + r.PathValue("job") + "/attempts/" + strconv.Itoa(attempt) + "/" + body.Kind
+	grant, err := a.artifacts.PutGrant(r.Context(), key, body.Digest, body.Size, body.MediaType)
 	if err != nil {
 		writeError(w, 400, "invalid_request")
 		return
 	}
-	key := "workspaces/" + workspace + "/jobs/" + r.PathValue("job") + "/attempts/" + strconv.Itoa(attempt) + "/" + kind
-	object, err := a.artifacts.Put(key, digest, size, http.MaxBytesReader(w, r.Body, size+1))
-	if err != nil {
-		writeError(w, 400, "invalid_request")
-		return
-	}
-	writeJSON(w, 201, object)
+	writeJSON(w, 201, map[string]any{
+		"protocol_version": 1,
+		"object_key":       key,
+		"required_digest":  body.Digest,
+		"required_size":    body.Size,
+		"upload_url":       artifacts.Absolute(a.baseURL, grant.URL),
+		"upload_method":    grant.Method,
+		"upload_headers":   grant.Headers,
+		"expires_at":       grant.ExpiresAt,
+	})
 }
 func (a *API) complete(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.worker(w, r); !ok {
@@ -244,15 +255,19 @@ func (a *API) complete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_request")
 		return
 	}
-	if err := a.artifacts.Verify(body.ObjectKey, body.ObjectVersion, body.Digest, body.Size); err != nil {
+	object, err := a.artifacts.Commit(r.Context(), body.ObjectKey, body.ObjectVersion, body.Digest, body.Size)
+	if err != nil {
 		writeError(w, 409, "artifact_commit_failed")
 		return
 	}
-	for _, companion := range body.Companions {
-		if err := a.artifacts.Verify(companion.ObjectKey, companion.ObjectVersion, companion.Digest, companion.Size); err != nil {
+	body.ObjectVersion = object.Version
+	for index, companion := range body.Companions {
+		committed, err := a.artifacts.Commit(r.Context(), companion.ObjectKey, companion.ObjectVersion, companion.Digest, companion.Size)
+		if err != nil {
 			writeError(w, 409, "artifact_commit_failed")
 			return
 		}
+		body.Companions[index].ObjectVersion = committed.Version
 	}
 	err = a.service.CompleteAttempt(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Locus-Attempt-Token"), body)
 	if err != nil {
@@ -276,15 +291,22 @@ func (a *API) input(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 409, "lease_lost")
 		return
 	}
-	file, err := a.artifacts.Open(value.ObjectKey, value.ObjectVersion)
+	grant, err := a.artifacts.GetGrant(r.Context(), value.ObjectKey, value.ObjectVersion, value.MediaType)
 	if err != nil {
 		writeError(w, 500, "internal")
 		return
 	}
-	defer file.Close()
-	w.Header().Set("Content-Type", value.MediaType)
-	w.Header().Set("Content-Length", strconv.FormatInt(value.Size, 10))
-	_, _ = io.Copy(w, file)
+	writeJSON(w, 200, map[string]any{
+		"protocol_version": 1,
+		"artifact_id":      value.ArtifactID,
+		"object_key":       value.ObjectKey,
+		"object_version":   value.ObjectVersion,
+		"digest":           value.Digest,
+		"size":             value.Size,
+		"media_type":       value.MediaType,
+		"download_url":     artifacts.Absolute(a.baseURL, grant.URL),
+		"expires_at":       grant.ExpiresAt,
+	})
 }
 func decode(w http.ResponseWriter, r *http.Request, value any) error {
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
