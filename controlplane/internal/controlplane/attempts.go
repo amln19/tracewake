@@ -12,9 +12,11 @@ import (
 )
 
 type Progress struct {
-	Sequence int64  `json:"sequence"`
-	Stage    string `json:"stage"`
-	Message  string `json:"message"`
+	ProtocolVersion int    `json:"protocol_version"`
+	AttemptNumber   int    `json:"attempt_number"`
+	Sequence        int64  `json:"sequence"`
+	Stage           string `json:"stage"`
+	Message         string `json:"message"`
 }
 type Completion struct {
 	ArtifactID     string              `json:"artifact_id"`
