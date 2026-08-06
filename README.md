@@ -163,6 +163,33 @@ agent strips pytest wall-clock from suite output so a re-run does not break that
 prefix on timing alone. Provenance tags on `Message`s power both the HTML
 context grouping and the pprof leaves; untagged blocks collapse to one bucket.
 
+## Local control plane
+
+The hosted lifecycle can be exercised locally without AWS:
+
+```sh
+docker compose up --build
+docker compose exec controlplane cat /run/locus/credentials.json
+```
+
+The first command starts PostgreSQL, one Go control-plane process, and the
+Python worker. The credentials file is created once in a private Docker volume;
+copy its `token` value into `LOCUS_TOKEN`, then upload a deterministic bundle:
+
+```sh
+export LOCUS_REMOTE_URL=http://127.0.0.1:8080
+export LOCUS_TOKEN=<token-from-credentials.json>
+locus remote upload run.bundle.tar
+locus remote runs
+```
+
+Build a bundle from an exported cassette with
+`locus.bundle.build_bundle(cassette, destination)`. Remote commands are
+additive: recording, replay, verification, import, export, and comparison keep
+using the local SQLite store and do not require the service. Remove the local
+stack and all its volumes with `docker compose down --volumes` when its retained
+test data is no longer needed.
+
 ## Persistent formats
 
 Event schema 3, SQLite store schema 3, cassette directory format 1, and bundle
@@ -205,6 +232,7 @@ PYTHONHASHSEED=0 uv run --python 3.13 pytest
 python -m locus.contracts --output contracts/schemas/v1 --check
 python -m contracttest.generate_fixtures --output contracttest/fixtures/v1 --check
 (cd contracttest/go && go test ./...)
+(cd controlplane && go test ./...)
 uv build
 ```
 

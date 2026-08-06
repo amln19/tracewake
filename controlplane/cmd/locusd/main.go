@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -54,6 +55,27 @@ func main() {
 		fmt.Printf("workspace_id=%s\ntoken=%s\nworker_id=%s\nworker_token=%s\n", workspace, token, workerID, workerToken)
 		return
 	}
+	if path := os.Getenv("LOCUS_BOOTSTRAP_FILE"); path != "" {
+		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+			workspace, token, err := service.CreateWorkspace(ctx, "local", []string{"runs:read", "runs:write", "jobs:read", "jobs:write", "artifacts:read", "audit:read"})
+			if err != nil {
+				log.Fatal(err)
+			}
+			workerID, workerToken, err := service.CreateWorkerCredential(ctx)
+			if err != nil {
+				log.Fatal(err)
+			}
+			raw, err := json.Marshal(map[string]string{"workspace_id": workspace, "token": token, "worker_id": workerID, "worker_token": workerToken})
+			if err != nil {
+				log.Fatal(err)
+			}
+			if err = os.WriteFile(path, raw, 0o600); err != nil {
+				log.Fatal(err)
+			}
+		} else if err != nil {
+			log.Fatal(err)
+		}
+	}
 	publicMux := http.NewServeMux()
 	publicMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	publicMux.Handle("/", httpapi.New(service, artifactStore).Handler())
@@ -78,6 +100,13 @@ func main() {
 			case <-ticker.C:
 				if _, err := service.Reconcile(ctx, 100); err != nil && !errors.Is(err, context.Canceled) {
 					log.Printf("reconcile: %v", err)
+				}
+				if keys, err := service.RetainedObjectKeys(ctx); err == nil {
+					if _, err = artifactStore.Cleanup(keys, time.Now().Add(-24*time.Hour)); err != nil {
+						log.Printf("artifact cleanup: %v", err)
+					}
+				} else if !errors.Is(err, context.Canceled) {
+					log.Printf("artifact retention: %v", err)
 				}
 			}
 		}

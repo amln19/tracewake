@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: locus
+      POSTGRES_USER: locus
+      POSTGRES_PASSWORD: locus-local-only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U locus"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  controlplane:
+    build:
+      context: .
+      dockerfile: controlplane/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      LOCUS_DATABASE_URL: postgres://locus:locus-local-only@postgres/locus?sslmode=disable
+      LOCUS_TOKEN_PEPPER: local-tenant-pepper-change-me-000000
+      LOCUS_WORKER_PEPPER: local-worker-pepper-change-me-000000
+      LOCUS_ARTIFACT_ROOT: /var/lib/locus/artifacts
+      LOCUS_LISTEN_ADDR: 0.0.0.0:8080
+      LOCUS_WORKER_LISTEN_ADDR: 0.0.0.0:8081
+      LOCUS_BOOTSTRAP_FILE: /run/locus/credentials.json
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - artifacts:/var/lib/locus/artifacts
+      - credentials:/run/locus
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    depends_on:
+      - controlplane
+    environment:
+      LOCUS_WORKER_URL: http://controlplane:8081
+      LOCUS_WORKER_CREDENTIALS_FILE: /run/locus/credentials.json
+      LOCUS_WORKER_BUILD: local-compose
+    volumes:
+      - credentials:/run/locus:ro
+
+volumes:
+  artifacts:
+  credentials:
+  postgres-data:

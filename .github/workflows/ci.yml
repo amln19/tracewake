@@ -120,3 +120,34 @@ jobs:
         working-directory: contracttest/go
       - run: go test -fuzz=FuzzContractValidatorsDoNotPanic -fuzztime=3s
         working-directory: contracttest/go
+
+  control-plane:
+    name: Go control plane and PostgreSQL lifecycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 1s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      LOCUS_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1/postgres?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: controlplane/go.mod
+          cache-dependency-path: controlplane/go.sum
+      - run: go test ./...
+        working-directory: controlplane
+      - run: go test -race ./...
+        working-directory: controlplane
+      - run: go test -run=^$ -fuzz=FuzzNormalizedDigest -fuzztime=3s ./internal/controlplane
+        working-directory: controlplane
