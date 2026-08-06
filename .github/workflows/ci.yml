@@ -50,13 +50,33 @@ jobs:
               if artifact.suffix == ".whl":
                   with zipfile.ZipFile(artifact) as archive:
                       names = archive.namelist()
+                  roots = {Path(name).parts[0] for name in names}
+                  assert "locus" in roots
+                  assert all(
+                      root == "locus"
+                      or (root.startswith("locus-") and root.endswith(".dist-info"))
+                      for root in roots
+                  ), (artifact, roots)
               else:
                   with tarfile.open(artifact) as archive:
                       names = archive.getnames()
-              assert not any(
-                  ".project-notes" in name or name.endswith("AGENTS.md") or "/.git/" in name
-                  for name in names
-              ), (artifact, names)
+                  roots = {
+                      Path(name).parts[1]
+                      for name in names
+                      if len(Path(name).parts) > 1
+                  }
+                  allowed = {
+                      ".gitignore",
+                      "LICENSE",
+                      "PKG-INFO",
+                      "README.md",
+                      "contracts",
+                      "contracttest",
+                      "locus",
+                      "pyproject.toml",
+                      "tests",
+                  }
+                  assert roots <= allowed, (artifact, roots - allowed)
           PY
       - name: Install wheel in a clean environment
         run: |
