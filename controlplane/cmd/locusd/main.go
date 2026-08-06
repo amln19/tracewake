@@ -44,21 +44,24 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	localStore, err := artifacts.NewFilesystem(envOr("LOCUS_ARTIFACT_ROOT", ".locus-hosted/artifacts"), objectSigningKey())
-	if err != nil {
-		log.Fatal(err)
-	}
-	var artifactStore artifacts.Store = localStore
+	// A deployment backed by object storage never touches local disk, so the
+	// filesystem store is built only when it is the selected one.
+	var artifactStore artifacts.Store
+	var localStore *artifacts.Filesystem
 	if bucket := strings.TrimSpace(os.Getenv("LOCUS_ARTIFACT_BUCKET")); bucket != "" {
 		awsConfig, err := config.LoadDefaultConfig(ctx)
 		if err != nil {
 			log.Fatalf("load AWS configuration: %v", err)
 		}
-		hosted, err := artifacts.NewS3(awsConfig, bucket)
+		if artifactStore, err = artifacts.NewS3(awsConfig, bucket); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		localStore, err = artifacts.NewFilesystem(envOr("LOCUS_ARTIFACT_ROOT", ".locus-hosted/artifacts"), objectSigningKey())
 		if err != nil {
 			log.Fatal(err)
 		}
-		artifactStore = hosted
+		artifactStore = localStore
 	}
 	scopes := []string{"runs:read", "runs:write", "jobs:read", "jobs:write", "artifacts:read", "audit:read"}
 	if len(os.Args) > 1 && os.Args[1] == "bootstrap" {
@@ -124,7 +127,7 @@ func main() {
 	workerMux := http.NewServeMux()
 	workerMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	workerMux.Handle("/", workerapi.New(service, artifactStore, workerBase).Handler())
-	if localStore == artifactStore {
+	if localStore != nil {
 		publicMux.Handle("/objects/", localStore.Handler())
 		workerMux.Handle("/objects/", localStore.Handler())
 	}

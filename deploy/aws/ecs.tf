@@ -54,6 +54,11 @@ resource "aws_ecs_task_definition" "control_plane" {
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.control_plane.arn
 
+  runtime_platform {
+    operating_system_family = "LINUX"
+    cpu_architecture        = var.task_architecture
+  }
+
   container_definitions = jsonencode([{
     name      = "control-plane"
     image     = "${aws_ecr_repository.control_plane.repository_url}:${var.image_tag}"
@@ -102,6 +107,11 @@ resource "aws_ecs_task_definition" "worker" {
   memory                   = var.worker_memory
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.worker.arn
+
+  runtime_platform {
+    operating_system_family = "LINUX"
+    cpu_architecture        = var.task_architecture
+  }
 
   container_definitions = jsonencode([{
     name      = "worker"

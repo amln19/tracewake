@@ -63,6 +63,12 @@ variable "worker_memory" {
   default     = 2048
 }
 
+variable "task_architecture" {
+  description = "Fargate CPU architecture. Images must be built for it; ARM64 costs less per task."
+  type        = string
+  default     = "ARM64"
+}
+
 variable "database_instance_class" {
   description = "RDS instance class for authoritative hosted state."
   type        = string

@@ -361,6 +361,18 @@ def run_once(client: WorkerClient, notifications: Any = None) -> bool:
         thread.join(timeout=1)
 
 
+def _resolve_identity(client: WorkerClient, attempts: int = 30) -> str:
+    """A worker may start before its control plane is reachable."""
+    for remaining in range(attempts, 0, -1):
+        try:
+            return str(client.json("GET", "/internal/v1/identity")["worker_id"])
+        except (OSError, RuntimeError):
+            if remaining == 1:
+                raise
+            time.sleep(4)
+    raise RuntimeError("worker identity could not be resolved")
+
+
 def main() -> None:
     credentials: dict[str, str] = {}
     if path := os.environ.get("LOCUS_WORKER_CREDENTIALS_FILE"):
@@ -373,7 +385,7 @@ def main() -> None:
         os.environ.get("LOCUS_WORKER_TOKEN", credentials.get("worker_token", "")),
     )
     if not client.worker_id:
-        client.worker_id = client.json("GET", "/internal/v1/identity")["worker_id"]
+        client.worker_id = _resolve_identity(client)
     queue_url = os.environ.get("LOCUS_JOB_QUEUE_URL", "")
     notifications: Any = QueueNotifications(queue_url) if queue_url else ControlPlaneNotifications(client)
     try:
