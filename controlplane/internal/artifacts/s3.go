@@ -2,10 +2,12 @@ package artifacts
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -75,9 +77,16 @@ func (s *S3) GetGrant(ctx context.Context, key, version, _ string) (Grant, error
 	}, nil
 }
 
-// Commit confirms the exact object version the caller reported. The stored
-// checksum is compared rather than the bytes, so a large artifact is never
-// streamed back through the control plane.
+// MaxVerifiedReadSize bounds how much the control plane will re-read to prove
+// an artifact's digest. Results stay far below it; a bundle above it is proven
+// instead by mandatory validation, which rejects a run whose stored bytes do
+// not hash to the declared digest.
+const MaxVerifiedReadSize int64 = 8 * 1024 * 1024
+
+// Commit confirms the exact object version the caller reported. A presigned
+// upload cannot bind a checksum S3 will enforce, so the digest is proven from
+// the stored checksum when the store recorded one and from the stored bytes
+// otherwise.
 func (s *S3) Commit(ctx context.Context, key, version, digest string, size int64) (Object, error) {
 	checksum, err := checksumOf(digest)
 	if err != nil || !validDeclaration(key, digest, size) || version == "" {
@@ -95,10 +104,42 @@ func (s *S3) Commit(ctx context.Context, key, version, digest string, size int64
 	if aws.ToString(head.VersionId) != version {
 		return Object{}, errors.New("stored artifact version does not match the reported version")
 	}
-	if aws.ToInt64(head.ContentLength) != size || aws.ToString(head.ChecksumSHA256) != checksum {
+	if aws.ToInt64(head.ContentLength) != size {
 		return Object{}, errors.New("artifact identity does not match stored bytes")
 	}
+	if stored := aws.ToString(head.ChecksumSHA256); stored != "" {
+		if stored != checksum {
+			return Object{}, errors.New("artifact identity does not match stored bytes")
+		}
+		return Object{Key: key, Version: version, Digest: digest, Size: size}, nil
+	}
+	if size <= MaxVerifiedReadSize {
+		if err := s.verifyStoredBytes(ctx, key, version, digest, size); err != nil {
+			return Object{}, err
+		}
+	}
 	return Object{Key: key, Version: version, Digest: digest, Size: size}, nil
+}
+
+func (s *S3) verifyStoredBytes(ctx context.Context, key, version, digest string, size int64) error {
+	object, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket:    aws.String(s.bucket),
+		Key:       aws.String(key),
+		VersionId: aws.String(version),
+	})
+	if err != nil {
+		return fmt.Errorf("read stored artifact: %w", err)
+	}
+	defer object.Body.Close()
+	hash := sha256.New()
+	read, err := io.Copy(hash, io.LimitReader(object.Body, size+1))
+	if err != nil {
+		return fmt.Errorf("hash stored artifact: %w", err)
+	}
+	if read != size || hex.EncodeToString(hash.Sum(nil)) != digest {
+		return errors.New("artifact identity does not match stored bytes")
+	}
+	return nil
 }
 
 func (s *S3) Cleanup(ctx context.Context, keep map[string]bool, before time.Time) (int, error) {

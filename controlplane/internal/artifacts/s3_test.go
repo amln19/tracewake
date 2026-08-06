@@ -90,21 +90,26 @@ func TestPresignedUploadCommitsExactObjectVersion(t *testing.T) {
 	}
 }
 
-func TestUploadRejectsBytesThatDoNotMatchTheDeclaration(t *testing.T) {
+func TestCommitRejectsBytesThatDoNotMatchTheDeclaration(t *testing.T) {
 	store, fake := s3Store(t)
+	ctx := context.Background()
 	data := []byte("declared bytes")
 	key := "workspaces/w/runs/r/bundle.tar"
-	grant, err := store.PutGrant(context.Background(), key, hexDigest(data), int64(len(data)), "application/x-tar")
+	grant, err := store.PutGrant(ctx, key, hexDigest(data), int64(len(data)), "application/x-tar")
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A presigned upload cannot bind a checksum the store will enforce, so the
+	// declaration is proven when the artifact is committed.
 	response := send(t, grant, []byte("replaced bytes"))
-	defer response.Body.Close()
-	if response.StatusCode == http.StatusOK {
-		t.Fatal("object store accepted bytes that do not match the grant")
+	response.Body.Close()
+	version := response.Header.Get("x-amz-version-id")
+	if _, err := store.Commit(ctx, key, version, hexDigest(data), int64(len(data))); err == nil {
+		t.Fatal("committed an object whose bytes do not match the declaration")
 	}
-	if len(fake.Keys()) != 0 {
-		t.Fatalf("rejected upload was stored: %v", fake.Keys())
+	fake.Tamper(key, version, data)
+	if _, err := store.Commit(ctx, key, version, hexDigest(data), int64(len(data))); err != nil {
+		t.Fatalf("matching bytes rejected: %v", err)
 	}
 }
 

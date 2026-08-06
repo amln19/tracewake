@@ -42,6 +42,16 @@ func NewS3(bucket string) *S3 {
 
 func (s *S3) Close() { s.Server.Close() }
 
+// Tamper replaces stored bytes, which is what a client uploading content that
+// does not match its declaration looks like to the control plane.
+func (s *S3) Tamper(key, version string, body []byte) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	object := s.objects[key][version]
+	object.Body = body
+	s.objects[key][version] = object
+}
+
 func (s *S3) Age(key, version string, modified time.Time) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -94,13 +104,14 @@ func (s *S3) put(w http.ResponseWriter, r *http.Request, key string) {
 	}
 	sum := sha256.Sum256(body)
 	checksum := base64.StdEncoding.EncodeToString(sum[:])
-	declared := r.Header.Get("x-amz-checksum-sha256")
-	if declared == "" {
-		declared = r.URL.Query().Get("X-Amz-Checksum-Sha256")
-	}
-	if declared != "" && declared != checksum {
+	// S3 enforces and records a SHA-256 only when the client sends it as a
+	// signed header. A presigned URL carries it in the query string, where the
+	// service ignores it, so neither does this fake.
+	if declared := r.Header.Get("x-amz-checksum-sha256"); declared != "" && declared != checksum {
 		http.Error(w, "BadDigest", http.StatusBadRequest)
 		return
+	} else if declared == "" {
+		checksum = ""
 	}
 	s.mutex.Lock()
 	s.versions++
@@ -111,7 +122,9 @@ func (s *S3) put(w http.ResponseWriter, r *http.Request, key string) {
 	s.objects[key][version] = storedObject{Body: body, Checksum: checksum, Type: r.Header.Get("Content-Type"), Modified: time.Now()}
 	s.mutex.Unlock()
 	w.Header().Set("x-amz-version-id", version)
-	w.Header().Set("x-amz-checksum-sha256", checksum)
+	if checksum != "" {
+		w.Header().Set("x-amz-checksum-sha256", checksum)
+	}
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -143,7 +156,7 @@ func (s *S3) head(w http.ResponseWriter, r *http.Request, key string) {
 	}
 	w.Header().Set("Content-Length", strconv.Itoa(len(object.Body)))
 	w.Header().Set("x-amz-version-id", version)
-	if r.URL.Query().Get("x-amz-checksum-mode") != "" || r.Header.Get("x-amz-checksum-mode") != "" {
+	if object.Checksum != "" && (r.URL.Query().Get("x-amz-checksum-mode") != "" || r.Header.Get("x-amz-checksum-mode") != "") {
 		w.Header().Set("x-amz-checksum-sha256", object.Checksum)
 	}
 	w.WriteHeader(http.StatusOK)
