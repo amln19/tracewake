@@ -121,11 +121,16 @@ func (a *API) principal(w http.ResponseWriter, r *http.Request, scope string) (c
 	}
 	p, err := a.service.Authenticate(r.Context(), token, scope)
 	if err != nil {
-		if errors.Is(err, controlplane.ErrForbidden) {
+		switch {
+		case errors.Is(err, controlplane.ErrForbidden):
 			errorJSON(w, http.StatusForbidden, "forbidden")
-			return controlplane.Principal{}, false
+		case errors.Is(err, controlplane.ErrUnauthenticated):
+			errorJSON(w, http.StatusUnauthorized, "unauthenticated")
+		default:
+			// A database outage is not a credential problem; saying so would
+			// tell the caller to fix a token instead of retrying.
+			errorJSON(w, http.StatusInternalServerError, "internal")
 		}
-		errorJSON(w, http.StatusUnauthorized, "unauthenticated")
 		return controlplane.Principal{}, false
 	}
 	return p, true
