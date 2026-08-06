@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import tempfile
 import threading
@@ -24,6 +25,8 @@ from .report import write_report
 
 LEASE_SECONDS = 60
 HEARTBEAT_SECONDS = 20
+
+log = logging.getLogger("locus.worker")
 
 
 class LeaseLost(RuntimeError):
@@ -172,7 +175,10 @@ def _heartbeat(client: WorkerClient, job: str, attempt: int, token: str, stop: t
             # proven current, so a fenced worker stops holding the message.
             if delivery is not None:
                 delivery.extend_visibility(LEASE_SECONDS)
-        except (LeaseLost, OSError, RuntimeError):
+        except Exception as exc:
+            # Losing the heartbeat abandons the attempt, so the reason has to
+            # reach the operator instead of stopping the thread silently.
+            log.warning("job %s attempt %d stopped heartbeating: %s: %s", job, attempt, type(exc).__name__, str(exc)[:200])
             stop.set()
             return
 
@@ -374,6 +380,7 @@ def _resolve_identity(client: WorkerClient, attempts: int = 30) -> str:
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     credentials: dict[str, str] = {}
     if path := os.environ.get("LOCUS_WORKER_CREDENTIALS_FILE"):
         while not Path(path).exists():
