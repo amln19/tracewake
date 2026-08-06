@@ -124,6 +124,76 @@ def test_uploaded_result_reports_the_committed_object_identity(memory_objects: d
     assert memory_objects["memory:workspaces/w/jobs/j/attempts/1/validation_json"] == b"{}"
 
 
+class FakeQueue:
+    """Records the SQS calls a worker is allowed to make."""
+
+    def __init__(self, body: str) -> None:
+        self.body = body
+        self.deleted: list[str] = []
+        self.visibility: list[int] = []
+
+    def receive_message(self, **kwargs: Any) -> dict[str, Any]:
+        assert kwargs["VisibilityTimeout"] == worker.LEASE_SECONDS
+        if self.body is None:
+            return {}
+        return {"Messages": [{"ReceiptHandle": "receipt-1", "Body": self.body}]}
+
+    def delete_message(self, *, QueueUrl: str, ReceiptHandle: str) -> None:
+        self.deleted.append(ReceiptHandle)
+
+    def change_message_visibility(self, *, QueueUrl: str, ReceiptHandle: str, VisibilityTimeout: int) -> None:
+        self.visibility.append(VisibilityTimeout)
+
+
+def test_queue_delivery_exposes_notification_and_acknowledgement() -> None:
+    notification = {"protocol_version": 1, "job_id": "j", "job_version": 1, "operation": "diff"}
+    queue = FakeQueue(json.dumps(notification))
+    source = worker.QueueNotifications("https://sqs.invalid/queue", client=queue)
+    delivery = source.next()
+    assert delivery is not None
+    assert delivery.notification == notification
+    delivery.acknowledge()
+    assert queue.deleted == ["receipt-1"]
+
+
+def test_empty_queue_yields_no_delivery() -> None:
+    source = worker.QueueNotifications("https://sqs.invalid/queue", client=FakeQueue(None))
+    assert source.next() is None
+
+
+def test_visibility_is_extended_only_while_the_lease_holds(monkeypatch: pytest.MonkeyPatch) -> None:
+    import threading
+
+    monkeypatch.setattr(worker, "HEARTBEAT_SECONDS", 0.01)
+    queue = FakeQueue(json.dumps({"job_id": "j"}))
+    delivery = worker.QueueNotifications("https://sqs.invalid/queue", client=queue).next()
+    assert delivery is not None
+
+    class Live(FakeClient):
+        def request(self, method: str, path: str, **kwargs):  # type: ignore[no-untyped-def]
+            return 204, b""
+
+    stop = threading.Event()
+    thread = threading.Thread(target=worker._heartbeat, args=(Live(b""), "j", 1, "token", stop, delivery))
+    thread.start()
+    while not queue.visibility:
+        pass
+    stop.set()
+    thread.join(timeout=2)
+    assert queue.visibility[0] == worker.LEASE_SECONDS
+
+    class Fenced(FakeClient):
+        def request(self, method: str, path: str, **kwargs):  # type: ignore[no-untyped-def]
+            raise LeaseLost("fenced")
+
+    queue.visibility.clear()
+    stop = threading.Event()
+    worker._heartbeat(Fenced(b""), "j", 1, "token", stop, delivery)
+    assert stop.is_set()
+    assert queue.visibility == []
+    assert queue.deleted == []
+
+
 def test_obsolete_notification_is_acknowledged() -> None:
     class Obsolete(FakeClient):
         def request(self, method: str, path: str, **kwargs):  # type: ignore[no-untyped-def]

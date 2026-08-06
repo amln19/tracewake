@@ -19,6 +19,10 @@ locus = "locus.pytest_plugin"
 embeddings = [
     "mlx-embeddings>=0.1.0",
 ]
+# Only the hosted worker talks to a queue; local Locus never needs an AWS SDK.
+aws = [
+    "boto3>=1.35",
+]
 
 [dependency-groups]
 corpus = [

@@ -2,7 +2,7 @@ FROM python:3.13-slim
 WORKDIR /src
 COPY pyproject.toml README.md LICENSE ./
 COPY locus/ locus/
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir ".[aws]"
 RUN useradd --create-home --uid 10001 locus
 USER locus
 ENTRYPOINT ["locus-worker"]
