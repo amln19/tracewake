@@ -13,8 +13,9 @@ import (
 )
 
 type Service struct {
-	pool   *pgxpool.Pool
-	tokens KeyRing
+	pool    *pgxpool.Pool
+	tokens  KeyRing
+	workers KeyRing
 }
 
 type Principal struct {
@@ -22,11 +23,11 @@ type Principal struct {
 	Scopes      map[string]bool
 }
 
-func New(pool *pgxpool.Pool, tokens KeyRing) (*Service, error) {
-	if len(tokens.Current) == 0 || tokens.CurrentVersion < 1 {
-		return nil, errors.New("a current token pepper is required")
+func New(pool *pgxpool.Pool, tokens, workers KeyRing) (*Service, error) {
+	if len(tokens.Current) == 0 || tokens.CurrentVersion < 1 || len(workers.Current) == 0 || workers.CurrentVersion < 1 {
+		return nil, errors.New("current token and worker peppers are required")
 	}
-	return &Service{pool: pool, tokens: tokens}, nil
+	return &Service{pool: pool, tokens: tokens, workers: workers}, nil
 }
 
 func (s *Service) CreateWorkspace(ctx context.Context, name string, scopes []string) (string, string, error) {
@@ -69,6 +70,41 @@ func (s *Service) CreateWorkspace(ctx context.Context, name string, scopes []str
 		return "", "", fmt.Errorf("commit workspace transaction: %w", err)
 	}
 	return workspaceID, token, nil
+}
+
+func (s *Service) CreateWorkerCredential(ctx context.Context) (string, string, error) {
+	id, err := newID()
+	if err != nil {
+		return "", "", err
+	}
+	prefix, err := randomPrefix("worker")
+	if err != nil {
+		return "", "", err
+	}
+	token, verifier, err := s.workers.NewToken(prefix)
+	if err != nil {
+		return "", "", err
+	}
+	_, err = s.pool.Exec(ctx, `INSERT INTO worker_credentials(id,prefix,verifier,pepper_version) VALUES($1,$2,$3,$4)`, id, prefix, verifier, s.workers.CurrentVersion)
+	if err != nil {
+		return "", "", fmt.Errorf("insert worker credential: %w", err)
+	}
+	return id, token, nil
+}
+
+func (s *Service) AuthenticateWorker(ctx context.Context, token string) (string, error) {
+	prefix, err := splitToken(token)
+	if err != nil {
+		return "", ErrUnauthenticated
+	}
+	var id string
+	var verifier []byte
+	var version int16
+	err = s.pool.QueryRow(ctx, `SELECT id,verifier,pepper_version FROM worker_credentials WHERE prefix=$1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>transaction_timestamp())`, prefix).Scan(&id, &verifier, &version)
+	if err != nil || !s.workers.Verify(version, token, verifier) {
+		return "", ErrUnauthenticated
+	}
+	return id, nil
 }
 
 func (s *Service) Authenticate(ctx context.Context, token string, requiredScope string) (Principal, error) {

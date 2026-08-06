@@ -295,7 +295,7 @@ func (s *Service) Claim(ctx context.Context, workerID, jobID string) (Claim, err
 	if err != nil {
 		return Claim{}, err
 	}
-	token, verifier, err := s.tokens.NewToken(prefix)
+	token, verifier, err := s.workers.NewToken(prefix)
 	if err != nil {
 		return Claim{}, err
 	}
@@ -304,7 +304,7 @@ func (s *Service) Claim(ctx context.Context, workerID, jobID string) (Claim, err
 		return Claim{}, fmt.Errorf("read database lease time: %w", err)
 	}
 	if _, err := transaction.Exec(ctx, `INSERT INTO job_attempts (job_id,attempt_number,worker_id,token_verifier,token_pepper_version,lease_expires_at)
-        VALUES ($1,$2,$3,$4,$5,$6)`, jobID, next, workerID, verifier, s.tokens.CurrentVersion, lease); err != nil {
+		VALUES ($1,$2,$3,$4,$5,$6)`, jobID, next, workerID, verifier, s.workers.CurrentVersion, lease); err != nil {
 		return Claim{}, fmt.Errorf("insert attempt: %w", err)
 	}
 	if _, err := transaction.Exec(ctx, `UPDATE jobs SET state='running',current_attempt_number=$2,retry_at=NULL,updated_at=transaction_timestamp(),row_version=row_version+1
