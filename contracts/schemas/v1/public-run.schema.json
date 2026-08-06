@@ -1,0 +1,177 @@
+{
+  "$defs": {
+    "Failure": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/FailureCode"
+        },
+        "message": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "retryable": {
+          "title": "Retryable",
+          "type": "boolean"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "code",
+        "message",
+        "retryable"
+      ],
+      "title": "Failure",
+      "type": "object"
+    },
+    "FailureCode": {
+      "enum": [
+        "invalid_bundle",
+        "unsupported_version",
+        "invalid_result",
+        "unauthorized_input",
+        "cancelled",
+        "lease_lost",
+        "artifact_commit_failed",
+        "transient_dependency",
+        "internal"
+      ],
+      "title": "FailureCode",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "bundle_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Bundle Digest",
+      "type": "string"
+    },
+    "bundle_format_version": {
+      "minimum": 1,
+      "title": "Bundle Format Version",
+      "type": "integer"
+    },
+    "cassette_format_version": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cassette Format Version"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "event_count": {
+      "anyOf": [
+        {
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Event Count"
+    },
+    "event_schema_version": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Event Schema Version"
+    },
+    "failure": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Failure"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "logical_run_digest": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Logical Run Digest"
+    },
+    "ready_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ready At"
+    },
+    "retention_expires_at": {
+      "format": "date-time",
+      "title": "Retention Expires At",
+      "type": "string"
+    },
+    "run_id": {
+      "format": "uuid",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "state": {
+      "enum": [
+        "pending",
+        "uploaded",
+        "validating",
+        "ready",
+        "invalid",
+        "deleted"
+      ],
+      "title": "State",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "state",
+    "bundle_format_version",
+    "bundle_digest",
+    "created_at",
+    "retention_expires_at"
+  ],
+  "title": "RunView",
+  "type": "object"
+}

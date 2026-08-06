@@ -1,0 +1,28 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "bundle_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Bundle Digest",
+      "type": "string"
+    },
+    "bundle_format_version": {
+      "const": 1,
+      "title": "Bundle Format Version",
+      "type": "integer"
+    },
+    "bundle_size": {
+      "maximum": 268435456,
+      "minimum": 0,
+      "title": "Bundle Size",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "bundle_format_version",
+    "bundle_digest",
+    "bundle_size"
+  ],
+  "title": "UploadDeclaration",
+  "type": "object"
+}

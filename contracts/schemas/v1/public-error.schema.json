@@ -1,0 +1,53 @@
+{
+  "$defs": {
+    "PublicErrorDetail": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "invalid_request",
+            "unauthenticated",
+            "forbidden",
+            "not_found",
+            "conflict",
+            "idempotency_conflict",
+            "unsupported_version",
+            "rate_limited",
+            "internal"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "request_id": {
+          "format": "uuid",
+          "title": "Request Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "request_id"
+      ],
+      "title": "PublicErrorDetail",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "error": {
+      "$ref": "#/$defs/PublicErrorDetail"
+    }
+  },
+  "required": [
+    "error"
+  ],
+  "title": "PublicError",
+  "type": "object"
+}

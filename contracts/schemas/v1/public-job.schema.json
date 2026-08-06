@@ -1,0 +1,385 @@
+{
+  "$defs": {
+    "AttemptView": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_number": {
+          "maximum": 3,
+          "minimum": 1,
+          "title": "Attempt Number",
+          "type": "integer"
+        },
+        "failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Failure"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finished At"
+        },
+        "started_at": {
+          "format": "date-time",
+          "title": "Started At",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "running",
+            "succeeded",
+            "failed",
+            "fenced",
+            "cancelled"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "attempt_number",
+        "state",
+        "started_at"
+      ],
+      "title": "AttemptView",
+      "type": "object"
+    },
+    "Failure": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/FailureCode"
+        },
+        "message": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "retryable": {
+          "title": "Retryable",
+          "type": "boolean"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "code",
+        "message",
+        "retryable"
+      ],
+      "title": "Failure",
+      "type": "object"
+    },
+    "FailureCode": {
+      "enum": [
+        "invalid_bundle",
+        "unsupported_version",
+        "invalid_result",
+        "unauthorized_input",
+        "cancelled",
+        "lease_lost",
+        "artifact_commit_failed",
+        "transient_dependency",
+        "internal"
+      ],
+      "title": "FailureCode",
+      "type": "string"
+    },
+    "Progress": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_number": {
+          "maximum": 3,
+          "minimum": 1,
+          "title": "Attempt Number",
+          "type": "integer"
+        },
+        "message": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": 1,
+          "title": "Protocol Version",
+          "type": "integer"
+        },
+        "sequence": {
+          "minimum": 1,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "stage": {
+          "enum": [
+            "claiming",
+            "downloading",
+            "validating",
+            "analyzing",
+            "uploading",
+            "committing"
+          ],
+          "title": "Stage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "attempt_number",
+        "sequence",
+        "stage",
+        "message"
+      ],
+      "title": "Progress",
+      "type": "object"
+    },
+    "PublicArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "format": "uuid",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "diff_json",
+            "diff_html",
+            "otlp_json",
+            "pprof"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "media_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "retention_expires_at": {
+          "format": "date-time",
+          "title": "Retention Expires At",
+          "type": "string"
+        },
+        "schema_name": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Schema Name"
+        },
+        "schema_version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Schema Version"
+        },
+        "size": {
+          "minimum": 0,
+          "title": "Size",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "kind",
+        "digest",
+        "size",
+        "media_type",
+        "retention_expires_at"
+      ],
+      "title": "PublicArtifact",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "artifacts": {
+      "items": {
+        "$ref": "#/$defs/PublicArtifact"
+      },
+      "title": "Artifacts",
+      "type": "array"
+    },
+    "attempts": {
+      "items": {
+        "$ref": "#/$defs/AttemptView"
+      },
+      "maxItems": 3,
+      "title": "Attempts",
+      "type": "array"
+    },
+    "cancel_requested_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cancel Requested At"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "current_attempt_number": {
+      "anyOf": [
+        {
+          "maximum": 3,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Current Attempt Number"
+    },
+    "failure": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Failure"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "job_id": {
+      "format": "uuid",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "operation": {
+      "enum": [
+        "diff",
+        "otlp",
+        "pprof"
+      ],
+      "title": "Operation",
+      "type": "string"
+    },
+    "profile": {
+      "anyOf": [
+        {
+          "const": "lexical-v1",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Profile"
+    },
+    "progress": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Progress"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "run_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "maxItems": 2,
+      "minItems": 1,
+      "title": "Run Ids",
+      "type": "array"
+    },
+    "state": {
+      "enum": [
+        "queued",
+        "running",
+        "retry_wait",
+        "succeeded",
+        "failed",
+        "cancelled"
+      ],
+      "title": "State",
+      "type": "string"
+    },
+    "terminal_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Terminal At"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "job_id",
+    "operation",
+    "run_ids",
+    "state",
+    "attempts",
+    "artifacts",
+    "created_at",
+    "updated_at"
+  ],
+  "title": "JobView",
+  "type": "object"
+}

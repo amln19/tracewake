@@ -227,11 +227,120 @@ class PublicJobRequest(ContractModel):
         expected = 2 if self.operation == "diff" else 1
         if len(self.run_ids) != expected:
             raise ValueError(f"{self.operation} requires {expected} run id(s)")
+        if len(set(self.run_ids)) != len(self.run_ids):
+            raise ValueError("run ids must be distinct")
         if self.operation == "diff" and self.profile != "lexical-v1":
             raise ValueError("diff requires profile lexical-v1")
         if self.operation != "diff" and self.profile is not None:
             raise ValueError("only diff accepts a profile")
         return self
+
+
+class UploadDeclaration(ContractModel):
+    bundle_format_version: Literal[1]
+    bundle_digest: Digest
+    bundle_size: int = Field(ge=0, le=256 * 1024 * 1024)
+
+
+class UploadGrant(ContractModel):
+    upload_id: UUID
+    run_id: UUID
+    required_digest: Digest
+    required_size: int = Field(ge=0, le=256 * 1024 * 1024)
+    upload_url: Annotated[str, StringConstraints(min_length=1, max_length=4096)]
+    expires_at: AwareDatetime
+
+
+class UploadCompletion(ContractModel):
+    object_version: Annotated[str, StringConstraints(min_length=1, max_length=256)]
+    digest: Digest
+    size: int = Field(ge=0, le=256 * 1024 * 1024)
+
+
+class PublicArtifact(ContractModel):
+    artifact_id: UUID
+    kind: Literal["diff_json", "diff_html", "otlp_json", "pprof"]
+    digest: Digest
+    size: int = Field(ge=0)
+    media_type: Annotated[str, StringConstraints(min_length=1, max_length=128)]
+    schema_name: Annotated[str, StringConstraints(min_length=1, max_length=64)] | None = None
+    schema_version: int | None = Field(default=None, ge=1)
+    retention_expires_at: AwareDatetime
+
+
+class RunView(ContractModel):
+    run_id: UUID
+    state: Literal["pending", "uploaded", "validating", "ready", "invalid", "deleted"]
+    bundle_format_version: int = Field(ge=1)
+    bundle_digest: Digest
+    logical_run_digest: Digest | None = None
+    cassette_format_version: int | None = Field(default=None, ge=1)
+    event_schema_version: int | None = Field(default=None, ge=1)
+    event_count: int | None = Field(default=None, ge=0, le=100_000)
+    failure: Failure | None = None
+    created_at: AwareDatetime
+    ready_at: AwareDatetime | None = None
+    retention_expires_at: AwareDatetime
+
+    @model_validator(mode="after")
+    def _ready_shape(self) -> RunView:
+        validated = (
+            self.logical_run_digest,
+            self.cassette_format_version,
+            self.event_schema_version,
+            self.event_count,
+            self.ready_at,
+        )
+        if self.state == "ready" and (any(value is None for value in validated) or self.failure):
+            raise ValueError("a ready run requires validated identity and no failure")
+        if self.state == "invalid" and self.failure is None:
+            raise ValueError("an invalid run requires a bounded failure")
+        return self
+
+
+class AttemptView(ContractModel):
+    attempt_number: int = Field(ge=1, le=3)
+    state: Literal["running", "succeeded", "failed", "fenced", "cancelled"]
+    started_at: AwareDatetime
+    finished_at: AwareDatetime | None = None
+    failure: Failure | None = None
+
+
+class JobView(ContractModel):
+    job_id: UUID
+    operation: Literal["diff", "otlp", "pprof"]
+    run_ids: list[UUID] = Field(min_length=1, max_length=2)
+    profile: Literal["lexical-v1"] | None = None
+    state: Literal["queued", "running", "retry_wait", "succeeded", "failed", "cancelled"]
+    current_attempt_number: int | None = Field(default=None, ge=1, le=3)
+    attempts: list[AttemptView] = Field(max_length=3)
+    progress: Progress | None = None
+    cancel_requested_at: AwareDatetime | None = None
+    failure: Failure | None = None
+    artifacts: list[PublicArtifact]
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+    terminal_at: AwareDatetime | None = None
+
+
+class PublicErrorDetail(ContractModel):
+    code: Literal[
+        "invalid_request",
+        "unauthenticated",
+        "forbidden",
+        "not_found",
+        "conflict",
+        "idempotency_conflict",
+        "unsupported_version",
+        "rate_limited",
+        "internal",
+    ]
+    message: BoundedMessage
+    request_id: UUID
+
+
+class PublicError(ContractModel):
+    error: PublicErrorDetail
 
 
 _SCHEMA_MODELS: dict[str, type[BaseModel]] = {
@@ -243,8 +352,14 @@ _SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     "heartbeat": Heartbeat,
     "job-notification": JobNotification,
     "progress": Progress,
+    "public-error": PublicError,
+    "public-job": JobView,
     "public-job-request": PublicJobRequest,
+    "public-run": RunView,
     "result-envelope": ResultEnvelope,
+    "upload-completion": UploadCompletion,
+    "upload-declaration": UploadDeclaration,
+    "upload-grant": UploadGrant,
 }
 
 

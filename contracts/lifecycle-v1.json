@@ -1,0 +1,104 @@
+{
+  "constants": {
+    "heartbeat_seconds": 20,
+    "idempotency_retention_seconds": 86400,
+    "lease_seconds": 60,
+    "max_attempts": 3,
+    "retry_delays_seconds": [5, 30]
+  },
+  "states": ["queued", "running", "retry_wait", "succeeded", "failed", "cancelled"],
+  "terminal_states": ["succeeded", "failed", "cancelled"],
+  "transitions": [
+    {
+      "name": "create",
+      "from": [null],
+      "to": "queued",
+      "preconditions": ["authenticated workspace owns every READY input", "idempotency key is new or has the same normalized request digest"],
+      "postconditions": ["job and enqueue outbox row exist in one transaction", "attempt number is zero", "terminal result is absent"]
+    },
+    {
+      "name": "claim",
+      "from": ["queued"],
+      "to": "running",
+      "preconditions": ["notification job version is current", "no current attempt exists", "cancellation has not been requested", "next attempt number is at most three"],
+      "postconditions": ["attempt number increases by one", "one current attempt has a database-time 60-second lease", "attempt token verifier is stored", "claim is audited"]
+    },
+    {
+      "name": "duplicate_delivery",
+      "from": ["running", "succeeded", "failed", "cancelled"],
+      "to": "unchanged",
+      "preconditions": ["notification names an existing job that is already active or terminal"],
+      "postconditions": ["no attempt or terminal state changes", "message may be deleted after the durable observation"]
+    },
+    {
+      "name": "heartbeat",
+      "from": ["running"],
+      "to": "running",
+      "preconditions": ["attempt is current", "attempt token matches", "lease has not expired", "job is not terminal"],
+      "postconditions": ["lease extends from database time by 60 seconds", "no lifecycle audit row is required"]
+    },
+    {
+      "name": "progress",
+      "from": ["running"],
+      "to": "running",
+      "preconditions": ["attempt is current", "attempt token matches", "lease has not expired", "sequence is greater than stored progress sequence"],
+      "postconditions": ["bounded current progress snapshot is replaced", "terminal and audit state do not change"]
+    },
+    {
+      "name": "request_cancellation",
+      "from": ["queued", "running", "retry_wait"],
+      "to": "unchanged",
+      "preconditions": ["job is nonterminal", "authenticated workspace owns the job"],
+      "postconditions": ["cancellation-request timestamp is set once", "request is audited"]
+    },
+    {
+      "name": "resolve_cancellation",
+      "from": ["queued", "running", "retry_wait"],
+      "to": "cancelled",
+      "preconditions": ["cancellation was requested", "one conditional PostgreSQL update still sees a nonterminal job"],
+      "postconditions": ["current attempt is fenced", "terminal state and timestamp are immutable", "resolution is audited"]
+    },
+    {
+      "name": "complete",
+      "from": ["running"],
+      "to": "succeeded",
+      "preconditions": ["attempt is current", "attempt token matches", "lease has not expired", "result schema is supported", "artifact object version, digest, and size are verified", "one conditional PostgreSQL update still sees running state"],
+      "postconditions": ["exact immutable artifact identity becomes authoritative", "current attempt succeeds", "terminal state and timestamp are immutable", "completion is audited"]
+    },
+    {
+      "name": "permanent_failure",
+      "from": ["running"],
+      "to": "failed",
+      "preconditions": ["attempt is current", "bounded failure code is permanent", "one conditional PostgreSQL update still sees running state"],
+      "postconditions": ["attempt and job fail terminally", "no result artifact becomes authoritative", "failure is audited"]
+    },
+    {
+      "name": "schedule_retry",
+      "from": ["running"],
+      "to": "retry_wait",
+      "preconditions": ["attempt is current", "failure is retryable or lease expired", "attempt number is below three", "cancellation has not won"],
+      "postconditions": ["attempt is fenced", "retry time uses the delay indexed by completed attempt", "retry scheduling and audit rows are transactional"]
+    },
+    {
+      "name": "retry_exhausted",
+      "from": ["running"],
+      "to": "failed",
+      "preconditions": ["attempt is current", "failure is retryable or lease expired", "attempt number is three", "one conditional PostgreSQL update still sees running state"],
+      "postconditions": ["attempt is fenced", "job fails terminally with retry_exhausted", "failure is audited"]
+    },
+    {
+      "name": "release_retry",
+      "from": ["retry_wait"],
+      "to": "queued",
+      "preconditions": ["database time reached retry time", "cancellation has not been requested"],
+      "postconditions": ["enqueue outbox row is created transactionally", "no current attempt exists"]
+    },
+    {
+      "name": "reject_stale_attempt",
+      "from": ["queued", "running", "retry_wait", "succeeded", "failed", "cancelled"],
+      "to": "unchanged",
+      "preconditions": ["attempt number or token is not current"],
+      "postconditions": ["progress, artifacts, result, and job state remain unchanged", "meaningful stale commit attempts are audited"]
+    }
+  ]
+}
