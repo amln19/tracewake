@@ -19,6 +19,7 @@ import (
 	"github.com/amln19/locus/controlplane/internal/artifacts"
 	"github.com/amln19/locus/controlplane/internal/controlplane"
 	"github.com/amln19/locus/controlplane/internal/httpapi"
+	"github.com/amln19/locus/controlplane/internal/notify"
 	"github.com/amln19/locus/controlplane/internal/store"
 	"github.com/amln19/locus/controlplane/internal/workerapi"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -92,6 +93,16 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+	var publisher controlplane.Notifier
+	if queueURL := strings.TrimSpace(os.Getenv("LOCUS_JOB_QUEUE_URL")); queueURL != "" {
+		awsConfig, err := config.LoadDefaultConfig(ctx)
+		if err != nil {
+			log.Fatalf("load AWS configuration: %v", err)
+		}
+		if publisher, err = notify.NewSQS(awsConfig, queueURL); err != nil {
+			log.Fatal(err)
+		}
+	}
 	publicAddr := envOr("LOCUS_LISTEN_ADDR", "127.0.0.1:8080")
 	workerAddr := envOr("LOCUS_WORKER_LISTEN_ADDR", "127.0.0.1:8081")
 	publicBase := envOr("LOCUS_PUBLIC_BASE_URL", reachableURL(publicAddr))
@@ -128,6 +139,11 @@ func main() {
 			case now := <-ticker.C:
 				if _, err := service.Reconcile(ctx, 100); err != nil && !errors.Is(err, context.Canceled) {
 					log.Printf("reconcile: %v", err)
+				}
+				if publisher != nil {
+					if _, err := service.PublishOutbox(ctx, publisher, 100); err != nil && !errors.Is(err, context.Canceled) {
+						log.Printf("publish notifications: %v", err)
+					}
 				}
 				// Listing every stored object is cheap locally and billed in
 				// object storage, so retention runs on its own slower cadence.

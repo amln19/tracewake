@@ -202,6 +202,19 @@ func TestPostgresLifecycle(t *testing.T) {
 	if _, err := service.Reconcile(ctx, 100); err != nil {
 		t.Fatal(err)
 	}
+	var republished int
+	if err := database.Pool().QueryRow(ctx, "SELECT count(*) FROM outbox WHERE aggregate_id=$1 AND published_at IS NULL", stranded.ID).Scan(&republished); err != nil || republished != 0 {
+		t.Fatalf("recently notified job republished: count=%d err=%v", republished, err)
+	}
+	if _, err := database.Pool().Exec(ctx, "UPDATE outbox SET created_at=transaction_timestamp()-interval '2 minutes' WHERE aggregate_id=$1", stranded.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Pool().Exec(ctx, "UPDATE jobs SET updated_at=transaction_timestamp()-interval '2 minutes' WHERE id=$1", stranded.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Reconcile(ctx, 100); err != nil {
+		t.Fatal(err)
+	}
 	var unpublished int
 	if err := database.Pool().QueryRow(ctx, "SELECT count(*) FROM outbox WHERE aggregate_id=$1 AND published_at IS NULL", stranded.ID).Scan(&unpublished); err != nil || unpublished != 1 {
 		t.Fatalf("stranded outbox count=%d err=%v", unpublished, err)
