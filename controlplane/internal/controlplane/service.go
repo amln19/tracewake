@@ -92,6 +92,72 @@ func (s *Service) CreateWorkerCredential(ctx context.Context) (string, string, e
 	return id, token, nil
 }
 
+// EnsureWorkspaceToken registers a token the deployment already holds in its
+// secret store. Hosted deployments have nowhere safe to print a generated
+// token, so the operator supplies it and the control plane stores only its
+// verifier.
+func (s *Service) EnsureWorkspaceToken(ctx context.Context, name, token string, scopes []string) (string, error) {
+	prefix, err := splitToken(token)
+	if err != nil {
+		return "", errors.New("bootstrap token must be a prefixed high-entropy secret")
+	}
+	var workspaceID string
+	if err := s.pool.QueryRow(ctx, "SELECT workspace_id FROM api_tokens WHERE prefix=$1", prefix).Scan(&workspaceID); err == nil {
+		return workspaceID, nil
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return "", fmt.Errorf("read bootstrap token: %w", err)
+	}
+	workspaceID, err = newID()
+	if err != nil {
+		return "", err
+	}
+	tokenID, err := newID()
+	if err != nil {
+		return "", err
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return "", fmt.Errorf("begin bootstrap transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, "INSERT INTO workspaces (id, name) VALUES ($1, $2)", workspaceID, name); err != nil {
+		return "", fmt.Errorf("insert bootstrap workspace: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO api_tokens (id, workspace_id, prefix, verifier, pepper_version, scopes)
+        VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (prefix) DO NOTHING`, tokenID, workspaceID, prefix, hmacDigest(s.tokens.Current, token), s.tokens.CurrentVersion, scopes); err != nil {
+		return "", fmt.Errorf("insert bootstrap token: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", fmt.Errorf("commit bootstrap transaction: %w", err)
+	}
+	if err := s.pool.QueryRow(ctx, "SELECT workspace_id FROM api_tokens WHERE prefix=$1", prefix).Scan(&workspaceID); err != nil {
+		return "", fmt.Errorf("read bootstrap token: %w", err)
+	}
+	return workspaceID, nil
+}
+
+// EnsureWorkerCredential registers the worker secret both services receive
+// from the deployment's secret store.
+func (s *Service) EnsureWorkerCredential(ctx context.Context, token string) (string, error) {
+	prefix, err := splitToken(token)
+	if err != nil {
+		return "", errors.New("worker credential must be a prefixed high-entropy secret")
+	}
+	id, err := newID()
+	if err != nil {
+		return "", err
+	}
+	if _, err := s.pool.Exec(ctx, `INSERT INTO worker_credentials(id,prefix,verifier,pepper_version)
+        VALUES($1,$2,$3,$4) ON CONFLICT (prefix) DO UPDATE SET verifier=EXCLUDED.verifier,pepper_version=EXCLUDED.pepper_version,revoked_at=NULL`,
+		id, prefix, hmacDigest(s.workers.Current, token), s.workers.CurrentVersion); err != nil {
+		return "", fmt.Errorf("register worker credential: %w", err)
+	}
+	if err := s.pool.QueryRow(ctx, "SELECT id FROM worker_credentials WHERE prefix=$1", prefix).Scan(&id); err != nil {
+		return "", fmt.Errorf("read worker credential: %w", err)
+	}
+	return id, nil
+}
+
 func (s *Service) AuthenticateWorker(ctx context.Context, token string) (string, error) {
 	prefix, err := splitToken(token)
 	if err != nil {

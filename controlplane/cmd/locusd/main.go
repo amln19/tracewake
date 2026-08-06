@@ -60,8 +60,9 @@ func main() {
 		}
 		artifactStore = hosted
 	}
+	scopes := []string{"runs:read", "runs:write", "jobs:read", "jobs:write", "artifacts:read", "audit:read"}
 	if len(os.Args) > 1 && os.Args[1] == "bootstrap" {
-		workspace, token, err := service.CreateWorkspace(ctx, "local", []string{"runs:read", "runs:write", "jobs:read", "jobs:write", "artifacts:read", "audit:read"})
+		workspace, token, err := service.CreateWorkspace(ctx, "local", scopes)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -74,7 +75,7 @@ func main() {
 	}
 	if path := os.Getenv("LOCUS_BOOTSTRAP_FILE"); path != "" {
 		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-			workspace, token, err := service.CreateWorkspace(ctx, "local", []string{"runs:read", "runs:write", "jobs:read", "jobs:write", "artifacts:read", "audit:read"})
+			workspace, token, err := service.CreateWorkspace(ctx, "local", scopes)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -90,6 +91,16 @@ func main() {
 				log.Fatal(err)
 			}
 		} else if err != nil {
+			log.Fatal(err)
+		}
+	}
+	if token := strings.TrimSpace(os.Getenv("LOCUS_BOOTSTRAP_TOKEN")); token != "" {
+		if _, err := service.EnsureWorkspaceToken(ctx, envOr("LOCUS_BOOTSTRAP_WORKSPACE", "default"), token, scopes); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if token := strings.TrimSpace(os.Getenv("LOCUS_WORKER_BOOTSTRAP_TOKEN")); token != "" {
+		if _, err := service.EnsureWorkerCredential(ctx, token); err != nil {
 			log.Fatal(err)
 		}
 	}
