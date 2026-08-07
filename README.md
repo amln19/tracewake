@@ -316,9 +316,9 @@ object-store latency, autoscaling, or cost — is published at all.
 | Distinct metric series | 103 |
 
 The two latency figures are dominated by the local stack's one-second outbox
-poll; a deployment long-polls SQS instead. The soak's mean rose from 634 ms in
-its first half to 396 ms in its second, on a single worker with a growing
-database.
+poll; a deployment long-polls SQS instead. Under the sustained rate the soak's mean
+was 634 ms across its first half and 396 ms across its second, so a single
+worker kept up rather than falling behind.
 
 The same run drove five failure conditions the deployment alarms on — worker
 death, retry exhaustion, an artifact contradiction, a stalled outbox, and a

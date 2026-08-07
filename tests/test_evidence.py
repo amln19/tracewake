@@ -169,8 +169,8 @@ def test_every_published_number_comes_from_this_run(measurements: dict[str, Any]
         f"{telemetry_summary['span_count']} across {telemetry_summary['trace_count']} traces",
         f"{telemetry_summary['traces_crossing_services']}, up to {telemetry_summary['largest_trace_spans']} spans each",
         f"{telemetry_summary['metric_series']}",
-        f"from {round(soak['first_half_mean_ms'])} ms",
-        f"to {round(soak['second_half_mean_ms'])} ms",
+        f"{round(soak['first_half_mean_ms'])} ms across its first half",
+        f"{round(soak['second_half_mean_ms'])} ms across its second",
         f"{len(scenarios['ingestion']['run_ids'])} bundles",
         f"{scenarios['analysis_load']['jobs']} diff analyses",
     ]
