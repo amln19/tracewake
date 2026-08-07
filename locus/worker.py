@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import json
 import logging
@@ -10,8 +11,9 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from importlib.metadata import version
 from pathlib import Path
 from typing import Any
@@ -22,6 +24,7 @@ from .contracts import AlignmentColumn, ArtifactRef, DiffResult as ContractDiffR
 from .otel import encode_spans
 from .pprof import attribute_tokens, build_token_profile, gzip_profile
 from .report import write_report
+from .telemetry import Span, Telemetry
 
 
 LEASE_SECONDS = 60
@@ -32,6 +35,39 @@ MAX_ARTIFACT_BYTES = 64 * 1024 * 1024
 HOSTED_PROFILE = "lexical-v1"
 
 log = logging.getLogger("locus.worker")
+
+
+@dataclass
+class _Execution:
+    """Telemetry for the attempt running on this thread."""
+
+    telemetry: Telemetry
+    operation: str
+    parents: list[Span]
+    stages: dict[str, float] = field(default_factory=dict)
+
+    def transferred(self) -> float:
+        return self.stages.get("download", 0.0) + self.stages.get("upload", 0.0)
+
+
+_execution: contextvars.ContextVar[_Execution | None] = contextvars.ContextVar("locus_worker_execution", default=None)
+
+
+@contextmanager
+def _stage(name: str) -> Iterator[None]:
+    """Time one stage of the current attempt and attribute it to that stage."""
+    execution = _execution.get()
+    if execution is None:
+        yield
+        return
+    started = time.perf_counter()
+    with execution.telemetry.span(f"worker.{name}", parent=execution.parents[-1]) as span:
+        execution.parents.append(span)
+        try:
+            yield
+        finally:
+            execution.parents.pop()
+            execution.stages[name] = execution.stages.get(name, 0.0) + (time.perf_counter() - started) * 1000
 
 
 class LeaseLost(RuntimeError):
@@ -118,6 +154,9 @@ class WorkerClient:
         self.base_url = base_url.rstrip("/")
         self.worker_id = worker_id
         self.token = token
+        # Sending the attempt's trace context makes the control plane's own
+        # spans part of the trace that started with the job request.
+        self.traceparent: str | None = None
 
     def request(
         self,
@@ -129,6 +168,8 @@ class WorkerClient:
         headers: dict[str, str] | None = None,
     ) -> tuple[int, bytes]:
         request_headers = {"Authorization": f"Bearer {self.token}"}
+        if self.traceparent:
+            request_headers["traceparent"] = self.traceparent
         request_headers.update(headers or {})
         if body is not None and "Content-Type" not in request_headers:
             request_headers["Content-Type"] = "application/json"
@@ -196,9 +237,10 @@ def _download_input(client: WorkerClient, claim: dict[str, Any], artifact: dict[
     job = claim["job_id"]
     attempt = claim["attempt_number"]
     path = f"/internal/v1/jobs/{job}/attempts/{attempt}/inputs/{artifact['artifact_id']}"
-    reference = client.json("GET", path, None, attempt_token=claim["attempt_token"])
-    destination.write_bytes(_fetch_object(reference["download_url"]))
-    return validate_bundle(destination)
+    with _stage("download"):
+        reference = client.json("GET", path, None, attempt_token=claim["attempt_token"])
+        destination.write_bytes(_fetch_object(reference["download_url"]))
+        return validate_bundle(destination)
 
 
 def _validate(client: WorkerClient, claim: dict[str, Any], root: Path) -> dict[str, Any]:
@@ -259,21 +301,22 @@ def _upload(client: WorkerClient, claim: dict[str, Any], kind: str, data: bytes,
     digest = hashlib.sha256(data).hexdigest()
     job = claim["job_id"]
     attempt = claim["attempt_number"]
-    grant = client.json(
-        "POST",
-        f"/internal/v1/jobs/{job}/attempts/{attempt}/artifacts",
-        {"protocol_version": 1, "attempt_number": attempt, "kind": kind, "media_type": media_type, "digest": digest, "size": len(data)},
-        attempt_token=claim["attempt_token"],
-    )
-    return {
-        "artifact_id": str(uuid.uuid4()),
-        "kind": kind,
-        "media_type": media_type,
-        "object_key": grant["object_key"],
-        "object_version": _store_object(grant, data),
-        "digest": digest,
-        "size": len(data),
-    }
+    with _stage("upload"):
+        grant = client.json(
+            "POST",
+            f"/internal/v1/jobs/{job}/attempts/{attempt}/artifacts",
+            {"protocol_version": 1, "attempt_number": attempt, "kind": kind, "media_type": media_type, "digest": digest, "size": len(data)},
+            attempt_token=claim["attempt_token"],
+        )
+        return {
+            "artifact_id": str(uuid.uuid4()),
+            "kind": kind,
+            "media_type": media_type,
+            "object_key": grant["object_key"],
+            "object_version": _store_object(grant, data),
+            "digest": digest,
+            "size": len(data),
+        }
 
 
 def _reference(identity: dict[str, Any]) -> ArtifactRef:
@@ -336,11 +379,27 @@ def _operation(claim: dict[str, Any]) -> Callable[[WorkerClient, dict[str, Any],
     return handlers[operation]
 
 
-def run_once(client: WorkerClient, notifications: Any = None) -> bool:
+def run_once(client: WorkerClient, notifications: Any = None, telemetry: Telemetry | None = None) -> bool:
     source = notifications if notifications is not None else ControlPlaneNotifications(client)
     delivery = source.next()
     if delivery is None:
         return False
+    recorder = telemetry if telemetry is not None else Telemetry.from_environment()
+    with recorder.span("worker.execute", kind="consumer", parent=delivery.notification.get("traceparent")) as span:
+        client.traceparent = span.traceparent()
+        try:
+            return _attempt(client, delivery, recorder, span)
+        finally:
+            client.traceparent = None
+
+
+def _report(execution: _Execution, outcome: str) -> None:
+    execution.telemetry.job_finished(execution.operation, outcome)
+    for stage, milliseconds in execution.stages.items():
+        execution.telemetry.stage_finished(execution.operation, stage, milliseconds)
+
+
+def _attempt(client: WorkerClient, delivery: Delivery, recorder: Telemetry, span: Span) -> bool:
     try:
         claim = client.json(
             "POST",
@@ -351,6 +410,9 @@ def run_once(client: WorkerClient, notifications: Any = None) -> bool:
         delivery.acknowledge()
         return True
     job, attempt, attempt_token = claim["job_id"], claim["attempt_number"], claim["attempt_token"]
+    span.set(job_id=job, attempt=attempt, operation=claim["operation"])
+    execution = _Execution(recorder, claim["operation"], [span])
+    scope = _execution.set(execution)
     stop = threading.Event()
     thread = threading.Thread(target=_heartbeat, args=(client, job, attempt, attempt_token, stop, delivery), daemon=True)
     thread.start()
@@ -358,42 +420,52 @@ def run_once(client: WorkerClient, notifications: Any = None) -> bool:
         progress_path=f"/internal/v1/jobs/{job}/attempts/{attempt}/progress"
         client.json("PUT",progress_path,{"protocol_version":1,"attempt_number":attempt,"sequence":1,"stage":"downloading","message":"downloading immutable inputs"},attempt_token=attempt_token)
         handler = _operation(claim)
+        transferred = execution.transferred()
+        started = time.perf_counter()
         with tempfile.TemporaryDirectory(prefix="locus-worker-") as temporary:
             stage="validating" if claim["operation"]=="validate" else "analyzing"
             client.json("PUT",progress_path,{"protocol_version":1,"attempt_number":attempt,"sequence":2,"stage":stage,"message":f"{stage} recorded runs"},attempt_token=attempt_token)
             output = handler(client, claim, Path(temporary))
+        # Analysis time is the handler's own work: the transfers it performed
+        # are already attributed to their own stages.
+        elapsed = (time.perf_counter() - started) * 1000
+        execution.stages["analyze"] = max(elapsed - (execution.transferred() - transferred), 0.0)
         if stop.is_set():
             raise LeaseLost("attempt lease was lost before its result could commit")
         artifact_bytes = _canonical(output["envelope"])
         client.json("PUT",progress_path,{"protocol_version":1,"attempt_number":attempt,"sequence":3,"stage":"uploading","message":"uploading immutable results"},attempt_token=attempt_token)
         identity = _upload(client,claim,output["kind"],artifact_bytes,"application/json")
         client.json("PUT",progress_path,{"protocol_version":1,"attempt_number":attempt,"sequence":4,"stage":"committing","message":"committing authoritative result"},attempt_token=attempt_token)
-        client.json(
-            "POST",
-            f"/internal/v1/jobs/{job}/attempts/{attempt}/complete",
-            {
-                **identity,
-                "schema_name": "result-envelope",
-                "schema_version": 1,
-                "logical_run_digest": output["logical_run_digest"],
-                "event_count": output["event_count"],
-                "bundle_digest": output["bundle_digest"],
-                "bundle_format_version": output["bundle_format_version"],
-                "cassette_format_version": output["cassette_format_version"],
-                "event_schema_version": output["event_schema_version"],
-                "companions": output["companions"],
-            },
-            attempt_token=attempt_token,
-        )
+        with _stage("commit"):
+            client.json(
+                "POST",
+                f"/internal/v1/jobs/{job}/attempts/{attempt}/complete",
+                {
+                    **identity,
+                    "schema_name": "result-envelope",
+                    "schema_version": 1,
+                    "logical_run_digest": output["logical_run_digest"],
+                    "event_count": output["event_count"],
+                    "bundle_digest": output["bundle_digest"],
+                    "bundle_format_version": output["bundle_format_version"],
+                    "cassette_format_version": output["cassette_format_version"],
+                    "event_schema_version": output["event_schema_version"],
+                    "companions": output["companions"],
+                },
+                attempt_token=attempt_token,
+            )
         delivery.acknowledge()
+        _report(execution, "succeeded")
         return True
     except LeaseLost:
         # A superseded attempt leaves the notification for redelivery rather
         # than deleting work the current attempt may still need.
         log.warning("job %s attempt %d abandoned: lease is no longer current", job, attempt)
+        _report(execution, "fenced")
         return True
     except UnsupportedAnalysis:
         log.warning("job %s attempt %d rejected: unsupported analysis", job, attempt)
+        _report(execution, "refused")
         client.json(
             "POST",
             f"/internal/v1/jobs/{job}/attempts/{attempt}/fail",
@@ -403,6 +475,7 @@ def run_once(client: WorkerClient, notifications: Any = None) -> bool:
         delivery.acknowledge()
         return True
     except ValueError:
+        _report(execution, "failed")
         client.json(
             "POST",
             f"/internal/v1/jobs/{job}/attempts/{attempt}/fail",
@@ -412,6 +485,7 @@ def run_once(client: WorkerClient, notifications: Any = None) -> bool:
         delivery.acknowledge()
         return True
     except Exception:
+        _report(execution, "failed")
         client.json(
             "POST",
             f"/internal/v1/jobs/{job}/attempts/{attempt}/fail",
@@ -421,6 +495,7 @@ def run_once(client: WorkerClient, notifications: Any = None) -> bool:
         delivery.acknowledge()
         return True
     finally:
+        _execution.reset(scope)
         stop.set()
         thread.join(timeout=1)
 
@@ -453,9 +528,10 @@ def main() -> None:
         client.worker_id = _resolve_identity(client)
     queue_url = os.environ.get("LOCUS_JOB_QUEUE_URL", "")
     notifications: Any = QueueNotifications(queue_url) if queue_url else ControlPlaneNotifications(client)
+    telemetry = Telemetry.from_environment()
     try:
         while True:
-            if not run_once(client, notifications):
+            if not run_once(client, notifications, telemetry):
                 time.sleep(1)
     except KeyboardInterrupt:
         return

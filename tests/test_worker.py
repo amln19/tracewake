@@ -210,3 +210,115 @@ def test_obsolete_notification_is_acknowledged() -> None:
     client = Obsolete(b"")
     assert run_once(client)
     assert client.acked
+
+
+class Validating(FakeClient):
+    """Answers a complete validation attempt from memory."""
+
+    traces: list[str | None] = []
+
+    def json(self, method: str, path: str, value: Any = None, **kwargs):  # type: ignore[no-untyped-def]
+        self.traces.append(self.traceparent)
+        if path == "/internal/v1/claims":
+            return claim_for("validate")
+        if path.endswith("/complete"):
+            self.completed = value
+            return {"protocol_version": 1, "status": "succeeded"}
+        return super().json(method, path, value, **kwargs)
+
+
+def run_traced(bundle: bytes, traceparent: str | None) -> tuple[Validating, list[dict[str, Any]]]:
+    import io
+
+    from locus.telemetry import Telemetry
+
+    notification: dict[str, Any] = {"protocol_version": 1, "job_id": "j", "job_version": 1, "operation": "validate"}
+    if traceparent is not None:
+        notification["traceparent"] = traceparent
+    stream = io.StringIO()
+    client = Validating(bundle)
+    client.traces = []
+    delivery = worker.Delivery(notification=notification, acknowledge=lambda: None, extend_visibility=lambda _s: None)
+    source = type("Source", (), {"next": lambda _self: delivery})()
+    assert run_once(client, source, Telemetry(stream=stream, environment="test"))
+    return client, [json.loads(line) for line in stream.getvalue().splitlines() if line]
+
+
+def test_an_attempt_traces_its_stages_within_the_job_trace(memory_objects: dict[str, bytes]) -> None:
+    bundle = BUNDLE.read_bytes()
+    memory_objects["memory:input"] = bundle
+    trace = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+    client, emitted = run_traced(bundle, trace)
+    assert client.completed is not None
+    spans = [record for record in emitted if record["telemetry"] == "span"]
+    assert {span["name"] for span in spans} == {
+        "worker.execute",
+        "worker.download",
+        "worker.upload",
+        "worker.commit",
+    }
+    assert {span["trace_id"] for span in spans} == {"4bf92f3577b34da6a3ce929d0e0e4736"}
+    execute = next(span for span in spans if span["name"] == "worker.execute")
+    assert execute["parent_span_id"] == "00f067aa0ba902b7"
+    assert execute["attributes"]["operation"] == "validate"
+    for span in spans:
+        if span["name"] != "worker.execute":
+            assert span["parent_span_id"] == execute["span_id"]
+    # Requests made during the attempt carry it, so the control plane's own
+    # spans belong to the same trace.
+    assert set(client.traces) == {f"00-{execute['trace_id']}-{execute['span_id']}-01"}
+
+
+def test_an_attempt_reports_bounded_stage_metrics(memory_objects: dict[str, bytes]) -> None:
+    bundle = BUNDLE.read_bytes()
+    memory_objects["memory:input"] = bundle
+    _, emitted = run_traced(bundle, None)
+    metrics = {}
+    for record in emitted:
+        if record["telemetry"] != "metric":
+            continue
+        for directive in record["_aws"]["CloudWatchMetrics"]:
+            for definition in directive["Metrics"]:
+                metrics.setdefault(definition["Name"], []).append(record)
+    assert metrics["WorkerJobs"][0]["Outcome"] == "succeeded"
+    assert metrics["WorkerJobs"][0]["Operation"] == "validate"
+    stages = {record["Stage"] for record in metrics["WorkerStageMillis"]}
+    assert stages == {"download", "analyze", "upload", "commit"}
+    assert all(record["WorkerStageMillis"] >= 0 for record in metrics["WorkerStageMillis"])
+
+
+def test_an_untraced_notification_still_produces_one_trace(memory_objects: dict[str, bytes]) -> None:
+    bundle = BUNDLE.read_bytes()
+    memory_objects["memory:input"] = bundle
+    _, emitted = run_traced(bundle, None)
+    traces = {record["trace_id"] for record in emitted if record["telemetry"] == "span"}
+    assert len(traces) == 1
+
+
+def test_requests_carry_the_attempt_trace_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    import urllib.request
+
+    seen: dict[str, str] = {}
+
+    class Response:
+        status = 204
+        headers: dict[str, str] = {}
+
+        def read(self) -> bytes:
+            return b""
+
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    def urlopen(request: Any, timeout: int = 0) -> Response:
+        seen.update(request.headers)
+        return Response()
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    client = WorkerClient("http://worker.invalid", "worker", "token")
+    client.traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+    client.request("GET", "/internal/v1/identity")
+    assert seen["Traceparent"] == client.traceparent
