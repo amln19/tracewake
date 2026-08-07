@@ -3,9 +3,11 @@ package workerapi_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -183,6 +185,120 @@ func objectVersion(t *testing.T, response *http.Response) string {
 		t.Fatal("object store reported no immutable version")
 	}
 	return version
+}
+
+// declare asks for an attempt-scoped object key the way a worker does.
+func (d *deployment) declare(t *testing.T, jobID, kind, mediaType string, body []byte, headers map[string]string) (int, map[string]any) {
+	t.Helper()
+	return d.call(t, "POST", d.private.URL+"/internal/v1/jobs/"+jobID+"/attempts/1/artifacts", d.workerToken,
+		map[string]any{"protocol_version": 1, "attempt_number": 1, "kind": kind, "media_type": mediaType, "digest": hexDigest(body), "size": len(body)}, headers)
+}
+
+func TestSingleRunAnalysisCommitsItsResultAndCompanion(t *testing.T) {
+	deployed := newDeployment(t, false)
+	ctx := context.Background()
+	run := newID(t)
+	_, err := deployed.pool.Exec(ctx, `INSERT INTO runs(id,workspace_id,state,declared_bundle_format,declared_bundle_digest,declared_bundle_size,bundle_object_key,bundle_object_version,validated_bundle_format,cassette_format_version,event_schema_version,logical_run_digest,event_count,ready_at)
+        VALUES($1,$2,'ready',1,$3,1,$4,'version-1',1,1,3,$5,1,transaction_timestamp())`,
+		run, deployed.workspace, hexDigest([]byte("bundle")), "workspaces/"+deployed.workspace+"/runs/"+run+"/bundle.tar", hexDigest([]byte("logical")))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	key := map[string]string{"Idempotency-Key": "otlp-" + run}
+	status, created := deployed.call(t, "POST", deployed.public.URL+"/v1/jobs", deployed.token, map[string]any{"operation": "otlp", "run_ids": []string{run}}, key)
+	if status != http.StatusCreated {
+		t.Fatalf("job creation status=%d body=%v", status, created)
+	}
+	jobID := created["job_id"].(string)
+	status, replayed := deployed.call(t, "POST", deployed.public.URL+"/v1/jobs", deployed.token, map[string]any{"operation": "otlp", "run_ids": []string{run}}, key)
+	if status != http.StatusOK || replayed["job_id"] != jobID {
+		t.Fatalf("idempotent replay status=%d body=%v", status, replayed)
+	}
+
+	status, claim := deployed.call(t, "POST", deployed.private.URL+"/internal/v1/claims", deployed.workerToken,
+		map[string]any{"protocol_version": 1, "worker_id": deployed.workerID, "notification": map[string]any{"protocol_version": 1, "job_id": jobID, "job_version": 1, "operation": "otlp"}}, nil)
+	if status != http.StatusCreated {
+		t.Fatalf("claim status=%d body=%v", status, claim)
+	}
+	attemptToken := map[string]string{"Locus-Attempt-Token": claim["attempt_token"].(string)}
+
+	oversized, _ := deployed.call(t, "POST", deployed.private.URL+"/internal/v1/jobs/"+jobID+"/attempts/1/artifacts", deployed.workerToken,
+		map[string]any{"protocol_version": 1, "attempt_number": 1, "kind": "otlp_json", "media_type": "application/json", "digest": hexDigest([]byte("large")), "size": artifacts.MaxResultSize + 1}, attemptToken)
+	if oversized != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized declaration status=%d", oversized)
+	}
+
+	spans := []byte(`{"resourceSpans":[]}`)
+	envelope := []byte(`{"protocol_version":1,"status":"succeeded"}`)
+	uploaded := map[string]map[string]any{}
+	for kind, body := range map[string][]byte{"otlp_json": spans, "otlp_result_json": envelope} {
+		status, declaration := deployed.declare(t, jobID, kind, "application/json", body, attemptToken)
+		if status != http.StatusCreated {
+			t.Fatalf("%s declaration status=%d body=%v", kind, status, declaration)
+		}
+		headers, _ := declaration["upload_headers"].(map[string]any)
+		stored := transfer(t, declaration["upload_method"].(string), declaration["upload_url"].(string), headers, body)
+		stored.Body.Close()
+		if stored.StatusCode/100 != 2 {
+			t.Fatalf("%s upload status=%d", kind, stored.StatusCode)
+		}
+		uploaded[kind] = map[string]any{"object_key": declaration["object_key"], "object_version": objectVersion(t, stored), "digest": hexDigest(body), "size": len(body)}
+	}
+
+	completion := map[string]any{
+		"artifact_id": "", "kind": "otlp_result_json", "object_key": uploaded["otlp_result_json"]["object_key"],
+		"object_version": uploaded["otlp_result_json"]["object_version"], "digest": hexDigest(envelope),
+		"media_type": "application/json", "schema_name": "result-envelope", "size": len(envelope), "schema_version": 1,
+		"logical_run_digest": "", "bundle_digest": "", "event_count": 0,
+		"bundle_format_version": 0, "cassette_format_version": 0, "event_schema_version": 0,
+		"companions": []any{map[string]any{
+			"artifact_id": newID(t), "kind": "otlp_json", "object_key": uploaded["otlp_json"]["object_key"],
+			"object_version": uploaded["otlp_json"]["object_version"], "digest": hexDigest(spans),
+			"size": len(spans), "media_type": "application/json", "schema_name": nil, "schema_version": nil,
+		}},
+	}
+	status, completed := deployed.call(t, "POST", deployed.private.URL+"/internal/v1/jobs/"+jobID+"/attempts/1/complete", deployed.workerToken, completion, attemptToken)
+	if status != http.StatusOK {
+		t.Fatalf("completion status=%d body=%v", status, completed)
+	}
+
+	status, view := deployed.call(t, "GET", deployed.public.URL+"/v1/jobs/"+jobID, deployed.token, nil, nil)
+	if status != http.StatusOK || view["state"] != "succeeded" {
+		t.Fatalf("job view status=%d state=%v", status, view["state"])
+	}
+	registered := map[string]string{}
+	for _, value := range view["artifacts"].([]any) {
+		artifact := value.(map[string]any)
+		registered[artifact["kind"].(string)] = artifact["artifact_id"].(string)
+	}
+	if len(registered) != 2 || registered["otlp_result_json"] == "" || registered["otlp_json"] == "" {
+		t.Fatalf("registered artifacts=%v", registered)
+	}
+
+	// The companion has to come back byte for byte, or the recorded digest
+	// proves nothing about what a tenant can download.
+	status, download := deployed.call(t, "GET", deployed.public.URL+"/v1/artifacts/"+registered["otlp_json"]+"/download", deployed.token, nil, nil)
+	if status != http.StatusOK {
+		t.Fatalf("download status=%d", status)
+	}
+	fetched := transfer(t, "GET", download["download_url"].(string), nil, nil)
+	body, _ := io.ReadAll(fetched.Body)
+	fetched.Body.Close()
+	if !bytes.Equal(body, spans) || hexDigest(body) != download["digest"] {
+		t.Fatalf("downloaded %q with digest %v", body, download["digest"])
+	}
+}
+
+func newID(t *testing.T) string {
+	t.Helper()
+	var value [16]byte
+	if _, err := rand.Read(value[:]); err != nil {
+		t.Fatal(err)
+	}
+	value[6] = value[6]&0x0f | 0x40
+	value[8] = value[8]&0x3f | 0x80
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", value[:4], value[4:6], value[6:8], value[8:10], value[10:])
 }
 
 func TestHostedRoundTripCommitsExactArtifactIdentity(t *testing.T) {

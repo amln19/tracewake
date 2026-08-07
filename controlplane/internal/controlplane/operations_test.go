@@ -250,6 +250,69 @@ func TestEveryOperationRetriesFencesAndCommitsOneResult(t *testing.T) {
 	}
 }
 
+func TestRepeatedRequestsProduceOneJobPerOperation(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	for _, operation := range operations() {
+		t.Run(operation.name, func(t *testing.T) {
+			if operation.name == "validate" {
+				// Ingestion has no public request; the upload that queues it is
+				// what a client repeats.
+				bundleDigest := digest("repeat-validate")
+				upload, err := f.service.CreateUpload(ctx, f.principal, bundleDigest, 1)
+				if err != nil {
+					t.Fatal(err)
+				}
+				version := digest("repeat-validate-version")
+				if err := f.service.CompleteUpload(ctx, f.principal, upload.RunID, version, bundleDigest, 1); err != nil {
+					t.Fatal(err)
+				}
+				// A repeat finds the recorded object identity instead of
+				// queueing ingestion again.
+				recorded, err := f.service.UploadFor(ctx, f.principal, upload.RunID)
+				if err != nil || recorded.State == "pending" || recorded.Version == nil || *recorded.Version != version {
+					t.Fatalf("recorded upload=%#v err=%v", recorded, err)
+				}
+				var jobs int
+				if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM jobs j JOIN job_inputs i ON i.id=j.input_id WHERE i.run_a_id=$1`, upload.RunID).Scan(&jobs); err != nil {
+					t.Fatal(err)
+				}
+				if jobs != 1 {
+					t.Fatalf("validation jobs=%d", jobs)
+				}
+				if err := f.service.CompleteUpload(ctx, f.principal, upload.RunID, "other-version", bundleDigest, 1); !errors.Is(err, controlplane.ErrConflict) {
+					t.Fatalf("changed object identity: %v", err)
+				}
+				return
+			}
+			runs := []string{f.readyRun(t)}
+			request := controlplane.JobRequest{Operation: operation.name, RunIDs: runs}
+			if operation.name == "diff" {
+				profile := "lexical-v1"
+				request.RunIDs = append(request.RunIDs, f.readyRun(t))
+				request.Profile = &profile
+			}
+			key := "idempotent-" + operation.name
+			first, reused, err := f.service.CreateJob(ctx, f.principal, key, request)
+			if err != nil || reused {
+				t.Fatalf("create: %v reused=%v", err, reused)
+			}
+			second, reused, err := f.service.CreateJob(ctx, f.principal, key, request)
+			if err != nil || !reused || second.ID != first.ID {
+				t.Fatalf("replay: %#v reused=%v err=%v", second, reused, err)
+			}
+			changed := request
+			changed.RunIDs = []string{f.readyRun(t)}
+			if operation.name == "diff" {
+				changed.RunIDs = append(changed.RunIDs, request.RunIDs[0])
+			}
+			if _, _, err := f.service.CreateJob(ctx, f.principal, key, changed); !errors.Is(err, controlplane.ErrIdempotencyConflict) {
+				t.Fatalf("changed reuse: %v", err)
+			}
+		})
+	}
+}
+
 func TestEveryOperationResolvesCancellationAtTheDatabase(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
