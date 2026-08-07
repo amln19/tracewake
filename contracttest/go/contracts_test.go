@@ -144,6 +144,52 @@ type validationResult struct {
 	Provenance       resultProvenance `json:"provenance"`
 }
 
+type artifactRef struct {
+	ArtifactID    string  `json:"artifact_id"`
+	ObjectKey     string  `json:"object_key"`
+	ObjectVersion string  `json:"object_version"`
+	Digest        string  `json:"digest"`
+	Size          int64   `json:"size"`
+	MediaType     string  `json:"media_type"`
+	SchemaName    *string `json:"schema_name"`
+	SchemaVersion *int    `json:"schema_version"`
+}
+
+type alignmentColumn struct {
+	GoodIndex  *int     `json:"good_index"`
+	BadIndex   *int     `json:"bad_index"`
+	Similarity *float64 `json:"similarity"`
+}
+
+type diffResult struct {
+	Kind          string            `json:"kind"`
+	SchemaVersion int               `json:"schema_version"`
+	Profile       string            `json:"profile"`
+	Score         float64           `json:"score"`
+	Divergence    *int              `json:"divergence"`
+	GoodStepCount int               `json:"good_step_count"`
+	BadStepCount  int               `json:"bad_step_count"`
+	Alignment     []alignmentColumn `json:"alignment"`
+	Provenance    resultProvenance  `json:"provenance"`
+	HTML          artifactRef       `json:"html"`
+}
+
+type otlpResult struct {
+	Kind          string           `json:"kind"`
+	SchemaVersion int              `json:"schema_version"`
+	SpanCount     int              `json:"span_count"`
+	Provenance    resultProvenance `json:"provenance"`
+	Artifact      artifactRef      `json:"artifact"`
+}
+
+type pprofResult struct {
+	Kind          string           `json:"kind"`
+	SchemaVersion int              `json:"schema_version"`
+	SampleCount   int              `json:"sample_count"`
+	Provenance    resultProvenance `json:"provenance"`
+	Artifact      artifactRef      `json:"artifact"`
+}
+
 type bundleEntry struct {
 	Path   string `json:"path"`
 	Digest string `json:"digest"`
@@ -321,6 +367,74 @@ func validRunProvenance(value runProvenance) bool {
 		value.BundleFormatVersion >= 1
 }
 
+func validProvenance(value resultProvenance, inputs int) bool {
+	if len(value.Inputs) != inputs || len(value.AnalysisProfile) < 1 || len(value.AnalysisProfile) > 64 ||
+		len(value.LocusVersion) < 1 || len(value.WorkerBuild) < 1 || len(value.ProducedAt) < 1 {
+		return false
+	}
+	for _, input := range value.Inputs {
+		if !validRunProvenance(input) {
+			return false
+		}
+	}
+	return true
+}
+
+func validArtifactRef(value artifactRef) bool {
+	return uuidPattern.MatchString(value.ArtifactID) && len(value.ObjectKey) >= 1 && len(value.ObjectKey) <= 512 &&
+		len(value.ObjectVersion) >= 1 && digestPattern.MatchString(value.Digest) && value.Size >= 0 &&
+		len(value.MediaType) >= 1 && len(value.MediaType) <= 128
+}
+
+func validateValidationResult(data []byte) string {
+	var result validationResult
+	if decodeStrict(data, &result) != nil || result.SchemaVersion != 1 || !result.Valid ||
+		!uuidPattern.MatchString(result.RunID) || result.EventCount < 0 || result.EventCount > maxEvents ||
+		!digestPattern.MatchString(result.LogicalRunDigest) || !digestPattern.MatchString(result.BundleDigest) ||
+		!validProvenance(result.Provenance, 1) {
+		return "invalid_message"
+	}
+	return ""
+}
+
+func validateDiffResult(data []byte) string {
+	var result diffResult
+	if decodeStrict(data, &result) != nil || result.SchemaVersion != 1 || result.Profile != "lexical-v1" ||
+		result.GoodStepCount < 0 || result.BadStepCount < 1 || !validProvenance(result.Provenance, 2) ||
+		!validArtifactRef(result.HTML) {
+		return "invalid_message"
+	}
+	if result.Divergence != nil && *result.Divergence < 1 {
+		return "invalid_message"
+	}
+	for _, column := range result.Alignment {
+		if column.GoodIndex == nil && column.BadIndex == nil {
+			return "invalid_message"
+		}
+		if column.Similarity != nil && (*column.Similarity < 0 || *column.Similarity > 1) {
+			return "invalid_message"
+		}
+	}
+	return ""
+}
+
+func validateArtifactResult(data []byte, kind string) string {
+	if kind == "otlp" {
+		var result otlpResult
+		if decodeStrict(data, &result) != nil || result.SchemaVersion != 1 || result.SpanCount < 1 ||
+			!validProvenance(result.Provenance, 1) || !validArtifactRef(result.Artifact) {
+			return "invalid_message"
+		}
+		return ""
+	}
+	var result pprofResult
+	if decodeStrict(data, &result) != nil || result.SchemaVersion != 1 || result.SampleCount < 0 ||
+		!validProvenance(result.Provenance, 1) || !validArtifactRef(result.Artifact) {
+		return "invalid_message"
+	}
+	return ""
+}
+
 func validateResult(data []byte) string {
 	var envelope resultEnvelope
 	if decodeStrict(data, &envelope) != nil || envelope.ProtocolVersion != 1 {
@@ -331,20 +445,22 @@ func validateResult(data []byte) string {
 			(len(envelope.Failure) != 0 && string(envelope.Failure) != "null") {
 			return "invalid_message"
 		}
-		var result validationResult
-		if decodeStrict(envelope.Result, &result) != nil || result.Kind != "validation" ||
-			result.SchemaVersion != 1 || !result.Valid || !uuidPattern.MatchString(result.RunID) ||
-			result.EventCount < 0 || result.EventCount > maxEvents ||
-			!digestPattern.MatchString(result.LogicalRunDigest) || !digestPattern.MatchString(result.BundleDigest) ||
-			len(result.Provenance.Inputs) < 1 || len(result.Provenance.Inputs) > 2 {
+		var kind struct {
+			Kind string `json:"kind"`
+		}
+		if json.Unmarshal(envelope.Result, &kind) != nil {
 			return "invalid_message"
 		}
-		for _, input := range result.Provenance.Inputs {
-			if !validRunProvenance(input) {
-				return "invalid_message"
-			}
+		switch kind.Kind {
+		case "validation":
+			return validateValidationResult(envelope.Result)
+		case "diff":
+			return validateDiffResult(envelope.Result)
+		case "otlp", "pprof":
+			return validateArtifactResult(envelope.Result, kind.Kind)
+		default:
+			return "invalid_message"
 		}
-		return ""
 	}
 	if envelope.Status == "failed" {
 		if len(envelope.Failure) == 0 || string(envelope.Failure) == "null" ||

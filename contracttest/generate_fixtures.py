@@ -10,12 +10,16 @@ from pathlib import Path
 from locus.bundle import build_bundle
 from locus.cassette import CassetteHeader, _line
 from locus.contracts import (
+    AlignmentColumn,
     ArtifactRef,
     Claim,
     ClaimRequest,
+    DiffResult,
     Failure,
     FailureCode,
     JobNotification,
+    OtlpResult,
+    PprofResult,
     Progress,
     PublicJobRequest,
     ResultEnvelope,
@@ -31,6 +35,7 @@ JOB_ID = "018f7f28-df62-7bc4-9f45-6e6c32a19485"
 WORKER_ID = "018f7f28-df62-7bc4-9f45-6e6c32a19486"
 ARTIFACT_ID = "018f7f28-df62-7bc4-9f45-6e6c32a19487"
 SECOND_RUN_ID = "018f7f28-df62-7bc4-9f45-6e6c32a19488"
+COMPANION_ID = "018f7f28-df62-7bc4-9f45-6e6c32a19489"
 NOW = "2026-08-06T12:00:00Z"
 
 
@@ -42,21 +47,26 @@ def _json(value: object) -> bytes:
     ).encode("utf-8")
 
 
-def _provenance(bundle_digest: str, logical_digest: str) -> ResultProvenance:
+def _run_provenance(run_id: str, bundle_digest: str, logical_digest: str) -> RunProvenance:
+    return RunProvenance(
+        run_id=run_id,
+        logical_run_digest=logical_digest,
+        bundle_digest=bundle_digest,
+        bundle_object_key=f"workspaces/w/runs/{run_id}/bundle",
+        bundle_object_version="version-1",
+        event_schema_version=3,
+        cassette_format_version=1,
+        bundle_format_version=1,
+    )
+
+
+def _provenance(
+    bundle_digest: str, logical_digest: str, *, profile: str = "bundle-validation-v1", inputs: int = 1
+) -> ResultProvenance:
+    identities = [RUN_ID, SECOND_RUN_ID][:inputs]
     return ResultProvenance(
-        inputs=[
-            RunProvenance(
-                run_id=RUN_ID,
-                logical_run_digest=logical_digest,
-                bundle_digest=bundle_digest,
-                bundle_object_key=f"workspaces/w/runs/{RUN_ID}/bundle",
-                bundle_object_version="version-1",
-                event_schema_version=3,
-                cassette_format_version=1,
-                bundle_format_version=1,
-            )
-        ],
-        analysis_profile="bundle-validation-v1",
+        inputs=[_run_provenance(run, bundle_digest, logical_digest) for run in identities],
+        analysis_profile=profile,
         locus_version="0.2.0",
         worker_build="fixture-build",
         produced_at=NOW,
@@ -114,6 +124,17 @@ def fixture_bytes() -> tuple[dict[str, bytes], list[dict[str, object]]]:
         schema_name="validation-result",
         schema_version=1,
     )
+
+    def companion(kind: str, media_type: str) -> ArtifactRef:
+        return ArtifactRef(
+            artifact_id=COMPANION_ID,
+            object_key=f"workspaces/w/jobs/{JOB_ID}/attempts/1/{kind}",
+            object_version="version-1",
+            digest="5" * 64,
+            size=4096,
+            media_type=media_type,
+        )
+
     notification = JobNotification(
         protocol_version=1,
         job_id=JOB_ID,
@@ -209,6 +230,65 @@ def fixture_bytes() -> tuple[dict[str, bytes], list[dict[str, object]]]:
                 )
             ),
         ),
+        "accepted/result-envelope-diff.json": (
+            "result-envelope",
+            _json(
+                ResultEnvelope(
+                    protocol_version=1,
+                    status="succeeded",
+                    result=DiffResult(
+                        schema_version=1,
+                        profile="lexical-v1",
+                        score=0.75,
+                        divergence=2,
+                        good_step_count=3,
+                        bad_step_count=3,
+                        alignment=[
+                            AlignmentColumn(good_index=0, bad_index=0, similarity=1.0),
+                            AlignmentColumn(good_index=1, bad_index=None, similarity=None),
+                        ],
+                        provenance=_provenance(
+                            bundle_digest, logical_digest, profile="lexical-v1", inputs=2
+                        ),
+                        html=companion("diff_html", "text/html; charset=utf-8"),
+                    ),
+                )
+            ),
+        ),
+        "accepted/result-envelope-otlp.json": (
+            "result-envelope",
+            _json(
+                ResultEnvelope(
+                    protocol_version=1,
+                    status="succeeded",
+                    result=OtlpResult(
+                        schema_version=1,
+                        span_count=4,
+                        provenance=_provenance(
+                            bundle_digest, logical_digest, profile="otlp-spans-v1"
+                        ),
+                        artifact=companion("otlp_json", "application/json"),
+                    ),
+                )
+            ),
+        ),
+        "accepted/result-envelope-pprof.json": (
+            "result-envelope",
+            _json(
+                ResultEnvelope(
+                    protocol_version=1,
+                    status="succeeded",
+                    result=PprofResult(
+                        schema_version=1,
+                        sample_count=6,
+                        provenance=_provenance(
+                            bundle_digest, logical_digest, profile="pprof-tokens-v1"
+                        ),
+                        artifact=companion("pprof", "application/octet-stream"),
+                    ),
+                )
+            ),
+        ),
         "accepted/upload-declaration.json": (
             "upload-declaration",
             _json(
@@ -287,6 +367,45 @@ def fixture_bytes() -> tuple[dict[str, bytes], list[dict[str, object]]]:
                         "code": "invalid_bundle",
                         "message": "conflict",
                         "retryable": False,
+                    },
+                }
+            ),
+        ),
+        "rejected/result-unknown-kind.json": (
+            "result-envelope",
+            "invalid_message",
+            _json(
+                {
+                    "protocol_version": 1,
+                    "status": "succeeded",
+                    "result": {
+                        "kind": "flamegraph",
+                        "schema_version": 1,
+                        "sample_count": 6,
+                        "provenance": _provenance(
+                            bundle_digest, logical_digest, profile="pprof-tokens-v1"
+                        ).model_dump(mode="json"),
+                        "artifact": companion("pprof", "application/octet-stream").model_dump(
+                            mode="json"
+                        ),
+                    },
+                }
+            ),
+        ),
+        "rejected/result-otlp-without-artifact.json": (
+            "result-envelope",
+            "invalid_message",
+            _json(
+                {
+                    "protocol_version": 1,
+                    "status": "succeeded",
+                    "result": {
+                        "kind": "otlp",
+                        "schema_version": 1,
+                        "span_count": 4,
+                        "provenance": _provenance(
+                            bundle_digest, logical_digest, profile="otlp-spans-v1"
+                        ).model_dump(mode="json"),
                     },
                 }
             ),
