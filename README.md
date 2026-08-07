@@ -194,6 +194,31 @@ locus remote upload run.bundle.tar
 locus remote runs
 ```
 
+A `ready` run can then be analyzed. `diff` compares two runs with `lexical-v1`
+and produces structured JSON plus a self-contained HTML companion; `otlp` and
+`pprof` each turn one run into the same OTLP/JSON spans and gzipped token
+profile the local commands export:
+
+```sh
+locus remote analyze pprof <run-id> --idempotency-key spend-1
+locus remote job <job-id>
+locus remote artifacts <job-id>
+locus remote download <artifact-id> -o tokens.pb.gz
+```
+
+Repeating a request with the same idempotency key returns the original job
+rather than analyzing again. Every result artifact is immutable, scoped to the
+attempt that produced it, and downloaded through a short-lived URL; `download`
+refuses bytes that disagree with the digest and size the control plane
+recorded. The authoritative result of each job is a canonical result envelope
+naming its inputs' logical and bundle digests, object versions, schema
+versions, analysis profile, Locus version, worker build, and the exact
+companion artifact it produced.
+
+Hosted analyses read the bundle, not a live session, so a run's name, task, and
+session start are not part of them. Only `lexical-v1` is available; a request
+naming any other profile is rejected rather than silently substituted.
+
 Build a bundle from an exported cassette with
 `locus.bundle.build_bundle(cassette, destination)`. Remote commands are
 additive: recording, replay, verification, import, export, and comparison keep

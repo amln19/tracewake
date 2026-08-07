@@ -108,6 +108,34 @@ def job(job_id: str, url: URL = "http://127.0.0.1:8080", token: Token = "") -> N
 
 
 @app.command()
+def artifacts(job_id: str, url: URL = "http://127.0.0.1:8080", token: Token = "") -> None:
+    """List the artifacts a finished job committed."""
+    for artifact in _request("GET", url, token, f"/v1/jobs/{job_id}")["artifacts"]:
+        typer.echo(f"{artifact['artifact_id']}  {artifact['kind']:<17}  {artifact['size']:>10}  {artifact['digest'][:12]}")
+
+
+@app.command()
+def download(
+    artifact_id: str,
+    out: Annotated[Path, typer.Option("--out", "-o", help="Where to write the artifact.")],
+    url: URL = "http://127.0.0.1:8080",
+    token: Token = "",
+) -> None:
+    """Download one artifact and prove its bytes match the recorded identity."""
+    reference = _request("GET", url, token, f"/v1/artifacts/{artifact_id}/download")
+    with urllib.request.urlopen(urllib.request.Request(reference["download_url"], method="GET"), timeout=300) as response:
+        data = response.read()
+    digest = hashlib.sha256(data).hexdigest()
+    if digest != reference["digest"] or len(data) != reference["size"]:
+        raise typer.BadParameter(
+            f"artifact {artifact_id} is {len(data)} bytes with digest {digest[:12]}; "
+            f"the control plane recorded {reference['size']} bytes with digest {reference['digest'][:12]}"
+        )
+    out.write_bytes(data)
+    typer.echo(f"wrote {out} ({len(data)} bytes, {digest[:12]})")
+
+
+@app.command()
 def cancel(job_id: str, url: URL = "http://127.0.0.1:8080", token: Token = "") -> None:
     """Request cancellation of a remote job."""
     result = _request("POST", url, token, f"/v1/jobs/{job_id}/cancel", {})
