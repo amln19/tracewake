@@ -17,20 +17,29 @@ from pathlib import Path
 from typing import Any
 
 from .align import LexicalEmbedder, diff_runs
-from .bundle import ValidatedBundle, validate_bundle
-from .contracts import AlignmentColumn, ArtifactRef, DiffResult as ContractDiffResult, ResultEnvelope, ResultProvenance, RunProvenance, ValidationResult
-from .events import RunHeader
+from .bundle import ValidatedBundle, bundle_header, validate_bundle
+from .contracts import AlignmentColumn, ArtifactRef, DiffResult as ContractDiffResult, OtlpResult, PprofResult, ResultEnvelope, ResultProvenance, RunProvenance, ValidationResult
+from .otel import encode_spans
+from .pprof import attribute_tokens, build_token_profile, gzip_profile
 from .report import write_report
 
 
 LEASE_SECONDS = 60
 HEARTBEAT_SECONDS = 20
+# One attempt output. Analyses summarise a bundle instead of copying it, so a
+# larger output means a defect rather than a large run.
+MAX_ARTIFACT_BYTES = 64 * 1024 * 1024
+HOSTED_PROFILE = "lexical-v1"
 
 log = logging.getLogger("locus.worker")
 
 
 class LeaseLost(RuntimeError):
     pass
+
+
+class UnsupportedAnalysis(Exception):
+    """A claim names work this worker will not perform under any retry."""
 
 
 @dataclass
@@ -245,6 +254,8 @@ def _provenance(artifact: dict[str, Any], bundle: ValidatedBundle) -> RunProvena
 
 
 def _upload(client: WorkerClient, claim: dict[str, Any], kind: str, data: bytes, media_type: str) -> dict[str, Any]:
+    if len(data) > MAX_ARTIFACT_BYTES:
+        raise ValueError(f"{kind} output is {len(data)} bytes; limit is {MAX_ARTIFACT_BYTES}")
     digest = hashlib.sha256(data).hexdigest()
     job = claim["job_id"]
     attempt = claim["attempt_number"]
@@ -265,24 +276,64 @@ def _upload(client: WorkerClient, claim: dict[str, Any], kind: str, data: bytes,
     }
 
 
-def _header(bundle: ValidatedBundle) -> RunHeader:
-    times=[item.event.meta.recorded_at for item in bundle.events]
-    start=min(times,default=0.0);finish=max(times,default=start)
-    return RunHeader(run_id=bundle.manifest.run_id,name=bundle.manifest.run_id,started_at=start,finished_at=finish,status="ok")
+def _reference(identity: dict[str, Any]) -> ArtifactRef:
+    return ArtifactRef(artifact_id=identity["artifact_id"],object_key=identity["object_key"],object_version=identity["object_version"],digest=identity["digest"],size=identity["size"],media_type=identity["media_type"])
+
+
+def _result_provenance(claim: dict[str, Any], bundles: list[ValidatedBundle], profile: str) -> ResultProvenance:
+    return ResultProvenance(inputs=[_provenance(artifact,bundle) for artifact,bundle in zip(claim["input_artifacts"],bundles,strict=True)],analysis_profile=profile,locus_version=version("locus"),worker_build=os.environ.get("LOCUS_WORKER_BUILD","local"),produced_at=time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()))
+
+
+def _analysis(envelope: ResultEnvelope, kind: str, companion: dict[str, Any]) -> dict[str, Any]:
+    """An analysis commits its result and the artifact that result names.
+
+    Only validation reports run identity, so the fields that make a run usable
+    stay empty here and the control plane leaves the run untouched.
+    """
+    return {"envelope":envelope.model_dump(mode="json"),"kind":kind,"companions":[{**companion,"schema_name":None,"schema_version":None}],"logical_run_digest":"","event_count":0,"bundle_digest":"","bundle_format_version":0,"cassette_format_version":0,"event_schema_version":0}
 
 
 def _diff(client: WorkerClient,claim: dict[str,Any],root: Path) -> dict[str,Any]:
     bundles=[_download_input(client,claim,artifact,root/f"bundle-{index}.tar") for index,artifact in enumerate(claim["input_artifacts"])]
-    result=diff_runs(bundles[0].events,bundles[1].events,embed=LexicalEmbedder(),embedding_model="lexical-v1")
-    html_path=root/"report.html";write_report(html_path,_header(bundles[0]),list(bundles[0].events),_header(bundles[1]),list(bundles[1].events),result,blobs=_BundleBlobs(bundles[0].blobs),blobs_b=_BundleBlobs(bundles[1].blobs))
-    html_identity=_upload(client,claim,"diff_html",html_path.read_bytes(),"text/html; charset=utf-8")
-    html_ref=ArtifactRef(artifact_id=html_identity["artifact_id"],object_key=html_identity["object_key"],object_version=html_identity["object_version"],digest=html_identity["digest"],size=html_identity["size"],media_type=html_identity["media_type"])
-    provenance=ResultProvenance(inputs=[_provenance(artifact,bundle) for artifact,bundle in zip(claim["input_artifacts"],bundles,strict=True)],analysis_profile="lexical-v1",locus_version=version("locus"),worker_build=os.environ.get("LOCUS_WORKER_BUILD","local"),produced_at=time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()))
+    result=diff_runs(bundles[0].events,bundles[1].events,embed=LexicalEmbedder(),embedding_model=HOSTED_PROFILE)
+    html_path=root/"report.html";write_report(html_path,bundle_header(bundles[0]),list(bundles[0].events),bundle_header(bundles[1]),list(bundles[1].events),result,blobs=_BundleBlobs(bundles[0].blobs),blobs_b=_BundleBlobs(bundles[1].blobs))
+    companion=_upload(client,claim,"diff_html",html_path.read_bytes(),"text/html; charset=utf-8")
     columns=[AlignmentColumn(good_index=i,bad_index=j,similarity=result.column_similarity(i,j)) for i,j in result.alignment]
-    semantic=ContractDiffResult(schema_version=1,profile="lexical-v1",score=result.score,divergence=result.divergence,good_step_count=len(result.good_steps),bad_step_count=len(result.bad_steps),alignment=columns,provenance=provenance,html=html_ref)
-    envelope=ResultEnvelope(protocol_version=1,status="succeeded",result=semantic)
-    companion={**html_identity,"schema_name":None,"schema_version":None}
-    return {"envelope":envelope.model_dump(mode="json"),"kind":"diff_json","companions":[companion],"logical_run_digest":"","event_count":0,"bundle_digest":"","bundle_format_version":0,"cassette_format_version":0,"event_schema_version":0}
+    semantic=ContractDiffResult(schema_version=1,profile=HOSTED_PROFILE,score=result.score,divergence=result.divergence,good_step_count=len(result.good_steps),bad_step_count=len(result.bad_steps),alignment=columns,provenance=_result_provenance(claim,bundles,HOSTED_PROFILE),html=_reference(companion))
+    return _analysis(ResultEnvelope(protocol_version=1,status="succeeded",result=semantic),"diff_json",companion)
+
+
+def _otlp(client: WorkerClient,claim: dict[str,Any],root: Path) -> dict[str,Any]:
+    bundle=_download_input(client,claim,claim["input_artifacts"][0],root/"bundle.tar")
+    document,spans=encode_spans(bundle_header(bundle),list(bundle.events))
+    companion=_upload(client,claim,"otlp_json",document,"application/json")
+    semantic=OtlpResult(schema_version=1,span_count=spans,provenance=_result_provenance(claim,[bundle],"otlp-spans-v1"),artifact=_reference(companion))
+    return _analysis(ResultEnvelope(protocol_version=1,status="succeeded",result=semantic),"otlp_result_json",companion)
+
+
+def _pprof(client: WorkerClient,claim: dict[str,Any],root: Path) -> dict[str,Any]:
+    bundle=_download_input(client,claim,claim["input_artifacts"][0],root/"bundle.tar")
+    header=bundle_header(bundle);events=list(bundle.events)
+    profile=gzip_profile(build_token_profile(header,events))
+    companion=_upload(client,claim,"pprof",profile,"application/octet-stream")
+    semantic=PprofResult(schema_version=1,sample_count=len(attribute_tokens(header,events)),provenance=_result_provenance(claim,[bundle],"pprof-tokens-v1"),artifact=_reference(companion))
+    return _analysis(ResultEnvelope(protocol_version=1,status="succeeded",result=semantic),"pprof_result_json",companion)
+
+
+def _operation(claim: dict[str, Any]) -> Callable[[WorkerClient, dict[str, Any], Path], dict[str, Any]]:
+    """Refuse work this worker cannot perform exactly as the job asked.
+
+    A profile the hosted path does not implement — an MLX embedder, say — is a
+    permanent mismatch, not a dependency that a retry could satisfy.
+    """
+    operation = claim["operation"]
+    expected = HOSTED_PROFILE if operation == "diff" else None
+    if claim.get("profile") != expected:
+        raise UnsupportedAnalysis(f"{operation} does not support the requested analysis profile")
+    handlers = {"validate": _validate, "diff": _diff, "otlp": _otlp, "pprof": _pprof}
+    if operation not in handlers:
+        raise UnsupportedAnalysis(f"unsupported worker operation {operation}")
+    return handlers[operation]
 
 
 def run_once(client: WorkerClient, notifications: Any = None) -> bool:
@@ -306,17 +357,13 @@ def run_once(client: WorkerClient, notifications: Any = None) -> bool:
     try:
         progress_path=f"/internal/v1/jobs/{job}/attempts/{attempt}/progress"
         client.json("PUT",progress_path,{"protocol_version":1,"attempt_number":attempt,"sequence":1,"stage":"downloading","message":"downloading immutable inputs"},attempt_token=attempt_token)
+        handler = _operation(claim)
         with tempfile.TemporaryDirectory(prefix="locus-worker-") as temporary:
             stage="validating" if claim["operation"]=="validate" else "analyzing"
             client.json("PUT",progress_path,{"protocol_version":1,"attempt_number":attempt,"sequence":2,"stage":stage,"message":f"{stage} recorded runs"},attempt_token=attempt_token)
-            if claim["operation"] == "validate":
-                output = _validate(client, claim, Path(temporary))
-            elif claim["operation"] == "diff":
-                output = _diff(client,claim,Path(temporary))
-            else:
-                raise ValueError(f"unsupported local worker operation {claim['operation']}")
+            output = handler(client, claim, Path(temporary))
         if stop.is_set():
-            raise LeaseLost("attempt lease was lost during validation")
+            raise LeaseLost("attempt lease was lost before its result could commit")
         artifact_bytes = _canonical(output["envelope"])
         client.json("PUT",progress_path,{"protocol_version":1,"attempt_number":attempt,"sequence":3,"stage":"uploading","message":"uploading immutable results"},attempt_token=attempt_token)
         identity = _upload(client,claim,output["kind"],artifact_bytes,"application/json")
@@ -344,6 +391,16 @@ def run_once(client: WorkerClient, notifications: Any = None) -> bool:
         # A superseded attempt leaves the notification for redelivery rather
         # than deleting work the current attempt may still need.
         log.warning("job %s attempt %d abandoned: lease is no longer current", job, attempt)
+        return True
+    except UnsupportedAnalysis:
+        log.warning("job %s attempt %d rejected: unsupported analysis", job, attempt)
+        client.json(
+            "POST",
+            f"/internal/v1/jobs/{job}/attempts/{attempt}/fail",
+            {"schema_version": 1, "code": "unsupported_version", "message": "requested analysis is not supported by this worker", "retryable": False},
+            attempt_token=attempt_token,
+        )
+        delivery.acknowledge()
         return True
     except ValueError:
         client.json(

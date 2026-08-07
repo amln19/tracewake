@@ -190,7 +190,13 @@ def build_spans(header: RunHeader, events: Sequence[StoredEvent]) -> dict[str, A
     }
 
 
-def write_spans(path: Path, header: RunHeader, events: Sequence[StoredEvent]) -> int:
+def encode_spans(header: RunHeader, events: Sequence[StoredEvent]) -> tuple[bytes, int]:
     payload = build_spans(header, events)
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    return len(payload["resourceSpans"][0]["scopeSpans"][0]["spans"])
+    document = json.dumps(payload, indent=2).encode("utf-8")
+    return document, len(payload["resourceSpans"][0]["scopeSpans"][0]["spans"])
+
+
+def write_spans(path: Path, header: RunHeader, events: Sequence[StoredEvent]) -> int:
+    document, count = encode_spans(header, events)
+    path.write_bytes(document)
+    return count

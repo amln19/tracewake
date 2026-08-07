@@ -7,7 +7,7 @@ import tarfile
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError, model_validator
 
@@ -17,7 +17,17 @@ from .cassette import (
     _line,
     _validate_cassette,
 )
-from .events import EVENT_ADAPTER, EVENT_SCHEMA_VERSION, StoredEvent, run_digest, sha256_hex
+from .events import (
+    EVENT_ADAPTER,
+    EVENT_SCHEMA_VERSION,
+    ModelCallEvent,
+    ModelIdentity,
+    OutcomeEvent,
+    RunHeader,
+    StoredEvent,
+    run_digest,
+    sha256_hex,
+)
 
 BUNDLE_FORMAT_VERSION = 1
 MANIFEST_PATH = "manifest.json"
@@ -258,6 +268,37 @@ def _parse_events(source: Path, manifest: BundleManifest, raw: bytes) -> tuple[S
             raise ValueError(f"bundle {source} event {expected} is not canonical JSON")
         events.append(stored)
     return tuple(events)
+
+
+def bundle_header(bundle: ValidatedBundle) -> RunHeader:
+    """Reconstruct the run header an analysis of a bundle sees.
+
+    A bundle carries canonical events and identity, not the recording
+    session's own header, so anything a report or export shows about the run
+    as a whole has to come back out of the events.
+    """
+    times = [item.event.meta.recorded_at for item in bundle.events]
+    started = min(times, default=0.0)
+    status: Literal["running", "ok", "error"] = "ok"
+    models: list[ModelIdentity] = []
+    for item in bundle.events:
+        event = item.event
+        if isinstance(event, OutcomeEvent):
+            status = event.status
+        elif isinstance(event, ModelCallEvent):
+            identity = ModelIdentity(provider=event.provider, model_id=event.model_id)
+            if identity not in models:
+                models.append(identity)
+    return RunHeader(
+        run_id=bundle.manifest.run_id,
+        name=bundle.manifest.run_id,
+        started_at=started,
+        finished_at=max(times, default=started),
+        status=status,
+        schema_version=bundle.manifest.event_schema_version,
+        models=models,
+        redacted=True,
+    )
 
 
 def validate_bundle(source: str | Path) -> ValidatedBundle:
