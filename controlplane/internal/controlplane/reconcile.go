@@ -55,14 +55,6 @@ func (s *Service) PublishOutbox(ctx context.Context, notifier Notifier, limit in
 	if limit < 1 || limit > 100 {
 		limit = 100
 	}
-	var pendingSeconds *float64
-	if err := s.pool.QueryRow(ctx, `SELECT EXTRACT(EPOCH FROM (transaction_timestamp()-min(created_at))) FROM outbox WHERE published_at IS NULL`).Scan(&pendingSeconds); err == nil {
-		age := 0.0
-		if pendingSeconds != nil {
-			age = *pendingSeconds
-		}
-		s.metrics.OutboxPendingAge(ctx, time.Duration(age*float64(time.Second)))
-	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return 0, err
@@ -127,6 +119,16 @@ func (s *Service) Reconcile(ctx context.Context, limit int) (repaired int, err e
 		limit = 100
 	}
 	ctx, span := telemetry.Span(ctx, "reconcile", trace.SpanKindInternal)
+	// The backlog is a property of the database, not of whoever publishes from
+	// it, so it is measured on the pass that runs whether or not a queue exists.
+	var pendingSeconds *float64
+	if scanErr := s.pool.QueryRow(ctx, `SELECT EXTRACT(EPOCH FROM (transaction_timestamp()-min(created_at))) FROM outbox WHERE published_at IS NULL`).Scan(&pendingSeconds); scanErr == nil {
+		age := 0.0
+		if pendingSeconds != nil {
+			age = *pendingSeconds
+		}
+		s.metrics.OutboxPendingAge(ctx, time.Duration(age*float64(time.Second)))
+	}
 	defer func() {
 		span.SetAttributes(attribute.Int("locus.repairs", repaired))
 		if err != nil {
