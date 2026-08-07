@@ -26,8 +26,8 @@ var (
 	// ErrUnsupported names work this deployment does not implement, which no
 	// change of state can make acceptable.
 	ErrUnsupported = errors.New("unsupported")
-	ErrLeaseLost           = errors.New("lease lost")
-	ErrNotFound            = errors.New("not found")
+	ErrLeaseLost   = errors.New("lease lost")
+	ErrNotFound    = errors.New("not found")
 )
 
 type JobRequest struct {
