@@ -25,6 +25,7 @@ from locus.pprof import (
     build_token_profile,
     decode_profile,
     format_top,
+    gzip_profile,
     proportional,
     read_gzipped_profile,
     sample_totals,
@@ -189,6 +190,22 @@ def test_stack_is_run_model_turn_leaf(tmp_path: Path):
     assert "turn:2" in names
     assert "system_prompt" in names
     assert RESPONSE_LEAF in names
+
+
+def test_profile_bytes_do_not_depend_on_when_or_where_they_were_written(tmp_path: Path):
+    run_id = _record(tmp_path)
+    db = Store(tmp_path)
+    header, events = db.run(run_id), db.events(run_id)
+    db.close()
+    first, second = tmp_path / "first.pb.gz", tmp_path / "second-name.pb.gz"
+    write_token_profile(first, header, events)
+    write_token_profile(second, header, events)
+
+    assert first.read_bytes() == second.read_bytes()
+    flags, mtime = first.read_bytes()[3], first.read_bytes()[4:8]
+    assert flags == 0  # no original file name, no comment
+    assert mtime == b"\x00\x00\x00\x00"
+    assert gzip_profile(build_token_profile(header, events)) == first.read_bytes()
 
 
 def test_format_top_mentions_proportional_split(tmp_path: Path):

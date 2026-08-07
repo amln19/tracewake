@@ -162,6 +162,8 @@ at the first tool output that is not byte-identical to the recording. The bench
 agent strips pytest wall-clock from suite output so a re-run does not break that
 prefix on timing alone. Provenance tags on `Message`s power both the HTML
 context grouping and the pprof leaves; untagged blocks collapse to one bucket.
+Exported profiles carry no time, file name, or platform in their gzip header, so
+the same run always exports the same bytes.
 
 ## Local control plane
 

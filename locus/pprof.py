@@ -14,6 +14,7 @@ renderer.
 from __future__ import annotations
 
 import gzip
+import io
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -342,12 +343,24 @@ def build_token_profile(
     )
 
 
+def gzip_profile(raw: bytes) -> bytes:
+    """Wrap a profile in gzip that carries no time, name, or platform.
+
+    The default header records the current time and the output file name, so
+    the same run would otherwise produce different bytes on every export.
+    """
+    out = io.BytesIO()
+    with gzip.GzipFile(fileobj=out, mode="wb", compresslevel=9, mtime=0) as fh:
+        fh.write(raw)
+    compressed = bytearray(out.getvalue())
+    compressed[9] = 0xFF  # unknown operating system
+    return bytes(compressed)
+
+
 def write_token_profile(
     path: Path, header: RunHeader, events: Sequence[StoredEvent]
 ) -> tuple[int, int]:
-    raw = build_token_profile(header, events)
-    with gzip.open(path, "wb") as fh:
-        fh.write(raw)
+    path.write_bytes(gzip_profile(build_token_profile(header, events)))
     return usage_totals(events)
 
 
