@@ -1,0 +1,533 @@
+{
+  "alarms": {
+    "evaluations": [
+      {
+        "alarm": "notifications-in-dead-letter-queue",
+        "namespace": "AWS/SQS",
+        "observed": null,
+        "responded": false,
+        "samples": 0,
+        "state": "NOT_OBSERVABLE_LOCALLY",
+        "tested_condition": null,
+        "threshold": 0
+      },
+      {
+        "alarm": "notification-backlog-aging",
+        "namespace": "AWS/SQS",
+        "observed": null,
+        "responded": false,
+        "samples": 0,
+        "state": "NOT_OBSERVABLE_LOCALLY",
+        "tested_condition": null,
+        "threshold": 300
+      },
+      {
+        "alarm": "outbox-publication-stalled",
+        "observed": 247.986583,
+        "responded": true,
+        "samples": 214,
+        "state": "ALARM",
+        "statistic": "Maximum",
+        "tested_condition": "outbox_publication_stalled",
+        "threshold": 120
+      },
+      {
+        "alarm": "attempts-losing-their-lease",
+        "observed": 2.0,
+        "responded": true,
+        "samples": 2,
+        "state": "ALARM",
+        "statistic": "Sum",
+        "tested_condition": "worker_killed_mid_analysis",
+        "threshold": 1
+      },
+      {
+        "alarm": "jobs-exhausting-their-retries",
+        "observed": 1.0,
+        "responded": true,
+        "samples": 1,
+        "state": "ALARM",
+        "statistic": "Sum",
+        "tested_condition": "retries_exhausted",
+        "threshold": 0
+      },
+      {
+        "alarm": "reconciler-failing",
+        "observed": 21.0,
+        "responded": true,
+        "samples": 11,
+        "state": "ALARM",
+        "statistic": "Sum",
+        "tested_condition": "database_unavailable",
+        "threshold": 0
+      },
+      {
+        "alarm": "artifact-commits-refused",
+        "observed": 2.0,
+        "responded": true,
+        "samples": 2,
+        "state": "ALARM",
+        "statistic": "Sum",
+        "tested_condition": "artifact_bytes_do_not_match",
+        "threshold": 0
+      },
+      {
+        "alarm": "diff-queue-latency-high",
+        "observed": 694.7768447931036,
+        "responded": true,
+        "samples": 34,
+        "state": "OK",
+        "statistic": "Average",
+        "tested_condition": null,
+        "threshold": 60000
+      },
+      {
+        "alarm": "worker-jobs-failing",
+        "observed": null,
+        "responded": false,
+        "samples": 0,
+        "state": "INSUFFICIENT_DATA",
+        "tested_condition": null,
+        "threshold": 0
+      },
+      {
+        "alarm": "public-api-returning-server-errors",
+        "namespace": "AWS/ApplicationELB",
+        "observed": null,
+        "responded": false,
+        "samples": 0,
+        "state": "NOT_OBSERVABLE_LOCALLY",
+        "tested_condition": null,
+        "threshold": 5
+      },
+      {
+        "alarm": "control-plane-targets-unhealthy",
+        "namespace": "AWS/ApplicationELB",
+        "observed": null,
+        "responded": false,
+        "samples": 0,
+        "state": "NOT_OBSERVABLE_LOCALLY",
+        "tested_condition": null,
+        "threshold": 0
+      },
+      {
+        "alarm": "worker-service-below-capacity",
+        "namespace": "ECS/ContainerInsights",
+        "observed": null,
+        "responded": false,
+        "samples": 0,
+        "state": "NOT_OBSERVABLE_LOCALLY",
+        "tested_condition": null,
+        "threshold": 1
+      },
+      {
+        "alarm": "database-storage-low",
+        "namespace": "AWS/RDS",
+        "observed": null,
+        "responded": false,
+        "samples": 0,
+        "state": "NOT_OBSERVABLE_LOCALLY",
+        "tested_condition": null,
+        "threshold": 2147483648
+      },
+      {
+        "alarm": "database-cpu-saturated",
+        "namespace": "AWS/RDS",
+        "observed": null,
+        "responded": false,
+        "samples": 0,
+        "state": "NOT_OBSERVABLE_LOCALLY",
+        "tested_condition": null,
+        "threshold": 85
+      }
+    ],
+    "raised": [
+      "artifact-commits-refused",
+      "attempts-losing-their-lease",
+      "jobs-exhausting-their-retries",
+      "outbox-publication-stalled",
+      "reconciler-failing"
+    ],
+    "tested_conditions_that_moved_a_metric": [
+      "artifact_bytes_do_not_match",
+      "database_unavailable",
+      "outbox_publication_stalled",
+      "retries_exhausted",
+      "worker_killed_mid_analysis"
+    ],
+    "tested_conditions_without_a_signal": []
+  },
+  "environment": {
+    "commit": "8c0efcbe0452df7b7dc573a70e94888b7749165a",
+    "go": "go version go1.24.13 darwin/arm64",
+    "locus": "0.2.0",
+    "platform": "Darwin arm64",
+    "postgres": "psql (PostgreSQL) 17.10 (Homebrew)",
+    "python": "3.13.14"
+  },
+  "evidence_version": 1,
+  "finished_at": "2026-08-07T05:54:16Z",
+  "latency": {
+    "analysis_load": {
+      "count": 24,
+      "max_ms": 1213.992,
+      "mean_ms": 1103.524,
+      "min_ms": 984.703,
+      "p50_ms": 1110.751,
+      "p95_ms": 1205.06
+    },
+    "ingestion": {
+      "count": 10,
+      "max_ms": 1020.057,
+      "mean_ms": 859.421,
+      "min_ms": 21.791,
+      "p50_ms": 984.456,
+      "p95_ms": 1020.057
+    },
+    "soak": {
+      "count": 30,
+      "max_ms": 1005.075,
+      "mean_ms": 454.639,
+      "min_ms": 25.476,
+      "p50_ms": 413.922,
+      "p95_ms": 989.406
+    }
+  },
+  "scenarios": {
+    "analysis_load": {
+      "create_to_terminal_ms": [
+        984.703,
+        996.692,
+        1009.258,
+        1019.279,
+        1029.148,
+        1038.017,
+        1047.758,
+        1059.833,
+        1070.523,
+        1081.469,
+        1091.102,
+        1100.578,
+        1110.751,
+        1120.3909999999998,
+        1129.926,
+        1140.19,
+        1149.5059999999999,
+        1159.182,
+        1168.1870000000001,
+        1177.607,
+        1186.036,
+        1195.3899999999999,
+        1205.06,
+        1213.992
+      ],
+      "drain_seconds": 1.276,
+      "first_request": {
+        "idempotency_key": "load-0",
+        "run_ids": [
+          "b9e1afba-4392-4907-ad59-6a6f2d894e93",
+          "c22a67fe-3a6a-4a56-ad1f-98ebf05f2e03"
+        ]
+      },
+      "job_ids": [
+        "02dde82a-920f-4c6f-89af-9de57e897ba6",
+        "b6cc4665-0262-460f-8e78-66f76f6b544d",
+        "f0916d57-5f64-4ba4-aef5-7a3b69091a2d",
+        "0cee5a7e-e47e-4377-891c-24855e16541a",
+        "49f43983-9ad9-4617-bdeb-b6769442c083",
+        "c5bfeed1-4c3d-4826-bf6f-d7c5c811c5c6",
+        "057096dd-87b6-426a-844f-2ad74af3d240",
+        "5d128998-fec5-4075-955e-504ce6802c80",
+        "b5379d9d-ceb1-41aa-91fd-2f571ebfd343",
+        "a2fbc168-bc4e-47e8-b49e-98b243bbb598",
+        "7d5bb653-5408-4822-844e-3a5bcbd82860",
+        "ec4e2938-dcb8-4ceb-952a-84eb840c2e5b",
+        "b2162886-c6d7-4101-8308-9d98e7a5ba69",
+        "da254d3e-9c42-4fb1-87bd-985ab5e58a7c",
+        "d130bf41-7ff8-4f65-9d9d-21bd9da857e6",
+        "898fe36e-0aaa-4c79-8ecf-22d936285843",
+        "bd2c7f38-5bc0-4197-88fd-891fa8312de5",
+        "c277240e-e79a-4c91-8bb1-997e1c23e426",
+        "e9bff53c-6d87-4a6a-9a06-305114cfe8f8",
+        "951c0200-25d4-4a38-91a4-1bf05927ac35",
+        "a24c0134-715c-44d5-8cfd-a760b419a89b",
+        "7d721739-509b-46f5-ad4b-114637b65209",
+        "5023506d-d09d-4f4e-b496-94f3fca7a8da",
+        "35276c5f-c4db-43bb-97b2-def6685df046"
+      ],
+      "jobs": 24,
+      "jobs_per_minute": 1128.95,
+      "outcomes": {
+        "succeeded": 24
+      },
+      "submit_seconds": 0.027
+    },
+    "artifact_mismatch": {
+      "artifacts": 0,
+      "contradicting_commit": "LeaseLost",
+      "contradicting_upload": "HTTP 400",
+      "job_id": "82e92e2b-f5bc-4755-b15a-4a283e2410bf",
+      "state": "retry_wait"
+    },
+    "backup_and_restore": {
+      "after": {
+        "artifacts": 132,
+        "audit": 215,
+        "jobs": 73,
+        "runs": 12
+      },
+      "before": {
+        "artifacts": 132,
+        "audit": 215,
+        "jobs": 73,
+        "runs": 12
+      },
+      "dump_bytes": 105512,
+      "job_still_terminal": true,
+      "run_still_ready": true
+    },
+    "hosted_matches_local": {
+      "hosted_digest": "35bcd2e207e97a6e5c5e4ab169890df8827166eb547f0331c02abd65427054f8",
+      "hosted_span_count": 18,
+      "identical_bytes": true,
+      "local_digest": "35bcd2e207e97a6e5c5e4ab169890df8827166eb547f0331c02abd65427054f8",
+      "local_span_count": 18
+    },
+    "idempotent_replay": {
+      "original_job_id": "02dde82a-920f-4c6f-89af-9de57e897ba6",
+      "replayed_job_id": "02dde82a-920f-4c6f-89af-9de57e897ba6",
+      "same_job": true
+    },
+    "ingestion": {
+      "bundle_bytes": [
+        30720,
+        30720,
+        20480,
+        20480,
+        20480,
+        20480,
+        20480,
+        20480,
+        20480,
+        20480
+      ],
+      "observed_upload_to_ready_ms": [
+        208.4000839968212,
+        1033.9791660007904,
+        1038.4344159974717,
+        837.4088339987793,
+        1032.3507499997504,
+        1028.8300829997752,
+        1034.2117499967571,
+        1037.074792002386,
+        1036.6778329989756,
+        1033.1165410025278
+      ],
+      "run_ids": [
+        "b9e1afba-4392-4907-ad59-6a6f2d894e93",
+        "c22a67fe-3a6a-4a56-ad1f-98ebf05f2e03",
+        "9496bcfb-8e5d-4209-8394-c3ccc2370497",
+        "f97013c8-3ba1-4911-b97a-151bb5e93e05",
+        "0138cdff-28ee-4f36-ac9a-968944a38b53",
+        "2e6ba942-2b7f-49f7-bd3a-2ca09f3f487d",
+        "a27f0357-f93a-4bf5-83a7-522ba8c4e0e7",
+        "ae32baa0-b4c7-4bf3-8e92-1db77ad5d682",
+        "19321e80-3833-4d9c-8ff6-2657ea8096f2",
+        "8ffa18d9-879c-4d41-9b64-68327369cfea"
+      ],
+      "upload_to_ready_ms": [
+        21.791,
+        854.0400000000001,
+        849.465,
+        830.237,
+        1020.057,
+        1016.974,
+        1013.5110000000001,
+        1009.7719999999999,
+        993.909,
+        984.456
+      ]
+    },
+    "late_completion": {
+      "job_id": "36431767-ee5e-4578-857f-afe4477b3d2b",
+      "stale_attempt_requests": {
+        "complete": "LeaseLost",
+        "heartbeat": "LeaseLost",
+        "progress": "LeaseLost"
+      }
+    },
+    "local_independence": {
+      "identical": true,
+      "recorded_first_line": "1786082049.6612558",
+      "replayed_first_line": "1786082049.6612558"
+    },
+    "migration": {
+      "applied_versions": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "ledger_rows": 5,
+      "reapplied": false,
+      "second_pass_versions": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "outbox_backlog": {
+      "job_id": "dd2ee02c-24c5-4f36-be82-48a69b0a40ef",
+      "oldest_unpublished_seconds": 248.345,
+      "unconsumed_seconds": 150.034
+    },
+    "reconciler_failure": {
+      "database_down_seconds": 20
+    },
+    "retry_exhaustion": {
+      "artifacts": 0,
+      "attempt_states": [
+        "retry_wait",
+        "retry_wait",
+        "failed"
+      ],
+      "failure_code": "retry_exhausted",
+      "job_id": "14ff2d18-9611-44c0-830c-e74f0cfe9b41",
+      "state": "failed"
+    },
+    "service_resumes": {
+      "state": "succeeded"
+    },
+    "soak": {
+      "create_to_terminal_ms": [
+        989.4060000000001,
+        1005.0749999999999,
+        25.476,
+        60.163000000000004,
+        90.73299999999999,
+        120.771,
+        150.636,
+        176.15,
+        201.24800000000002,
+        230.026,
+        252.05899999999997,
+        276.159,
+        303.222,
+        330.28000000000003,
+        357.076,
+        384.81399999999996,
+        413.922,
+        447.714,
+        483.80699999999996,
+        510.748,
+        537.906,
+        570.485,
+        605.125,
+        638.75,
+        674.5889999999999,
+        702.697,
+        730.345,
+        759.3760000000001,
+        788.2289999999999,
+        822.179
+      ],
+      "duration_seconds": 60.0,
+      "first_half_mean_ms": 304.565,
+      "jobs": 30,
+      "outcomes": {
+        "succeeded": 30
+      },
+      "second_half_mean_ms": 604.712,
+      "submission_interval_seconds": 2.0
+    },
+    "tenant_isolation": {
+      "audit_visible": 0,
+      "job": "HTTP 404",
+      "run": "HTTP 404",
+      "runs_visible": 0,
+      "unknown_token": "HTTP 401"
+    },
+    "worker_recovery": {
+      "attempts": [
+        {
+          "attempt_number": 1,
+          "failure": {
+            "code": "lease_lost",
+            "message": "worker lease expired",
+            "retryable": true,
+            "schema_version": 1
+          },
+          "state": "fenced"
+        },
+        {
+          "attempt_number": 2,
+          "failure": null,
+          "state": "succeeded"
+        }
+      ],
+      "fence_reason": "lease_lost",
+      "job_id": "01c6e129-b242-440a-8266-587fe08b7f72",
+      "kill_to_fence_seconds": 60.366,
+      "kill_to_success_seconds": 70.267,
+      "result_artifacts": 2,
+      "state": "succeeded",
+      "succeeded_attempts": 1
+    }
+  },
+  "started_at": "2026-08-07T05:47:06Z",
+  "telemetry": {
+    "largest_trace_spans": 24,
+    "metric_records": 1787,
+    "metric_series": 103,
+    "samples_by_metric": {
+      "ArtifactCommitFailures": 2,
+      "ArtifactsCommitted": 77,
+      "AttemptsClaimed": 49,
+      "AttemptsFenced": 6,
+      "HttpDurationMillis": 440,
+      "HttpRequests": 443,
+      "JobDurationMillis": 43,
+      "JobsCreated": 44,
+      "JobsTerminal": 43,
+      "OutboxPendingAgeSeconds": 214,
+      "QueueLatencyMillis": 44,
+      "ReconcileActions": 6,
+      "ReconcileErrors": 11,
+      "RecoveryMillis": 5,
+      "WorkerJobs": 72,
+      "WorkerStageMillis": 288
+    },
+    "span_count": 2487,
+    "span_names": [
+      "GET /internal/v1/jobs/{job}/attempts/{attempt}/inputs/{artifact}",
+      "GET /internal/v1/notifications/next",
+      "GET /v1/artifacts/{artifactID}/download",
+      "GET /v1/audit",
+      "GET /v1/jobs/{jobID}",
+      "GET /v1/runs",
+      "GET /v1/runs/{runID}",
+      "POST /internal/v1/claims",
+      "POST /internal/v1/jobs/{job}/attempts/{attempt}/artifacts",
+      "POST /internal/v1/jobs/{job}/attempts/{attempt}/complete",
+      "POST /internal/v1/jobs/{job}/attempts/{attempt}/fail",
+      "POST /internal/v1/notifications/{id}/ack",
+      "POST /v1/jobs",
+      "POST /v1/runs/uploads",
+      "POST /v1/runs/uploads/{runID}/complete",
+      "PUT /internal/v1/jobs/{job}/attempts/{attempt}/heartbeat",
+      "PUT /internal/v1/jobs/{job}/attempts/{attempt}/progress",
+      "artifact.commit",
+      "job.claim",
+      "reconcile",
+      "worker.commit",
+      "worker.download",
+      "worker.execute",
+      "worker.upload"
+    ],
+    "trace_count": 1137,
+    "traces_crossing_services": 77
+  }
+}
