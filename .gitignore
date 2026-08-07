@@ -5,6 +5,11 @@ __pycache__/
 .venv/
 build/
 dist/
+dashboard/node_modules/
+dashboard/dist/
+dashboard/test-results/
+dashboard/playwright-report/
+*.tsbuildinfo
 *.egg-info/
 # The recorded runs are large and regenerable-in-principle, but the hand labels
 # and the sheets derived from them are neither, and every published number
