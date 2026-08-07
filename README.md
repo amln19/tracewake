@@ -305,19 +305,19 @@ object-store latency, autoscaling, or cost — is published at all.
 
 | Measurement | Value |
 | --- | --- |
-| 10 bundles uploaded and validated | p50 953 ms, p95 1009 ms |
-| 24 diff analyses submitted at once | drained in 1.29 s |
-| Their end-to-end latency | p50 1068 ms, p95 1151 ms |
-| One analysis every two seconds for a minute | 30 of 30 succeeded, p50 412 ms |
-| Killed worker to fenced attempt | 60.3 s, the attempt lease |
+| 10 bundles uploaded and validated | p50 879 ms, p95 950 ms |
+| 24 diff analyses submitted at once | drained in 1.47 s |
+| Their end-to-end latency | p50 1153 ms, p95 1237 ms |
+| One analysis every two seconds for a minute | 30 of 30 succeeded, p50 460 ms |
+| Killed worker to fenced attempt | 60.4 s, the attempt lease |
 | Killed worker to committed result | 70.3 s |
 | Spans emitted | 1986 across 636 traces |
-| Traces spanning both languages | 77, up to 24 spans each |
+| Traces spanning both languages | 78, up to 20 spans each |
 | Distinct metric series | 103 |
 
 The two latency figures are dominated by the local stack's one-second outbox
-poll; a deployment long-polls SQS instead. The soak's mean rose from 389 ms in
-its first half to 523 ms in its second, on a single worker with a growing
+poll; a deployment long-polls SQS instead. The soak's mean rose from 634 ms in
+its first half to 396 ms in its second, on a single worker with a growing
 database.
 
 The same run drove five failure conditions the deployment alarms on — worker
