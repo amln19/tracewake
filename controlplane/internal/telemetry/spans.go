@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
@@ -31,6 +32,23 @@ type SpanRecord struct {
 	Resource     map[string]string `json:"resource,omitempty"`
 }
 
+// IdleAttribute marks a span that looked for work and found none. Polling
+// loops would otherwise dominate the trace stream and its cost while saying
+// nothing; an idle span that failed is still exported, because that is work.
+const IdleAttribute = "locus.idle"
+
+func idle(span sdktrace.ReadOnlySpan) bool {
+	if span.Status().Code == codes.Error {
+		return false
+	}
+	for _, item := range span.Attributes() {
+		if string(item.Key) == IdleAttribute {
+			return item.Value.AsBool()
+		}
+	}
+	return false
+}
+
 type spanExporter struct {
 	writer io.Writer
 	mutex  sync.Mutex
@@ -41,6 +59,9 @@ func (e *spanExporter) ExportSpans(_ context.Context, spans []sdktrace.ReadOnlyS
 	defer e.mutex.Unlock()
 	encoder := json.NewEncoder(e.writer)
 	for _, span := range spans {
+		if idle(span) {
+			continue
+		}
 		if err := encoder.Encode(spanRecord(span)); err != nil {
 			return err
 		}

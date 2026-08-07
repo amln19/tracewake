@@ -130,7 +130,7 @@ func (s *Service) Reconcile(ctx context.Context, limit int) (repaired int, err e
 		s.metrics.OutboxPendingAge(ctx, time.Duration(age*float64(time.Second)))
 	}
 	defer func() {
-		span.SetAttributes(attribute.Int("locus.repairs", repaired))
+		span.SetAttributes(attribute.Int("locus.repairs", repaired), attribute.Bool(telemetry.IdleAttribute, repaired == 0))
 		if err != nil {
 			s.metrics.ReconcileFailed(ctx)
 		}

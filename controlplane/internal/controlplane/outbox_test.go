@@ -69,12 +69,33 @@ func TestOutboxPublishesToQueueAndSurvivesFailure(t *testing.T) {
 		t.Fatal("no notification reached the queue")
 	}
 
-	before := len(queue.Bodies())
-	if published, err := service.PublishOutbox(ctx, publisher, 100); err != nil || published != 0 {
-		t.Fatalf("republished %d rows: %v", published, err)
+	// The count is scoped to this job: the test database is shared, so another
+	// test's unpublished row would otherwise look like a republication.
+	deliveries := func() int {
+		total := 0
+		for _, delivered := range delivered {
+			if delivered == job.ID {
+				total++
+			}
+		}
+		return total
 	}
-	if len(queue.Bodies()) != before {
-		t.Fatal("published rows were delivered twice")
+	before := deliveries()
+	if _, err := service.PublishOutbox(ctx, publisher, 100); err != nil {
+		t.Fatal(err)
+	}
+	delivered = nil
+	for _, body := range queue.Bodies() {
+		var payload struct {
+			JobID string `json:"job_id"`
+		}
+		if err := json.Unmarshal([]byte(body), &payload); err != nil {
+			t.Fatal(err)
+		}
+		delivered = append(delivered, payload.JobID)
+	}
+	if deliveries() != before {
+		t.Fatalf("this job was delivered %d times, then %d", before, deliveries())
 	}
 }
 

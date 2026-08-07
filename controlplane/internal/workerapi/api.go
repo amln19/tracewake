@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/amln19/locus/controlplane/internal/artifacts"
@@ -75,6 +76,7 @@ func (a *API) next(w http.ResponseWriter, r *http.Request) {
 	}
 	item, err := a.service.NextNotification(r.Context())
 	if err != nil {
+		trace.SpanFromContext(r.Context()).SetAttributes(attribute.Bool(telemetry.IdleAttribute, true))
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}

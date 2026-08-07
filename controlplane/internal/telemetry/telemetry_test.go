@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -209,5 +211,32 @@ func TestInstrumentedHandlerStaysFlushable(t *testing.T) {
 	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/v1/jobs/x/events", nil))
 	if !flushed {
 		t.Fatal("progress streaming lost its flusher")
+	}
+}
+
+func TestIdlePollingIsNotExportedUnlessItFails(t *testing.T) {
+	instance, buffer := provider(t)
+	_, quiet := Span(context.Background(), "reconcile", trace.SpanKindInternal)
+	quiet.SetAttributes(attribute.Bool(IdleAttribute, true))
+	quiet.End()
+
+	_, failed := Span(context.Background(), "reconcile", trace.SpanKindInternal)
+	failed.SetAttributes(attribute.Bool(IdleAttribute, true))
+	failed.SetStatus(codes.Error, "the database went away")
+	failed.End()
+
+	_, working := Span(context.Background(), "reconcile", trace.SpanKindInternal)
+	working.SetAttributes(attribute.Bool(IdleAttribute, false))
+	working.End()
+
+	if err := instance.Flush(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	records := lines(t, buffer)
+	if len(records) != 2 {
+		t.Fatalf("expected the failed and the working span, got %d", len(records))
+	}
+	if records[0]["status"] != "Error" || records[1]["status"] == "Error" {
+		t.Fatalf("the wrong spans survived: %v", records)
 	}
 }

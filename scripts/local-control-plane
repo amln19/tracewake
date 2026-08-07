@@ -68,6 +68,7 @@ LOCUS_LISTEN_ADDR="127.0.0.1:$public_port" \
 LOCUS_WORKER_LISTEN_ADDR="127.0.0.1:$worker_port" \
 LOCUS_BOOTSTRAP_FILE="$credential_file" \
 LOCUS_DASHBOARD_DIR="$project_root/dashboard/dist" \
+LOCUS_SERVICE_VERSION="$(git -C "$project_root" describe --tags --always --dirty 2>/dev/null || echo unknown)" \
 "$binary" &
 api_pid=$!
 
