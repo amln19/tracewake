@@ -15,9 +15,9 @@ export, and comparison never need this environment.
 
 Terraform state contains the database password and bootstrap tokens, so the S3
 backend is a required partial configuration. Choose an account, region, state
-bucket, and cost ceiling before deploying. Without `certificate_arn` the public
-listener serves plain HTTP, which is acceptable only for a private evaluation
-environment; tenant traffic needs a certificate.
+bucket, certificate, and cost ceiling before deploying. `certificate_arn` is
+required: the public listener redirects HTTP to HTTPS, and browser sessions use
+Secure cookies.
 
 Standing cost is dominated by the NAT gateway, two load balancers, the RDS
 instance, and the running Fargate tasks. Destroy the environment when it is not
@@ -31,7 +31,8 @@ terraform init \
   -backend-config="bucket=<state-bucket>" \
   -backend-config="key=locus/prod.tfstate" \
   -backend-config="region=<region>"
-terraform apply -var region=<region> -var image_tag=$(git rev-parse --short HEAD)
+terraform apply -var region=<region> -var certificate_arn=<acm-certificate-arn> \
+  -var image_tag=$(git rev-parse --short HEAD)
 ```
 
 An AWS account still on the free-tier plan caps automated backups; pass
@@ -61,7 +62,8 @@ aws ecs update-service --cluster "$(terraform output -raw cluster_name)" \
 aws ecs update-service --cluster "$(terraform output -raw cluster_name)" \
   --service locus-prod-worker --force-new-deployment
 
-terraform apply -var region=<region> -var image_tag=$(git rev-parse --short HEAD)
+terraform apply -var region=<region> -var certificate_arn=<acm-certificate-arn> \
+  -var image_tag=$(git rev-parse --short HEAD)
 ```
 
 Read the bootstrap tenant token from Secrets Manager. It is never printed to
@@ -112,7 +114,7 @@ retained hosted data matters.
 ## Teardown
 
 ```sh
-terraform destroy -var region=<region>
+terraform destroy -var region=<region> -var certificate_arn=<acm-certificate-arn>
 ```
 
 The artifact bucket is created with `force_destroy` and the database with

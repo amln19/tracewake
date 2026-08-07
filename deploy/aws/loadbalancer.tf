@@ -29,10 +29,10 @@ resource "aws_lb_target_group" "public" {
 
 resource "aws_lb_listener" "public" {
   load_balancer_arn = aws_lb.public.arn
-  port              = var.certificate_arn == "" ? 80 : 443
-  protocol          = var.certificate_arn == "" ? "HTTP" : "HTTPS"
-  ssl_policy        = var.certificate_arn == "" ? null : "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  certificate_arn   = var.certificate_arn == "" ? null : var.certificate_arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = var.certificate_arn
 
   default_action {
     type             = "forward"
@@ -41,8 +41,6 @@ resource "aws_lb_listener" "public" {
 }
 
 resource "aws_lb_listener" "public_redirect" {
-  count = var.certificate_arn == "" ? 0 : 1
-
   load_balancer_arn = aws_lb.public.arn
   port              = 80
   protocol          = "HTTP"

@@ -14,8 +14,6 @@ resource "aws_security_group" "public_lb" {
 }
 
 resource "aws_security_group_rule" "public_lb_https" {
-  count = var.certificate_arn == "" ? 0 : 1
-
   type              = "ingress"
   security_group_id = aws_security_group.public_lb.id
   from_port         = 443
@@ -32,7 +30,7 @@ resource "aws_security_group_rule" "public_lb_http" {
   to_port           = 80
   protocol          = "tcp"
   cidr_blocks       = var.allowed_tenant_cidrs
-  description       = "Tenant API, redirected to TLS when a certificate exists"
+  description       = "Tenant API redirect to TLS"
 }
 
 # The worker API is reachable only from worker tasks through an internal load

@@ -38,8 +38,7 @@ resource "aws_ecs_cluster" "main" {
 }
 
 locals {
-  public_scheme   = var.certificate_arn == "" ? "http" : "https"
-  public_base_url = var.public_base_url != "" ? var.public_base_url : "${local.public_scheme}://${aws_lb.public.dns_name}"
+  public_base_url = var.public_base_url != "" ? var.public_base_url : "https://${aws_lb.public.dns_name}"
   worker_base_url = "http://${aws_lb.internal.dns_name}:8081"
 
   secret_arns = { for key, secret in aws_secretsmanager_secret.service : key => secret.arn }

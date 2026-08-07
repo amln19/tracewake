@@ -168,15 +168,19 @@ the same run always exports the same bytes.
 ## Local control plane
 
 The hosted lifecycle can be exercised locally without AWS. With Go 1.24,
-PostgreSQL 17, and `uv` installed, one command starts PostgreSQL, the Go
-control plane, and the Python worker:
+PostgreSQL 17, Node 26, npm, and `uv` installed, one command starts PostgreSQL,
+the Go control plane, and the Python worker:
 
 ```sh
 scripts/local-control-plane
 ```
 
-The command prints the private credentials-file location and stops all three
-processes together on Ctrl-C. Docker is an alternative:
+The command also builds and serves the TypeScript dashboard at
+`http://127.0.0.1:8080`. Paste the private workspace token from the printed
+credentials file into its one-time exchange form. The browser receives only a
+15-minute HttpOnly session; the durable token is not stored by the dashboard.
+The command stops all three processes together on Ctrl-C. Docker is an
+alternative:
 
 ```sh
 docker compose up --build
@@ -184,8 +188,9 @@ docker compose exec controlplane cat /run/locus/credentials.json
 ```
 
 The first command starts PostgreSQL, one Go control-plane process, and the
-Python worker. The credentials file is created once in a private Docker volume;
-copy its `token` value into `LOCUS_TOKEN`, then upload a deterministic bundle:
+Python worker, with the dashboard served by the control plane. The credentials
+file is created once in a private Docker volume; use its `token` in the
+dashboard or copy it into `LOCUS_TOKEN`, then upload a deterministic bundle:
 
 ```sh
 export LOCUS_REMOTE_URL=http://127.0.0.1:8080

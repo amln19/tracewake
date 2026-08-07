@@ -1,0 +1,14 @@
+.git
+.project-notes
+.venv
+.locus
+__pycache__
+.pytest_cache
+*.pyc
+build
+dist
+dashboard/node_modules
+dashboard/dist
+dashboard/test-results
+dashboard/playwright-report
+dashboard/*.tsbuildinfo

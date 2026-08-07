@@ -13,12 +13,14 @@ credential_file="$state_root/credentials.json"
 secret_file="$state_root/secrets"
 binary="$state_root/locusd"
 
-for command in go initdb pg_ctl pg_isready createdb psql uv openssl curl; do
+for command in go initdb pg_ctl pg_isready createdb psql uv node npm openssl curl; do
     command -v "$command" >/dev/null || {
         printf '%s\n' "missing required command: $command" >&2
         exit 1
     }
 done
+
+(cd "$project_root/dashboard" && npm ci --ignore-scripts && npm run build)
 
 mkdir -p "$state_root" "$postgres_socket" "$artifact_root"
 chmod 700 "$state_root" "$postgres_socket" "$artifact_root"
@@ -65,6 +67,7 @@ LOCUS_ARTIFACT_ROOT="$artifact_root" \
 LOCUS_LISTEN_ADDR="127.0.0.1:$public_port" \
 LOCUS_WORKER_LISTEN_ADDR="127.0.0.1:$worker_port" \
 LOCUS_BOOTSTRAP_FILE="$credential_file" \
+LOCUS_DASHBOARD_DIR="$project_root/dashboard/dist" \
 "$binary" &
 api_pid=$!
 

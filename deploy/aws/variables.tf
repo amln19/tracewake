@@ -100,9 +100,13 @@ variable "database_skip_final_snapshot" {
 }
 
 variable "certificate_arn" {
-  description = "ACM certificate for the public listener. Without it the load balancer serves plain HTTP, which is only acceptable for a private evaluation environment."
+  description = "ACM certificate for the HTTPS public listener. Browser sessions require TLS."
   type        = string
-  default     = ""
+
+  validation {
+    condition     = length(trimspace(var.certificate_arn)) > 0
+    error_message = "certificate_arn is required because browser sessions use Secure cookies."
+  }
 }
 
 variable "public_base_url" {

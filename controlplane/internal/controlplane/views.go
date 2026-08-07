@@ -99,7 +99,7 @@ func (s *Service) ListRuns(ctx context.Context, p Principal, limit int) ([]RunVi
 		return nil, err
 	}
 	defer rows.Close()
-	var result []RunView
+	result := []RunView{}
 	for rows.Next() {
 		var v RunView
 		var failureCode, failureMessage *string
@@ -183,7 +183,7 @@ func (s *Service) ListAudit(ctx context.Context, p Principal, limit int) ([]Audi
 		return nil, err
 	}
 	defer rows.Close()
-	var result []AuditView
+	result := []AuditView{}
 	for rows.Next() {
 		var v AuditView
 		if err := rows.Scan(&v.ID, &v.AggregateType, &v.AggregateID, &v.EventType, &v.ActorType, &v.CreatedAt); err != nil {

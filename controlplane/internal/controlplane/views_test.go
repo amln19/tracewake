@@ -44,3 +44,18 @@ func TestJobViewUsesPublicFailureAndProgressFields(t *testing.T) {
 		t.Fatalf("job JSON exposes unversioned failure fields: %s", encoded)
 	}
 }
+
+func TestEmptyCollectionsEncodeAsArrays(t *testing.T) {
+	for name, value := range map[string]any{
+		"runs":  []RunView{},
+		"audit": []AuditView{},
+	} {
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(encoded) != "[]" {
+			t.Fatalf("%s encoded as %s", name, encoded)
+		}
+	}
+}
