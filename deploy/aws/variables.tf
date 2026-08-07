@@ -126,3 +126,9 @@ variable "log_retention_days" {
   type        = number
   default     = 30
 }
+
+variable "alarm_actions" {
+  description = "Targets notified when an operational alarm changes state. Alarm state is visible without one."
+  type        = list(string)
+  default     = []
+}

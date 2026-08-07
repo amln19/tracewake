@@ -76,6 +76,9 @@ resource "aws_ecs_task_definition" "control_plane" {
       { name = "LOCUS_PUBLIC_BASE_URL", value = local.public_base_url },
       { name = "LOCUS_WORKER_BASE_URL", value = local.worker_base_url },
       { name = "LOCUS_BOOTSTRAP_WORKSPACE", value = var.environment },
+      { name = "LOCUS_ENVIRONMENT", value = var.environment },
+      { name = "LOCUS_SERVICE_VERSION", value = var.image_tag },
+      { name = "LOCUS_METRIC_NAMESPACE", value = local.control_plane_metric_namespace },
       { name = "AWS_REGION", value = var.region },
     ]
 
@@ -121,6 +124,9 @@ resource "aws_ecs_task_definition" "worker" {
       { name = "LOCUS_WORKER_URL", value = local.worker_base_url },
       { name = "LOCUS_JOB_QUEUE_URL", value = aws_sqs_queue.jobs.url },
       { name = "LOCUS_WORKER_BUILD", value = "${var.name}-${var.image_tag}" },
+      { name = "LOCUS_ENVIRONMENT", value = var.environment },
+      { name = "LOCUS_SERVICE_VERSION", value = var.image_tag },
+      { name = "LOCUS_WORKER_METRIC_NAMESPACE", value = local.worker_metric_namespace },
       { name = "AWS_REGION", value = var.region },
       { name = "AWS_DEFAULT_REGION", value = var.region },
     ]

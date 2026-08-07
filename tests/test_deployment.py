@@ -109,3 +109,75 @@ def test_queue_visibility_matches_the_attempt_lease() -> None:
     queue = read("queue.tf")
     assert f"visibility_timeout_seconds = {LEASE_SECONDS}" in queue
     assert "deadLetterTargetArn" in queue
+
+
+def alarms() -> list[dict[str, object]]:
+    import json
+
+    specification = json.loads(read("alarms.json"))
+    assert specification["specification_version"] == 1
+    return specification["alarms"]
+
+
+def test_alarm_definitions_are_well_formed() -> None:
+    names = set()
+    for alarm in alarms():
+        name = alarm["name"]
+        assert name not in names, name
+        names.add(name)
+        assert alarm["statistic"] in {"Sum", "Average", "Maximum", "Minimum", "SampleCount"}
+        assert alarm["comparison_operator"] in {
+            "GreaterThanThreshold",
+            "GreaterThanOrEqualToThreshold",
+            "LessThanThreshold",
+            "LessThanOrEqualToThreshold",
+        }
+        assert alarm["treat_missing_data"] in {"breaching", "notBreaching", "missing", "ignore"}
+        assert alarm["period_seconds"] >= 60 and alarm["period_seconds"] % 60 == 0
+        assert alarm["evaluation_periods"] >= 1
+        assert len(alarm["description"]) > 40, name
+    assert names
+
+
+def test_every_alarm_is_provisioned_from_its_definition() -> None:
+    observability = read("observability.tf")
+    assert 'for_each = local.alarms' in observability
+    assert 'jsondecode(file("${path.module}/alarms.json"))' in observability
+    for symbol in {
+        value
+        for alarm in alarms()
+        for value in alarm["dimensions"].values()  # type: ignore[union-attr]
+        if str(value).startswith("@")
+    }:
+        assert f'"{symbol}"' in observability, symbol
+    for namespace in {alarm["namespace"] for alarm in alarms() if str(alarm["namespace"]).startswith("@")}:
+        assert f'"{namespace}"' in observability, namespace
+
+
+def test_worker_alarms_watch_metrics_the_worker_emits() -> None:
+    from locus.telemetry import OPERATIONS, OUTCOMES, STAGES
+
+    allowed = {
+        "WorkerJobs": {"Operation": OPERATIONS, "Outcome": OUTCOMES},
+        "WorkerStageMillis": {"Operation": OPERATIONS, "Stage": STAGES},
+    }
+    checked = 0
+    for alarm in alarms():
+        if alarm["namespace"] != "@worker":
+            continue
+        checked += 1
+        dimensions = allowed[str(alarm["metric_name"])]
+        assert set(alarm["dimensions"]) == set(dimensions), alarm["name"]  # type: ignore[arg-type]
+        for key, value in alarm["dimensions"].items():  # type: ignore[union-attr]
+            assert value in dimensions[key], (alarm["name"], key, value)
+    assert checked
+
+
+def test_services_report_the_environment_they_run_in() -> None:
+    ecs = read("ecs.tf")
+    for setting in (
+        'name = "LOCUS_ENVIRONMENT", value = var.environment',
+        'name = "LOCUS_METRIC_NAMESPACE", value = local.control_plane_metric_namespace',
+        'name = "LOCUS_WORKER_METRIC_NAMESPACE", value = local.worker_metric_namespace',
+    ):
+        assert setting in ecs, setting
