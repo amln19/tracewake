@@ -216,6 +216,19 @@ func TestSingleRunAnalysisCommitsItsResultAndCompanion(t *testing.T) {
 		t.Fatalf("idempotent replay status=%d body=%v", status, replayed)
 	}
 
+	// An analysis profile this deployment does not implement is refused
+	// outright rather than quietly replaced with the one it does.
+	for _, request := range []map[string]any{
+		{"operation": "otlp", "run_ids": []string{run}, "profile": "lexical-v1"},
+		{"operation": "diff", "run_ids": []string{run, run}, "profile": "mlx-community/bge-small-en-v1.5-bf16"},
+		{"operation": "flamegraph", "run_ids": []string{run}},
+	} {
+		status, body := deployed.call(t, "POST", deployed.public.URL+"/v1/jobs", deployed.token, request, map[string]string{"Idempotency-Key": "unsupported-" + run})
+		if status != http.StatusUnprocessableEntity || body["error"].(map[string]any)["code"] != "unsupported_version" {
+			t.Fatalf("unsupported request %v status=%d body=%v", request, status, body)
+		}
+	}
+
 	status, claim := deployed.call(t, "POST", deployed.private.URL+"/internal/v1/claims", deployed.workerToken,
 		map[string]any{"protocol_version": 1, "worker_id": deployed.workerID, "notification": map[string]any{"protocol_version": 1, "job_id": jobID, "job_version": 1, "operation": "otlp"}}, nil)
 	if status != http.StatusCreated {

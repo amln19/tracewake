@@ -22,6 +22,10 @@ const (
 var (
 	ErrConflict            = errors.New("conflict")
 	ErrIdempotencyConflict = errors.New("idempotency conflict")
+	ErrInvalidRequest      = errors.New("invalid request")
+	// ErrUnsupported names work this deployment does not implement, which no
+	// change of state can make acceptable.
+	ErrUnsupported = errors.New("unsupported")
 	ErrLeaseLost           = errors.New("lease lost")
 	ErrNotFound            = errors.New("not found")
 )
@@ -135,22 +139,22 @@ func (s *Service) UploadFor(ctx context.Context, principal Principal, runID stri
 
 func normalizedDigest(request JobRequest) (string, error) {
 	if request.Operation != "diff" && request.Operation != "otlp" && request.Operation != "pprof" {
-		return "", errors.New("unsupported job operation")
+		return "", fmt.Errorf("%w: job operation %q", ErrUnsupported, request.Operation)
 	}
 	expected := 1
 	if request.Operation == "diff" {
 		expected = 2
 		if request.Profile == nil || *request.Profile != "lexical-v1" {
-			return "", errors.New("diff requires lexical-v1")
+			return "", fmt.Errorf("%w: diff requires analysis profile lexical-v1", ErrUnsupported)
 		}
 	} else if request.Profile != nil {
-		return "", errors.New("only diff accepts an analysis profile")
+		return "", fmt.Errorf("%w: only diff accepts an analysis profile", ErrUnsupported)
 	}
 	if len(request.RunIDs) != expected {
-		return "", errors.New("job has invalid run identities")
+		return "", fmt.Errorf("%w: job has invalid run identities", ErrInvalidRequest)
 	}
 	if request.RunIDs[0] == "" || (expected == 2 && (request.RunIDs[1] == "" || request.RunIDs[0] == request.RunIDs[1])) {
-		return "", errors.New("job has invalid run identities")
+		return "", fmt.Errorf("%w: job has invalid run identities", ErrInvalidRequest)
 	}
 	encoded, err := json.Marshal(request)
 	if err != nil {
@@ -216,7 +220,7 @@ func normalizedValidationDigest(runID string) (string, error) {
 
 func (s *Service) CreateJob(ctx context.Context, principal Principal, key string, request JobRequest) (Job, bool, error) {
 	if len(key) == 0 || len(key) > 255 {
-		return Job{}, false, errors.New("idempotency key must contain 1 to 255 characters")
+		return Job{}, false, fmt.Errorf("%w: idempotency key must contain 1 to 255 characters", ErrInvalidRequest)
 	}
 	digest, err := normalizedDigest(request)
 	if err != nil {

@@ -171,11 +171,16 @@ func (a *API) createJob(w http.ResponseWriter, r *http.Request) {
 	}
 	job, reused, err := a.service.CreateJob(r.Context(), p, r.Header.Get("Idempotency-Key"), body)
 	if err != nil {
-		code := "conflict"
-		if err == controlplane.ErrIdempotencyConflict {
-			code = "idempotency_conflict"
+		switch {
+		case errors.Is(err, controlplane.ErrUnsupported):
+			errorJSON(w, http.StatusUnprocessableEntity, "unsupported_version")
+		case errors.Is(err, controlplane.ErrInvalidRequest):
+			errorJSON(w, http.StatusBadRequest, "invalid_request")
+		case errors.Is(err, controlplane.ErrIdempotencyConflict):
+			errorJSON(w, http.StatusConflict, "idempotency_conflict")
+		default:
+			errorJSON(w, http.StatusConflict, "conflict")
 		}
-		errorJSON(w, 409, code)
 		return
 	}
 	status := http.StatusCreated

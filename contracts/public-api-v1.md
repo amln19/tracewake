@@ -59,7 +59,11 @@ unknown IDs both return `not_found`.
 `POST /v1/jobs` requires `jobs:write` and `Idempotency-Key` of 1–255 visible
 ASCII characters. The body is the generated `public-job-request` schema.
 `diff` requires exactly two distinct `ready` run IDs and `lexical-v1`; `otlp`
-and `pprof` require exactly one `ready` run and no profile. Normalization binds
+and `pprof` require exactly one `ready` run and no profile. An operation or
+analysis profile this deployment does not implement returns HTTP 422
+`unsupported_version` and is never replaced by a supported one; a malformed
+request returns HTTP 400 `invalid_request`; a run that is unknown, owned by
+another workspace, or not yet `ready` returns HTTP 409 `conflict`. Normalization binds
 operation, ordered run identities, their immutable versions, and profile. An
 identical key within 24 hours returns the original job with HTTP 200; a new key
 creates the job with HTTP 201; changed reuse returns HTTP 409
