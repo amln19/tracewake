@@ -278,7 +278,7 @@ func (s *Service) CompleteAttempt(ctx context.Context, jobID string, attempt int
 			return err
 		}
 	}
-	expectedKinds := map[string]string{"validate": "validation_json", "diff": "diff_json", "otlp": "otlp_json", "pprof": "pprof"}
+	expectedKinds := map[string]string{"validate": "validation_json", "diff": "diff_json", "otlp": "otlp_result_json", "pprof": "pprof_result_json"}
 	if result.Kind != expectedKinds[operation] || result.SchemaName != "result-envelope" || result.SchemaVersion != 1 {
 		return errors.New("result schema does not match operation")
 	}

@@ -83,6 +83,12 @@ reconnect or refresh, clients reconstruct state with `GET /v1/jobs/{job_id}`.
 
 ## Artifacts and audit
 
+A successful job registers one authoritative result artifact holding the
+canonical `result-envelope` JSON, plus the companion the analysis produced:
+`diff_json` with `diff_html`, `otlp_result_json` with `otlp_json`, and
+`pprof_result_json` with `pprof`. The envelope names its companion's exact
+object identity, digest, and size. One attempt output is at most 64 MiB.
+
 `GET /v1/artifacts/{artifact_id}/download` with `artifacts:read` checks current
 workspace ownership and retention, then returns a download URL valid for at
 most 15 minutes. The URL serves the artifact as an attachment rather than

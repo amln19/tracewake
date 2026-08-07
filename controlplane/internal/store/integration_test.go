@@ -61,7 +61,7 @@ func TestMigrateFromSchemaOne(t *testing.T) {
 	if err := legacy.Pool().QueryRow(ctx, "SELECT array_agg(version ORDER BY version) FROM schema_migrations").Scan(&versions); err != nil {
 		t.Fatal(err)
 	}
-	if len(versions) != 3 || versions[0] != 1 || versions[1] != 2 || versions[2] != 3 {
+	if len(versions) != 4 || versions[0] != 1 || versions[1] != 2 || versions[2] != 3 || versions[3] != 4 {
 		t.Fatalf("versions=%v", versions)
 	}
 	var labels []string
@@ -70,6 +70,15 @@ func TestMigrateFromSchemaOne(t *testing.T) {
 	}
 	if !slices.Contains(labels, "validate") {
 		t.Fatalf("job operations=%v", labels)
+	}
+	var kinds []string
+	if err := legacy.Pool().QueryRow(ctx, "SELECT enum_range(NULL::artifact_kind)::text[]").Scan(&kinds); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"validation_json", "otlp_result_json", "pprof_result_json"} {
+		if !slices.Contains(kinds, kind) {
+			t.Fatalf("artifact kinds=%v", kinds)
+		}
 	}
 	if _, err := legacy.Pool().Exec(ctx, "INSERT INTO schema_migrations(version) VALUES(99)"); err != nil {
 		t.Fatal(err)

@@ -225,9 +225,13 @@ func (a *API) declareArtifact(w http.ResponseWriter, r *http.Request) {
 		Digest          string `json:"digest"`
 		Size            int64  `json:"size"`
 	}
-	allowed := map[string]bool{"validation_json": true, "diff_json": true, "diff_html": true, "otlp_json": true, "pprof": true, "worker_diagnostic": true}
+	allowed := map[string]bool{"validation_json": true, "diff_json": true, "diff_html": true, "otlp_json": true, "otlp_result_json": true, "pprof": true, "pprof_result_json": true, "worker_diagnostic": true}
 	if decode(w, r, &body) != nil || body.ProtocolVersion != 1 || body.Attempt != attempt || !allowed[body.Kind] || body.MediaType == "" {
 		writeError(w, 400, "invalid_request")
+		return
+	}
+	if body.Size > artifacts.MaxResultSize {
+		writeError(w, 413, "invalid_request")
 		return
 	}
 	workspace, err := a.service.AuthorizeAttempt(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Locus-Attempt-Token"))

@@ -9,6 +9,10 @@ import (
 
 const MaxBundleSize int64 = 256 * 1024 * 1024
 
+// MaxResultSize bounds one attempt output. Analyses summarise a bundle rather
+// than copying it, so a larger output means a defect, not a large run.
+const MaxResultSize int64 = 64 * 1024 * 1024
+
 // GrantLifetime bounds how long a caller may use a short-lived object URL.
 const GrantLifetime = 15 * time.Minute
 

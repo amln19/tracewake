@@ -170,7 +170,9 @@
           "enum": [
             "diff_json",
             "diff_html",
+            "otlp_result_json",
             "otlp_json",
+            "pprof_result_json",
             "pprof"
           ],
           "title": "Kind",

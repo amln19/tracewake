@@ -1,0 +1,2 @@
+-- PostgreSQL enum values cannot be removed safely while retained artifacts
+-- reference them. Rollback requires an operator-approved restore.

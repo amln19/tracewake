@@ -54,7 +54,8 @@ All paths include the claim's job ID and attempt number:
   attempt-scoped key, required SHA-256 checksum, short-lived upload URL and
   method, any headers the URL's signature covers, and expiry. The worker cannot
   supply or alter the key. It reports the immutable object version the store
-  returns; a local deployment reports the content digest.
+  returns; a local deployment reports the content digest. A declaration over
+  64 MiB is rejected; the operation's own limits keep outputs well below it.
 * `GET /internal/v1/jobs/{job}/attempts/{attempt}/inputs/{artifact}` returns the
   immutable input reference and a short-lived download URL for it. Input bytes
   never pass through the control plane.

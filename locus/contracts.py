@@ -266,7 +266,14 @@ class UploadCompletion(ContractModel):
 
 class PublicArtifact(ContractModel):
     artifact_id: UUID
-    kind: Literal["diff_json", "diff_html", "otlp_json", "pprof"]
+    kind: Literal[
+        "diff_json",
+        "diff_html",
+        "otlp_result_json",
+        "otlp_json",
+        "pprof_result_json",
+        "pprof",
+    ]
     digest: Digest
     size: int = Field(ge=0)
     media_type: Annotated[str, StringConstraints(min_length=1, max_length=128)]
