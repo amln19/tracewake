@@ -116,10 +116,10 @@ func TestDuplicateDeliveryCreatesOneAttempt(t *testing.T) {
 	if err := pool.QueryRow(ctx, "SELECT row_version FROM jobs WHERE id=$1", job.ID).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.ClaimNotification(ctx, worker, job.ID, version); err != nil {
+	if _, err := service.ClaimNotification(ctx, worker, job.ID, version, ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.ClaimNotification(ctx, worker, job.ID, version); !errors.Is(err, controlplane.ErrConflict) {
+	if _, err := service.ClaimNotification(ctx, worker, job.ID, version, ""); !errors.Is(err, controlplane.ErrConflict) {
 		t.Fatalf("duplicate delivery claimed twice: %v", err)
 	}
 	var attempts int

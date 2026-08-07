@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/amln19/locus/controlplane/internal/telemetry"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -16,6 +17,7 @@ type Service struct {
 	pool    *pgxpool.Pool
 	tokens  KeyRing
 	workers KeyRing
+	metrics *telemetry.Metrics
 }
 
 type Principal struct {
@@ -27,8 +29,12 @@ func New(pool *pgxpool.Pool, tokens, workers KeyRing) (*Service, error) {
 	if len(tokens.Current) == 0 || tokens.CurrentVersion < 1 || len(workers.Current) == 0 || workers.CurrentVersion < 1 {
 		return nil, errors.New("current token and worker peppers are required")
 	}
-	return &Service{pool: pool, tokens: tokens, workers: workers}, nil
+	return &Service{pool: pool, tokens: tokens, workers: workers, metrics: telemetry.NoMetrics()}, nil
 }
+
+// UseTelemetry replaces the recorder lifecycle transitions report to. A service
+// that is never given one records nothing.
+func (s *Service) UseTelemetry(metrics *telemetry.Metrics) { s.metrics = metrics }
 
 func (s *Service) CreateWorkspace(ctx context.Context, name string, scopes []string) (string, string, error) {
 	if strings.TrimSpace(name) == "" || len(name) > 200 {

@@ -8,19 +8,26 @@ import (
 	"strconv"
 	"strings"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/amln19/locus/controlplane/internal/artifacts"
 	"github.com/amln19/locus/controlplane/internal/controlplane"
+	"github.com/amln19/locus/controlplane/internal/telemetry"
 )
 
 type API struct {
 	service   *controlplane.Service
 	artifacts artifacts.Store
 	baseURL   string
+	metrics   *telemetry.Metrics
 }
 
 func New(service *controlplane.Service, artifactStore artifacts.Store, baseURL string) *API {
-	return &API{service: service, artifacts: artifactStore, baseURL: baseURL}
+	return &API{service: service, artifacts: artifactStore, baseURL: baseURL, metrics: telemetry.NoMetrics()}
 }
+
+// UseTelemetry replaces the recorder this surface reports requests to.
+func (a *API) UseTelemetry(metrics *telemetry.Metrics) { a.metrics = metrics }
 
 func (a *API) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -35,7 +42,7 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("POST /internal/v1/jobs/{job}/attempts/{attempt}/artifacts", a.declareArtifact)
 	mux.HandleFunc("POST /internal/v1/jobs/{job}/attempts/{attempt}/complete", a.complete)
 	mux.HandleFunc("GET /internal/v1/jobs/{job}/attempts/{attempt}/inputs/{artifact}", a.input)
-	return mux
+	return a.metrics.Instrument("worker", mux)
 }
 
 func (a *API) worker(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -97,13 +104,14 @@ func (a *API) claim(w http.ResponseWriter, r *http.Request) {
 			JobID           string `json:"job_id"`
 			JobVersion      int64  `json:"job_version"`
 			Operation       string `json:"operation"`
+			Traceparent     string `json:"traceparent"`
 		} `json:"notification"`
 	}
 	if decode(w, r, &body) != nil || body.ProtocolVersion != 1 || body.Notification.ProtocolVersion != 1 || body.WorkerID != worker {
 		writeError(w, http.StatusUnprocessableEntity, "invalid_request")
 		return
 	}
-	claim, err := a.service.ClaimNotification(r.Context(), worker, body.Notification.JobID, body.Notification.JobVersion)
+	claim, err := a.service.ClaimNotification(r.Context(), worker, body.Notification.JobID, body.Notification.JobVersion, body.Notification.Traceparent)
 	if err != nil {
 		writeError(w, http.StatusConflict, "conflict")
 		return
@@ -270,21 +278,26 @@ func (a *API) complete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_request")
 		return
 	}
-	object, err := a.artifacts.Commit(r.Context(), body.ObjectKey, body.ObjectVersion, body.Digest, body.Size)
+	ctx, span := telemetry.Span(r.Context(), "artifact.commit", trace.SpanKindInternal)
+	object, err := a.artifacts.Commit(ctx, body.ObjectKey, body.ObjectVersion, body.Digest, body.Size)
+	if err == nil {
+		body.ObjectVersion = object.Version
+		for index, companion := range body.Companions {
+			committed, commitErr := a.artifacts.Commit(ctx, companion.ObjectKey, companion.ObjectVersion, companion.Digest, companion.Size)
+			if commitErr != nil {
+				err = commitErr
+				break
+			}
+			body.Companions[index].ObjectVersion = committed.Version
+		}
+	}
+	span.End()
 	if err != nil {
+		a.metrics.ArtifactCommitFailed(ctx)
 		writeError(w, 409, "artifact_commit_failed")
 		return
 	}
-	body.ObjectVersion = object.Version
-	for index, companion := range body.Companions {
-		committed, err := a.artifacts.Commit(r.Context(), companion.ObjectKey, companion.ObjectVersion, companion.Digest, companion.Size)
-		if err != nil {
-			writeError(w, 409, "artifact_commit_failed")
-			return
-		}
-		body.Companions[index].ObjectVersion = committed.Version
-	}
-	err = a.service.CompleteAttempt(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Locus-Attempt-Token"), body)
+	err = a.service.CompleteAttempt(ctx, r.PathValue("job"), attempt, r.Header.Get("Locus-Attempt-Token"), body)
 	if err != nil {
 		writeError(w, 409, "lease_lost")
 		return

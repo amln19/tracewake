@@ -21,6 +21,7 @@ import (
 	"github.com/amln19/locus/controlplane/internal/httpapi"
 	"github.com/amln19/locus/controlplane/internal/notify"
 	"github.com/amln19/locus/controlplane/internal/store"
+	"github.com/amln19/locus/controlplane/internal/telemetry"
 	"github.com/amln19/locus/controlplane/internal/workerapi"
 	"github.com/aws/aws-sdk-go-v2/config"
 )
@@ -44,6 +45,18 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	observability, err := startTelemetry(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() {
+		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := observability.Shutdown(shutdown); err != nil {
+			log.Printf("shut down telemetry: %v", err)
+		}
+	}()
+	service.UseTelemetry(observability.Metrics())
 	// A deployment backed by object storage never touches local disk, so the
 	// filesystem store is built only when it is the selected one.
 	var artifactStore artifacts.Store
@@ -123,10 +136,14 @@ func main() {
 	workerBase := envOr("LOCUS_WORKER_BASE_URL", reachableURL(workerAddr))
 	publicMux := http.NewServeMux()
 	publicMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
-	publicMux.Handle("/", httpapi.New(service, artifactStore, publicBase, strings.TrimSpace(os.Getenv("LOCUS_DASHBOARD_DIR"))).Handler())
+	publicAPI := httpapi.New(service, artifactStore, publicBase, strings.TrimSpace(os.Getenv("LOCUS_DASHBOARD_DIR")))
+	publicAPI.UseTelemetry(observability.Metrics())
+	publicMux.Handle("/", publicAPI.Handler())
 	workerMux := http.NewServeMux()
 	workerMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
-	workerMux.Handle("/", workerapi.New(service, artifactStore, workerBase).Handler())
+	workerAPI := workerapi.New(service, artifactStore, workerBase)
+	workerAPI.UseTelemetry(observability.Metrics())
+	workerMux.Handle("/", workerAPI.Handler())
 	if localStore != nil {
 		publicMux.Handle("/objects/", localStore.Handler())
 		workerMux.Handle("/objects/", localStore.Handler())
@@ -186,6 +203,26 @@ func main() {
 }
 
 const retentionInterval = 10 * time.Minute
+
+// startTelemetry installs the operational trace and metric pipeline. Records
+// go to standard output because the deployment already ships container output
+// to its log service, which is also where embedded metrics become alarmable.
+func startTelemetry(ctx context.Context) (*telemetry.Provider, error) {
+	if strings.EqualFold(os.Getenv("LOCUS_TELEMETRY"), "off") {
+		return telemetry.Disabled(), nil
+	}
+	interval, err := time.ParseDuration(envOr("LOCUS_TELEMETRY_INTERVAL", "60s"))
+	if err != nil {
+		return nil, fmt.Errorf("LOCUS_TELEMETRY_INTERVAL must be a duration: %w", err)
+	}
+	return telemetry.Start(ctx, telemetry.Options{
+		ServiceName:    "locus-control-plane",
+		ServiceVersion: envOr("LOCUS_SERVICE_VERSION", "unknown"),
+		Environment:    envOr("LOCUS_ENVIRONMENT", "local"),
+		Namespace:      envOr("LOCUS_METRIC_NAMESPACE", "Locus/ControlPlane"),
+		MetricInterval: interval,
+	})
+}
 
 // Signed object URLs are an extension of worker and tenant authentication, so
 // they are derived from the worker pepper rather than configured separately.

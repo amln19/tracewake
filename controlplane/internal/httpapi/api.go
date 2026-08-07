@@ -19,6 +19,7 @@ import (
 
 	"github.com/amln19/locus/controlplane/internal/artifacts"
 	"github.com/amln19/locus/controlplane/internal/controlplane"
+	"github.com/amln19/locus/controlplane/internal/telemetry"
 )
 
 type API struct {
@@ -26,6 +27,7 @@ type API struct {
 	artifacts artifacts.Store
 	baseURL   string
 	dashboard string
+	metrics   *telemetry.Metrics
 }
 
 func New(service *controlplane.Service, store artifacts.Store, baseURL string, dashboard ...string) *API {
@@ -33,8 +35,11 @@ func New(service *controlplane.Service, store artifacts.Store, baseURL string, d
 	if len(dashboard) > 0 {
 		directory = dashboard[0]
 	}
-	return &API{service: service, artifacts: store, baseURL: baseURL, dashboard: directory}
+	return &API{service: service, artifacts: store, baseURL: baseURL, dashboard: directory, metrics: telemetry.NoMetrics()}
 }
+
+// UseTelemetry replaces the recorder this surface reports requests to.
+func (a *API) UseTelemetry(metrics *telemetry.Metrics) { a.metrics = metrics }
 func (a *API) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/browser/sessions", a.createBrowserSession)
@@ -56,7 +61,7 @@ func (a *API) Handler() http.Handler {
 	if a.dashboard != "" {
 		mux.Handle("/", a.dashboardHandler())
 	}
-	return securityHeaders(mux)
+	return securityHeaders(a.metrics.Instrument("public", mux))
 }
 
 const browserCookie = "__Host-locus_session"

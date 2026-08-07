@@ -55,7 +55,7 @@ func (s *Service) Cancellation(ctx context.Context, jobID string, attempt int, t
 		return false, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, _, err = s.checkAttempt(ctx, tx, jobID, attempt, token); err != nil {
+	if _, err = s.checkAttempt(ctx, tx, jobID, attempt, token); err != nil {
 		return false, err
 	}
 	var requested bool
@@ -72,11 +72,11 @@ func (s *Service) AuthorizeAttempt(ctx context.Context, jobID string, attempt in
 		return "", err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	workspace, _, err := s.checkAttempt(ctx, tx, jobID, attempt, token)
+	current, err := s.checkAttempt(ctx, tx, jobID, attempt, token)
 	if err != nil {
 		return "", err
 	}
-	return workspace, tx.Commit(ctx)
+	return current.workspaceID, tx.Commit(ctx)
 }
 
 func (s *Service) InputArtifact(ctx context.Context, jobID string, attempt int, token, artifactID string) (InputArtifact, error) {
@@ -85,7 +85,7 @@ func (s *Service) InputArtifact(ctx context.Context, jobID string, attempt int, 
 		return InputArtifact{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, _, err = s.checkAttempt(ctx, tx, jobID, attempt, token); err != nil {
+	if _, err = s.checkAttempt(ctx, tx, jobID, attempt, token); err != nil {
 		return InputArtifact{}, err
 	}
 	var value InputArtifact
@@ -97,18 +97,29 @@ func (s *Service) InputArtifact(ctx context.Context, jobID string, attempt int, 
 	return value, tx.Commit(ctx)
 }
 
-func (s *Service) checkAttempt(ctx context.Context, tx pgx.Tx, jobID string, attempt int, token string) (string, string, error) {
-	var workspaceID, operation, jobState, attemptState string
+// currentAttempt is the state a worker request is judged against: who owns the
+// job, what it asked for, and how long the job has been alive.
+type currentAttempt struct {
+	workspaceID string
+	operation   string
+	age         time.Duration
+}
+
+func (s *Service) checkAttempt(ctx context.Context, tx pgx.Tx, jobID string, attempt int, token string) (currentAttempt, error) {
+	var value currentAttempt
+	var jobState, attemptState string
 	var current int
 	var verifier []byte
 	var version int16
 	var lease time.Time
-	err := tx.QueryRow(ctx, `SELECT j.workspace_id,i.operation,j.state,j.current_attempt_number,a.state,a.token_verifier,a.token_pepper_version,a.lease_expires_at
-		FROM jobs j JOIN job_inputs i ON i.id=j.input_id JOIN job_attempts a ON a.job_id=j.id AND a.attempt_number=$2 WHERE j.id=$1 AND a.lease_expires_at>transaction_timestamp() FOR UPDATE`, jobID, attempt).Scan(&workspaceID, &operation, &jobState, &current, &attemptState, &verifier, &version, &lease)
+	var ageSeconds float64
+	err := tx.QueryRow(ctx, `SELECT j.workspace_id,i.operation,j.state,j.current_attempt_number,a.state,a.token_verifier,a.token_pepper_version,a.lease_expires_at,EXTRACT(EPOCH FROM (transaction_timestamp()-j.created_at))
+		FROM jobs j JOIN job_inputs i ON i.id=j.input_id JOIN job_attempts a ON a.job_id=j.id AND a.attempt_number=$2 WHERE j.id=$1 AND a.lease_expires_at>transaction_timestamp() FOR UPDATE`, jobID, attempt).Scan(&value.workspaceID, &value.operation, &jobState, &current, &attemptState, &verifier, &version, &lease, &ageSeconds)
 	if err != nil || jobState != "running" || attemptState != "running" || current != attempt || !s.workers.Verify(version, token, verifier) {
-		return "", "", ErrLeaseLost
+		return currentAttempt{}, ErrLeaseLost
 	}
-	return workspaceID, operation, nil
+	value.age = time.Duration(ageSeconds * float64(time.Second))
+	return value, nil
 }
 
 func (s *Service) Heartbeat(ctx context.Context, jobID string, attempt int, token string) (time.Time, error) {
@@ -117,7 +128,7 @@ func (s *Service) Heartbeat(ctx context.Context, jobID string, attempt int, toke
 		return time.Time{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, _, err = s.checkAttempt(ctx, tx, jobID, attempt, token); err != nil {
+	if _, err = s.checkAttempt(ctx, tx, jobID, attempt, token); err != nil {
 		return time.Time{}, err
 	}
 	var lease time.Time
@@ -137,7 +148,7 @@ func (s *Service) UpdateProgress(ctx context.Context, jobID string, attempt int,
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, _, err = s.checkAttempt(ctx, tx, jobID, attempt, token); err != nil {
+	if _, err = s.checkAttempt(ctx, tx, jobID, attempt, token); err != nil {
 		return err
 	}
 	var seq int64
@@ -177,17 +188,21 @@ func (s *Service) RequestCancellation(ctx context.Context, principal Principal, 
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	command, err := tx.Exec(ctx, `UPDATE jobs SET cancel_requested_at=COALESCE(cancel_requested_at,transaction_timestamp()),row_version=row_version+1 WHERE id=$1 AND workspace_id=$2 AND state IN('queued','running','retry_wait')`, jobID, principal.WorkspaceID)
-	if err != nil {
-		return err
-	}
-	if command.RowsAffected() == 0 {
+	var operation string
+	var ageSeconds float64
+	err = tx.QueryRow(ctx, `UPDATE jobs SET cancel_requested_at=COALESCE(cancel_requested_at,transaction_timestamp()),row_version=row_version+1 WHERE id=$1 AND workspace_id=$2 AND state IN('queued','running','retry_wait')
+        RETURNING (SELECT operation FROM job_inputs WHERE id=jobs.input_id),EXTRACT(EPOCH FROM (transaction_timestamp()-jobs.created_at))`, jobID, principal.WorkspaceID).Scan(&operation, &ageSeconds)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
-	_, err = tx.Exec(ctx, `UPDATE job_attempts SET state='cancelled',finished_at=transaction_timestamp() WHERE job_id=$1 AND state='running'`, jobID)
 	if err != nil {
 		return err
 	}
+	command, err := tx.Exec(ctx, `UPDATE job_attempts SET state='cancelled',finished_at=transaction_timestamp() WHERE job_id=$1 AND state='running'`, jobID)
+	if err != nil {
+		return err
+	}
+	fenced := command.RowsAffected()
 	_, err = tx.Exec(ctx, `UPDATE jobs SET state='cancelled',terminal_at=transaction_timestamp(),retry_at=NULL,updated_at=transaction_timestamp(),row_version=row_version+1 WHERE id=$1 AND state IN('queued','running','retry_wait')`, jobID)
 	if err != nil {
 		return err
@@ -196,7 +211,14 @@ func (s *Service) RequestCancellation(ctx context.Context, principal Principal, 
 	if err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	if err = tx.Commit(ctx); err != nil {
+		return err
+	}
+	for count := int64(0); count < fenced; count++ {
+		s.metrics.AttemptFenced(ctx, "cancelled")
+	}
+	s.metrics.JobTerminal(ctx, operation, "cancelled", time.Duration(ageSeconds*float64(time.Second)))
+	return nil
 }
 
 func (s *Service) FailAttempt(ctx context.Context, jobID string, attempt int, token, code, message string, retryable bool) (string, error) {
@@ -213,10 +235,11 @@ func (s *Service) FailAttempt(ctx context.Context, jobID string, attempt int, to
 		return "", err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	workspace, operation, err := s.checkAttempt(ctx, tx, jobID, attempt, token)
+	current, err := s.checkAttempt(ctx, tx, jobID, attempt, token)
 	if err != nil {
 		return "", err
 	}
+	workspace, operation := current.workspaceID, current.operation
 	if retryable && attempt < 3 {
 		delay := firstBackoff
 		if attempt == 2 {
@@ -257,8 +280,11 @@ func (s *Service) FailAttempt(ctx context.Context, jobID string, attempt int, to
 		return "", err
 	}
 	if retryable && attempt < 3 {
+		s.metrics.AttemptFenced(ctx, "retryable_failure")
 		return "retry_wait", nil
 	}
+	s.metrics.AttemptFenced(ctx, code)
+	s.metrics.JobTerminal(ctx, operation, "failed", current.age)
 	return "failed", nil
 }
 
@@ -268,10 +294,11 @@ func (s *Service) CompleteAttempt(ctx context.Context, jobID string, attempt int
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	workspace, operation, err := s.checkAttempt(ctx, tx, jobID, attempt, token)
+	current, err := s.checkAttempt(ctx, tx, jobID, attempt, token)
 	if err != nil {
 		return err
 	}
+	workspace, operation := current.workspaceID, current.operation
 	if result.ArtifactID == "" {
 		result.ArtifactID, err = newID()
 		if err != nil {
@@ -324,5 +351,13 @@ func (s *Service) CompleteAttempt(ctx context.Context, jobID string, attempt int
 	if _, err = tx.Exec(ctx, `INSERT INTO audit_records(workspace_id,aggregate_type,aggregate_id,event_type,actor_type,payload) VALUES($1,'job',$2,'job.succeeded','worker',jsonb_build_object('attempt',$3::integer,'artifact_id',$4::text))`, workspace, jobID, attempt, result.ArtifactID); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	if err = tx.Commit(ctx); err != nil {
+		return err
+	}
+	s.metrics.ArtifactCommitted(ctx, result.Kind)
+	for _, companion := range result.Companions {
+		s.metrics.ArtifactCommitted(ctx, companion.Kind)
+	}
+	s.metrics.JobTerminal(ctx, operation, "succeeded", current.age)
+	return nil
 }

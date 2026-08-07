@@ -10,7 +10,10 @@ import (
 	"sort"
 	"time"
 
+	"github.com/amln19/locus/controlplane/internal/telemetry"
 	"github.com/jackc/pgx/v5"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -118,11 +121,18 @@ func (s *Service) CompleteUpload(ctx context.Context, principal Principal, runID
 	if _, err := tx.Exec(ctx, "INSERT INTO jobs (id,workspace_id,input_id) VALUES ($1,$2,$3)", jobID, principal.WorkspaceID, inputID); err != nil {
 		return err
 	}
-	payload, _ := json.Marshal(map[string]any{"protocol_version": 1, "job_id": jobID, "job_version": 1, "operation": "validate"})
+	payload, err := notificationPayload(ctx, jobID, 1, "validate")
+	if err != nil {
+		return err
+	}
 	if _, err := tx.Exec(ctx, `INSERT INTO outbox (aggregate_type,aggregate_id,aggregate_version,topic,payload) VALUES ('job',$1,1,'job.created',$2)`, jobID, payload); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	s.metrics.JobCreated(ctx, "validate")
+	return nil
 }
 
 func (s *Service) UploadFor(ctx context.Context, principal Principal, runID string) (Upload, error) {
@@ -196,13 +206,17 @@ func (s *Service) CreateValidationJob(ctx context.Context, workspaceID, runID st
 	if _, err := tx.Exec(ctx, "UPDATE runs SET state='validating',row_version=row_version+1 WHERE id=$1 AND state='uploaded'", runID); err != nil {
 		return "", fmt.Errorf("mark run validating: %w", err)
 	}
-	payload, _ := json.Marshal(map[string]any{"protocol_version": 1, "job_id": jobID, "job_version": 1, "operation": "validate"})
+	payload, err := notificationPayload(ctx, jobID, 1, "validate")
+	if err != nil {
+		return "", err
+	}
 	if _, err := tx.Exec(ctx, `INSERT INTO outbox (aggregate_type,aggregate_id,aggregate_version,topic,payload) VALUES ('job',$1,1,'job.created',$2)`, jobID, payload); err != nil {
 		return "", fmt.Errorf("enqueue validation: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return "", fmt.Errorf("commit validation job: %w", err)
 	}
+	s.metrics.JobCreated(ctx, "validate")
 	return jobID, nil
 }
 
@@ -270,7 +284,10 @@ func (s *Service) CreateJob(ctx context.Context, principal Principal, key string
 	if _, err := tx.Exec(ctx, "INSERT INTO jobs (id,workspace_id,input_id) VALUES ($1,$2,$3)", jobID, principal.WorkspaceID, inputID); err != nil {
 		return Job{}, false, fmt.Errorf("insert job: %w", err)
 	}
-	payload, _ := json.Marshal(map[string]any{"protocol_version": 1, "job_id": jobID, "job_version": 1, "operation": request.Operation})
+	payload, err := notificationPayload(ctx, jobID, 1, request.Operation)
+	if err != nil {
+		return Job{}, false, err
+	}
 	if _, err := tx.Exec(ctx, `INSERT INTO outbox (aggregate_type,aggregate_id,aggregate_version,topic,payload)
         VALUES ('job',$1,1,'job.created',$2)`, jobID, payload); err != nil {
 		return Job{}, false, fmt.Errorf("insert job outbox: %w", err)
@@ -286,18 +303,25 @@ func (s *Service) CreateJob(ctx context.Context, principal Principal, key string
 	if err := tx.Commit(ctx); err != nil {
 		return Job{}, false, fmt.Errorf("commit job transaction: %w", err)
 	}
+	s.metrics.JobCreated(ctx, request.Operation)
 	return Job{ID: jobID, State: "queued"}, false, nil
 }
 
 func (s *Service) Claim(ctx context.Context, workerID, jobID string) (Claim, error) {
-	return s.claim(ctx, workerID, jobID, 0)
+	return s.claim(ctx, workerID, jobID, 0, "")
 }
 
-func (s *Service) ClaimNotification(ctx context.Context, workerID, jobID string, jobVersion int64) (Claim, error) {
-	return s.claim(ctx, workerID, jobID, jobVersion)
+// ClaimNotification starts an attempt for one delivered notification. The
+// notification's trace context, when present, continues the trace that created
+// the job instead of beginning a disconnected one.
+func (s *Service) ClaimNotification(ctx context.Context, workerID, jobID string, jobVersion int64, parent string) (Claim, error) {
+	return s.claim(ctx, workerID, jobID, jobVersion, parent)
 }
 
-func (s *Service) claim(ctx context.Context, workerID, jobID string, expectedVersion int64) (Claim, error) {
+func (s *Service) claim(ctx context.Context, workerID, jobID string, expectedVersion int64, parent string) (Claim, error) {
+	ctx, span := telemetry.Span(telemetry.Continue(ctx, parent), "job.claim", trace.SpanKindConsumer)
+	defer span.End()
+	span.SetAttributes(attribute.String("locus.job_id", jobID))
 	transaction, err := s.pool.Begin(ctx)
 	if err != nil {
 		return Claim{}, fmt.Errorf("begin claim: %w", err)
@@ -308,9 +332,13 @@ func (s *Service) claim(ctx context.Context, workerID, jobID string, expectedVer
 	var next int
 	var rowVersion int64
 	var workspaceID string
-	err = transaction.QueryRow(ctx, `SELECT j.state, i.operation, i.analysis_profile, COALESCE((SELECT max(a.attempt_number) FROM job_attempts a WHERE a.job_id=j.id),0)+1,j.row_version,j.workspace_id
+	var queuedSeconds float64
+	var fencedSeconds *float64
+	err = transaction.QueryRow(ctx, `SELECT j.state, i.operation, i.analysis_profile, COALESCE((SELECT max(a.attempt_number) FROM job_attempts a WHERE a.job_id=j.id),0)+1,j.row_version,j.workspace_id,
+        EXTRACT(EPOCH FROM (transaction_timestamp()-j.created_at)),
+        EXTRACT(EPOCH FROM (transaction_timestamp()-(SELECT max(a.finished_at) FROM job_attempts a WHERE a.job_id=j.id)))
         FROM jobs j JOIN job_inputs i ON i.id=j.input_id
-		WHERE j.id=$1 FOR UPDATE`, jobID).Scan(&state, &operation, &profile, &next, &rowVersion, &workspaceID)
+		WHERE j.id=$1 FOR UPDATE`, jobID).Scan(&state, &operation, &profile, &next, &rowVersion, &workspaceID, &queuedSeconds, &fencedSeconds)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Claim{}, ErrConflict
 	}
@@ -361,6 +389,12 @@ func (s *Service) claim(ctx context.Context, workerID, jobID string, expectedVer
 	if err := transaction.Commit(ctx); err != nil {
 		return Claim{}, fmt.Errorf("commit claim: %w", err)
 	}
+	span.SetAttributes(attribute.Int("locus.attempt", next), attribute.String("locus.operation", operation))
+	var recovered time.Duration
+	if fencedSeconds != nil {
+		recovered = time.Duration(*fencedSeconds * float64(time.Second))
+	}
+	s.metrics.AttemptClaimed(ctx, operation, next, time.Duration(queuedSeconds*float64(time.Second)), recovered)
 	return Claim{JobID: jobID, Attempt: next, AttemptToken: token, LeaseExpires: lease, Operation: operation, Profile: profile, Inputs: inputs}, nil
 }
 
