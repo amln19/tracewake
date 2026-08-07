@@ -37,6 +37,7 @@ ARTIFACT_ID = "018f7f28-df62-7bc4-9f45-6e6c32a19487"
 SECOND_RUN_ID = "018f7f28-df62-7bc4-9f45-6e6c32a19488"
 COMPANION_ID = "018f7f28-df62-7bc4-9f45-6e6c32a19489"
 NOW = "2026-08-06T12:00:00Z"
+TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
 
 
 def _json(value: object) -> bytes:
@@ -166,6 +167,10 @@ def fixture_bytes() -> tuple[dict[str, bytes], list[dict[str, object]]]:
             ),
         ),
         "accepted/job-notification.json": ("job-notification", _json(notification)),
+        "accepted/job-notification-traced.json": (
+            "job-notification",
+            _json(notification.model_copy(update={"traceparent": TRACEPARENT})),
+        ),
         "accepted/claim-request.json": (
             "claim-request",
             _json(
@@ -316,6 +321,19 @@ def fixture_bytes() -> tuple[dict[str, bytes], list[dict[str, object]]]:
                     "message": "invalid",
                     "retryable": False,
                     "secret": "unexpected",
+                }
+            ),
+        ),
+        "rejected/job-notification-bad-traceparent.json": (
+            "job-notification",
+            "invalid_message",
+            _json(
+                {
+                    "protocol_version": 1,
+                    "job_id": JOB_ID,
+                    "job_version": 1,
+                    "operation": "validate",
+                    "traceparent": "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
                 }
             ),
         ),

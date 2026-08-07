@@ -30,6 +30,8 @@ const (
 var (
 	digestPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	uuidPattern   = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+	// W3C trace context version 00 is the only format this protocol carries.
+	traceparentPattern = regexp.MustCompile(`^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$`)
 )
 
 type fixtureManifest struct {
@@ -61,10 +63,11 @@ type progress struct {
 }
 
 type notification struct {
-	ProtocolVersion int    `json:"protocol_version"`
-	JobID           string `json:"job_id"`
-	JobVersion      int64  `json:"job_version"`
-	Operation       string `json:"operation"`
+	ProtocolVersion int     `json:"protocol_version"`
+	JobID           string  `json:"job_id"`
+	JobVersion      int64   `json:"job_version"`
+	Operation       string  `json:"operation"`
+	Traceparent     *string `json:"traceparent"`
 }
 
 type claimRequest struct {
@@ -262,6 +265,9 @@ func validateProgress(data []byte) string {
 }
 
 func validNotification(value notification) bool {
+	if value.Traceparent != nil && !traceparentPattern.MatchString(*value.Traceparent) {
+		return false
+	}
 	return value.ProtocolVersion == 1 && uuidPattern.MatchString(value.JobID) &&
 		value.JobVersion >= 1 && oneOf(value.Operation, "validate", "diff", "otlp", "pprof")
 }

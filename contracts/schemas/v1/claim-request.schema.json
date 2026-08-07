@@ -27,6 +27,19 @@
           "const": 1,
           "title": "Protocol Version",
           "type": "integer"
+        },
+        "traceparent": {
+          "anyOf": [
+            {
+              "pattern": "^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Traceparent"
         }
       },
       "required": [

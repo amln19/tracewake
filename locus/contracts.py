@@ -20,6 +20,7 @@ CONTRACT_SCHEMA_VERSION = 1
 WORKER_PROTOCOL_VERSION = 1
 
 Digest = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+TraceParent = Annotated[str, StringConstraints(pattern=r"^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$")]
 ObjectKey = Annotated[str, StringConstraints(min_length=1, max_length=512)]
 BoundedMessage = Annotated[str, StringConstraints(min_length=1, max_length=512)]
 
@@ -171,6 +172,9 @@ class JobNotification(ContractModel):
     job_id: UUID
     job_version: int = Field(ge=1)
     operation: Literal["validate", "diff", "otlp", "pprof"]
+    # Carrying the W3C trace context in the notification is what lets one trace
+    # span the transition the queue makes asynchronous.
+    traceparent: TraceParent | None = None
 
 
 class ClaimRequest(ContractModel):
