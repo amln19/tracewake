@@ -178,3 +178,29 @@ def test_every_published_number_comes_from_this_run(measurements: dict[str, Any]
     section = readme.split("### Measured behaviour", 1)[-1].split("## Persistent formats", 1)[0]
     for value in published:
         assert value.lower() in section.lower(), f"the README does not restate {value!r} from the retained run"
+
+
+def test_the_demonstration_recorded_every_step(measurements: dict[str, Any]) -> None:
+    """Each step the README maps must be present and satisfying in the run."""
+    scenarios = measurements["scenarios"]
+    readme = Path("README.md").read_text(encoding="utf-8")
+    section = readme.split("### The demonstration", 1)[-1].split("## Persistent formats", 1)[0]
+    rows = [line for line in section.splitlines() if line.startswith("|")]
+    for reference in re.findall(r"`([a-z_]+(?:\.[a-z_]+)?)`", "\n".join(rows)):
+        name, _, field = reference.partition(".")
+        assert name in scenarios, f"the README maps a step to {name}, which the run does not record"
+        if field:
+            assert scenarios[name][field], f"{reference} recorded nothing"
+
+    progress = scenarios["worker_recovery"]["progress_while_running"]
+    assert progress["attempt_number"] == 1 and progress["stage"]
+    provenance = scenarios["result_provenance"]
+    assert provenance["artifact_kinds"] == ["diff_html", "diff_json"]
+    assert provenance["downloads_match_recorded_identity"]
+    assert provenance["html_is_self_contained"]
+    assert provenance["analysis_profile"] == "lexical-v1"
+    assert provenance["result_schema"] == {"name": "result-envelope", "version": 1}
+    assert len(provenance["input_digests"]) == 2
+    for digests in provenance["input_digests"]:
+        assert all(digests.values())
+    assert {"job.created", "attempt.claimed", "job.succeeded"} <= set(provenance["audit_events"])

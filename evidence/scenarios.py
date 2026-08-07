@@ -140,6 +140,7 @@ def worker_recovery(stack: Stack, client: Client, runs: tuple[str, str], key: st
         "the first attempt to start",
         interval=0.02,
     )
+    progress = client.job(job_id)["progress"]
     killed = time.perf_counter()
     stack.stop_worker(kill=True)
     if stack.psql(f"SELECT state FROM jobs WHERE id='{job_id}'").strip() != "running":
@@ -164,6 +165,7 @@ def worker_recovery(stack: Stack, client: Client, runs: tuple[str, str], key: st
         "kill_to_success_seconds": round(recovered_at - killed, 3),
         "succeeded_attempts": sum(1 for a in attempts if a["state"] == "succeeded"),
         "result_artifacts": len(job["artifacts"]),
+        "progress_while_running": progress,
     }
 
 
@@ -465,4 +467,43 @@ def hosted_matches_local(client: Client, job: dict[str, Any], bundle: bytes, roo
         "identical_bytes": hosted == local,
         "hosted_span_count": envelope["result"]["span_count"],
         "local_span_count": spans,
+    }
+
+
+def result_provenance(client: Client, job_id: str) -> dict[str, Any]:
+    """Read back everything a finished analysis is supposed to account for."""
+    job = client.job(job_id)
+    artifacts = {item["kind"]: item for item in job["artifacts"]}
+    envelope = json.loads(client.download(artifacts["diff_json"]["artifact_id"]))
+    provenance = envelope["result"]["provenance"]
+    companion = client.download(artifacts["diff_html"]["artifact_id"])
+    audit = [record["event_type"] for record in client.audit() if record["aggregate_id"] == job_id]
+    return {
+        "job_id": job_id,
+        "artifact_kinds": sorted(artifacts),
+        "downloads_match_recorded_identity": all(
+            hashlib.sha256(client.download(item["artifact_id"])).hexdigest() == item["digest"]
+            and len(client.download(item["artifact_id"])) == item["size"]
+            for item in job["artifacts"]
+        ),
+        "html_is_self_contained": b"<html" in companion.lower() and b"http://" not in companion,
+        "analysis_profile": provenance["analysis_profile"],
+        "locus_version": provenance["locus_version"],
+        "worker_build": provenance["worker_build"],
+        "input_digests": [
+            {
+                "logical_run_digest": item["logical_run_digest"],
+                "bundle_digest": item["bundle_digest"],
+                "bundle_object_version": item["bundle_object_version"],
+                "event_schema_version": item["event_schema_version"],
+                "cassette_format_version": item["cassette_format_version"],
+                "bundle_format_version": item["bundle_format_version"],
+            }
+            for item in provenance["inputs"]
+        ],
+        "result_schema": {
+            "name": artifacts["diff_json"]["schema_name"],
+            "version": artifacts["diff_json"]["schema_version"],
+        },
+        "audit_events": audit,
     }

@@ -23,7 +23,7 @@
       },
       {
         "alarm": "outbox-publication-stalled",
-        "observed": 247.986583,
+        "observed": 248.007308,
         "responded": true,
         "samples": 214,
         "state": "ALARM",
@@ -53,7 +53,7 @@
       },
       {
         "alarm": "reconciler-failing",
-        "observed": 21.0,
+        "observed": 20.0,
         "responded": true,
         "samples": 11,
         "state": "ALARM",
@@ -73,7 +73,7 @@
       },
       {
         "alarm": "diff-queue-latency-high",
-        "observed": 694.7768447931036,
+        "observed": 697.3711206724138,
         "responded": true,
         "samples": 34,
         "state": "OK",
@@ -158,7 +158,7 @@
     "tested_conditions_without_a_signal": []
   },
   "environment": {
-    "commit": "8c0efcbe0452df7b7dc573a70e94888b7749165a",
+    "commit": "5613703216b65b2ec65cade7b3af9a60f70fb046",
     "go": "go version go1.24.13 darwin/arm64",
     "locus": "0.2.0",
     "platform": "Darwin arm64",
@@ -166,107 +166,107 @@
     "python": "3.13.14"
   },
   "evidence_version": 1,
-  "finished_at": "2026-08-07T05:54:16Z",
+  "finished_at": "2026-08-07T06:12:24Z",
   "latency": {
     "analysis_load": {
       "count": 24,
-      "max_ms": 1213.992,
-      "mean_ms": 1103.524,
-      "min_ms": 984.703,
-      "p50_ms": 1110.751,
-      "p95_ms": 1205.06
+      "max_ms": 1175.683,
+      "mean_ms": 1081.562,
+      "min_ms": 979.221,
+      "p50_ms": 1087.33,
+      "p95_ms": 1167.829
     },
     "ingestion": {
       "count": 10,
-      "max_ms": 1020.057,
-      "mean_ms": 859.421,
-      "min_ms": 21.791,
-      "p50_ms": 984.456,
-      "p95_ms": 1020.057
+      "max_ms": 1016.517,
+      "mean_ms": 852.35,
+      "min_ms": 28.312,
+      "p50_ms": 981.181,
+      "p95_ms": 1016.517
     },
     "soak": {
       "count": 30,
-      "max_ms": 1005.075,
-      "mean_ms": 454.639,
-      "min_ms": 25.476,
-      "p50_ms": 413.922,
-      "p95_ms": 989.406
+      "max_ms": 1013.591,
+      "mean_ms": 474.14,
+      "min_ms": 43.736,
+      "p50_ms": 442.743,
+      "p95_ms": 986.37
     }
   },
   "scenarios": {
     "analysis_load": {
       "create_to_terminal_ms": [
-        984.703,
-        996.692,
-        1009.258,
-        1019.279,
-        1029.148,
-        1038.017,
-        1047.758,
-        1059.833,
-        1070.523,
-        1081.469,
-        1091.102,
-        1100.578,
-        1110.751,
-        1120.3909999999998,
-        1129.926,
-        1140.19,
-        1149.5059999999999,
-        1159.182,
-        1168.1870000000001,
-        1177.607,
-        1186.036,
-        1195.3899999999999,
-        1205.06,
-        1213.992
+        979.221,
+        990.244,
+        1000.2379999999999,
+        1009.927,
+        1018.8280000000001,
+        1027.075,
+        1035.523,
+        1043.942,
+        1052.684,
+        1062.4260000000002,
+        1070.592,
+        1079.02,
+        1087.33,
+        1095.551,
+        1103.378,
+        1111.9699999999998,
+        1120.399,
+        1128.763,
+        1136.991,
+        1145.736,
+        1153.364,
+        1160.774,
+        1167.829,
+        1175.683
       ],
-      "drain_seconds": 1.276,
+      "drain_seconds": 1.282,
       "first_request": {
         "idempotency_key": "load-0",
         "run_ids": [
-          "b9e1afba-4392-4907-ad59-6a6f2d894e93",
-          "c22a67fe-3a6a-4a56-ad1f-98ebf05f2e03"
+          "d8047c06-4745-43d9-a1d9-4b0c017b4512",
+          "fd5cb1d2-88e7-4df6-a10a-9f0f75a9ba96"
         ]
       },
       "job_ids": [
-        "02dde82a-920f-4c6f-89af-9de57e897ba6",
-        "b6cc4665-0262-460f-8e78-66f76f6b544d",
-        "f0916d57-5f64-4ba4-aef5-7a3b69091a2d",
-        "0cee5a7e-e47e-4377-891c-24855e16541a",
-        "49f43983-9ad9-4617-bdeb-b6769442c083",
-        "c5bfeed1-4c3d-4826-bf6f-d7c5c811c5c6",
-        "057096dd-87b6-426a-844f-2ad74af3d240",
-        "5d128998-fec5-4075-955e-504ce6802c80",
-        "b5379d9d-ceb1-41aa-91fd-2f571ebfd343",
-        "a2fbc168-bc4e-47e8-b49e-98b243bbb598",
-        "7d5bb653-5408-4822-844e-3a5bcbd82860",
-        "ec4e2938-dcb8-4ceb-952a-84eb840c2e5b",
-        "b2162886-c6d7-4101-8308-9d98e7a5ba69",
-        "da254d3e-9c42-4fb1-87bd-985ab5e58a7c",
-        "d130bf41-7ff8-4f65-9d9d-21bd9da857e6",
-        "898fe36e-0aaa-4c79-8ecf-22d936285843",
-        "bd2c7f38-5bc0-4197-88fd-891fa8312de5",
-        "c277240e-e79a-4c91-8bb1-997e1c23e426",
-        "e9bff53c-6d87-4a6a-9a06-305114cfe8f8",
-        "951c0200-25d4-4a38-91a4-1bf05927ac35",
-        "a24c0134-715c-44d5-8cfd-a760b419a89b",
-        "7d721739-509b-46f5-ad4b-114637b65209",
-        "5023506d-d09d-4f4e-b496-94f3fca7a8da",
-        "35276c5f-c4db-43bb-97b2-def6685df046"
+        "3e91f427-2c9a-413d-88bf-25a390476bb0",
+        "35064415-0d7d-4b95-bb13-acac11c931eb",
+        "8e40b4c7-874d-4eb1-92ae-5c0c1444c4a2",
+        "9492ab59-0bf8-46df-ac4b-371c690fdc6e",
+        "6d08956e-59ca-4f91-9356-8e5ff87e26e9",
+        "0230c221-3d9b-4392-82b8-0b08ddcbb033",
+        "85ad7f9d-cdbe-443c-af69-c0b41e450947",
+        "e45ca205-60e8-4578-9cbc-38d647c296f4",
+        "abbaa2fa-0fdf-47de-b1e3-8b4eb4dce8a5",
+        "d2d2d815-d80c-44f5-8ed1-18cc12d47cbd",
+        "b80b593c-3fc7-4cb0-8cd6-a903f37ca9ea",
+        "baecb791-02c3-4d94-b347-d00375627dca",
+        "03030f3d-f185-498e-8710-f53e5528a1b1",
+        "af09d1d1-cabe-4a3c-bd7e-a422aa9dbbb0",
+        "679a8d70-a89c-4a79-9b3c-16c38bdb2d34",
+        "4097e123-1eea-4931-b246-ccf27558223b",
+        "e9ab7175-e568-4ff9-a1a0-9c3f24b34f54",
+        "34caff61-be6d-42cf-a931-aa9452de9b3e",
+        "4d64e73a-b833-4915-b3f9-67141ee710bd",
+        "8b854f48-27d6-4918-b0a4-d0194309e458",
+        "f6a6db30-9884-4dff-b5ea-079d0e80a8e7",
+        "889c8bbb-dea2-45b9-ac31-c96456f94ff1",
+        "5635011d-f5f3-4570-9253-13a1408cdeaa",
+        "7aa008b3-5f98-45de-a69b-14f3bcb5e9a1"
       ],
       "jobs": 24,
-      "jobs_per_minute": 1128.95,
+      "jobs_per_minute": 1123.16,
       "outcomes": {
         "succeeded": 24
       },
-      "submit_seconds": 0.027
+      "submit_seconds": 0.033
     },
     "artifact_mismatch": {
       "artifacts": 0,
       "contradicting_commit": "LeaseLost",
       "contradicting_upload": "HTTP 400",
-      "job_id": "82e92e2b-f5bc-4755-b15a-4a283e2410bf",
+      "job_id": "ff66a61a-adcc-4e5e-bc31-611b88f3f34b",
       "state": "retry_wait"
     },
     "backup_and_restore": {
@@ -282,20 +282,20 @@
         "jobs": 73,
         "runs": 12
       },
-      "dump_bytes": 105512,
+      "dump_bytes": 105490,
       "job_still_terminal": true,
       "run_still_ready": true
     },
     "hosted_matches_local": {
-      "hosted_digest": "35bcd2e207e97a6e5c5e4ab169890df8827166eb547f0331c02abd65427054f8",
+      "hosted_digest": "87d94f65d260f90fc4715342b1088d18b05e309166d9a603dd12dd4a930acca7",
       "hosted_span_count": 18,
       "identical_bytes": true,
-      "local_digest": "35bcd2e207e97a6e5c5e4ab169890df8827166eb547f0331c02abd65427054f8",
+      "local_digest": "87d94f65d260f90fc4715342b1088d18b05e309166d9a603dd12dd4a930acca7",
       "local_span_count": 18
     },
     "idempotent_replay": {
-      "original_job_id": "02dde82a-920f-4c6f-89af-9de57e897ba6",
-      "replayed_job_id": "02dde82a-920f-4c6f-89af-9de57e897ba6",
+      "original_job_id": "3e91f427-2c9a-413d-88bf-25a390476bb0",
+      "replayed_job_id": "3e91f427-2c9a-413d-88bf-25a390476bb0",
       "same_job": true
     },
     "ingestion": {
@@ -312,44 +312,44 @@
         20480
       ],
       "observed_upload_to_ready_ms": [
-        208.4000839968212,
-        1033.9791660007904,
-        1038.4344159974717,
-        837.4088339987793,
-        1032.3507499997504,
-        1028.8300829997752,
-        1034.2117499967571,
-        1037.074792002386,
-        1036.6778329989756,
-        1033.1165410025278
+        211.13675000378862,
+        1036.0699999946519,
+        1047.3711670056218,
+        832.5017079987447,
+        1035.8903749947785,
+        1034.6219169950928,
+        1031.0494579971419,
+        1037.6852920016972,
+        1033.5280829967814,
+        1038.499791000504
       ],
       "run_ids": [
-        "b9e1afba-4392-4907-ad59-6a6f2d894e93",
-        "c22a67fe-3a6a-4a56-ad1f-98ebf05f2e03",
-        "9496bcfb-8e5d-4209-8394-c3ccc2370497",
-        "f97013c8-3ba1-4911-b97a-151bb5e93e05",
-        "0138cdff-28ee-4f36-ac9a-968944a38b53",
-        "2e6ba942-2b7f-49f7-bd3a-2ca09f3f487d",
-        "a27f0357-f93a-4bf5-83a7-522ba8c4e0e7",
-        "ae32baa0-b4c7-4bf3-8e92-1db77ad5d682",
-        "19321e80-3833-4d9c-8ff6-2657ea8096f2",
-        "8ffa18d9-879c-4d41-9b64-68327369cfea"
+        "d8047c06-4745-43d9-a1d9-4b0c017b4512",
+        "fd5cb1d2-88e7-4df6-a10a-9f0f75a9ba96",
+        "0f8f1a64-cd4e-4f2f-b66b-0ca9459ecbea",
+        "ab4851cb-1ed2-4d05-a3be-85892a5d0ecf",
+        "e966ef86-798a-48f2-993e-f2b7c74f8f06",
+        "0c1511ef-1488-46d2-8911-8cde2d89054f",
+        "06b7de83-845a-4168-8909-841d46c6c51a",
+        "7b673491-d0d4-4d79-a495-7b977cdaba0d",
+        "6b3bb4a3-a1ac-4618-ab00-eb9fc48951ac",
+        "b5815a61-0708-4bbd-8ad3-525898583d34"
       ],
       "upload_to_ready_ms": [
-        21.791,
-        854.0400000000001,
-        849.465,
-        830.237,
-        1020.057,
-        1016.974,
-        1013.5110000000001,
-        1009.7719999999999,
-        993.909,
-        984.456
+        28.312,
+        848.877,
+        838.3249999999999,
+        821.033,
+        1016.5169999999999,
+        1008.443,
+        999.5699999999999,
+        995.2149999999999,
+        986.026,
+        981.1809999999999
       ]
     },
     "late_completion": {
-      "job_id": "36431767-ee5e-4578-857f-afe4477b3d2b",
+      "job_id": "1825be4c-9b1a-4738-9263-270a79691161",
       "stale_attempt_requests": {
         "complete": "LeaseLost",
         "heartbeat": "LeaseLost",
@@ -358,8 +358,8 @@
     },
     "local_independence": {
       "identical": true,
-      "recorded_first_line": "1786082049.6612558",
-      "replayed_first_line": "1786082049.6612558"
+      "recorded_first_line": "1786083138.007225",
+      "replayed_first_line": "1786083138.007225"
     },
     "migration": {
       "applied_versions": [
@@ -380,12 +380,52 @@
       ]
     },
     "outbox_backlog": {
-      "job_id": "dd2ee02c-24c5-4f36-be82-48a69b0a40ef",
-      "oldest_unpublished_seconds": 248.345,
-      "unconsumed_seconds": 150.034
+      "job_id": "0c9f8d98-abae-40d7-98db-ab699a1bc90f",
+      "oldest_unpublished_seconds": 248.508,
+      "unconsumed_seconds": 150.008
     },
     "reconciler_failure": {
       "database_down_seconds": 20
+    },
+    "result_provenance": {
+      "analysis_profile": "lexical-v1",
+      "artifact_kinds": [
+        "diff_html",
+        "diff_json"
+      ],
+      "audit_events": [
+        "job.succeeded",
+        "attempt.claimed",
+        "attempt.claimed",
+        "job.created"
+      ],
+      "downloads_match_recorded_identity": true,
+      "html_is_self_contained": true,
+      "input_digests": [
+        {
+          "bundle_digest": "e9060877ea9cee50be0264cdc119908451ce6b6d093c8fbc12e368bd79a34963",
+          "bundle_format_version": 1,
+          "bundle_object_version": "e9060877ea9cee50be0264cdc119908451ce6b6d093c8fbc12e368bd79a34963",
+          "cassette_format_version": 1,
+          "event_schema_version": 3,
+          "logical_run_digest": "d40a86f2efda2fd703356a502295211943a70be6c9e9372224e6d7d2c4a3dec9"
+        },
+        {
+          "bundle_digest": "570d903fe832474dc89ff4241cdbe472865b22e18fc306590939b2c4f8e3a7d6",
+          "bundle_format_version": 1,
+          "bundle_object_version": "570d903fe832474dc89ff4241cdbe472865b22e18fc306590939b2c4f8e3a7d6",
+          "cassette_format_version": 1,
+          "event_schema_version": 3,
+          "logical_run_digest": "ab172906921c2eb01e50bd578fd0da43dc48dddf51378e8e16b22b36cd906945"
+        }
+      ],
+      "job_id": "e9d16206-d960-403b-84e9-6aa6785ccb06",
+      "locus_version": "0.2.0",
+      "result_schema": {
+        "name": "result-envelope",
+        "version": 1
+      },
+      "worker_build": "evidence"
     },
     "retry_exhaustion": {
       "artifacts": 0,
@@ -395,7 +435,7 @@
         "failed"
       ],
       "failure_code": "retry_exhausted",
-      "job_id": "14ff2d18-9611-44c0-830c-e74f0cfe9b41",
+      "job_id": "3e168aee-3d7b-44b7-97fa-5a9c6872c373",
       "state": "failed"
     },
     "service_resumes": {
@@ -403,44 +443,44 @@
     },
     "soak": {
       "create_to_terminal_ms": [
-        989.4060000000001,
-        1005.0749999999999,
-        25.476,
-        60.163000000000004,
-        90.73299999999999,
-        120.771,
-        150.636,
-        176.15,
-        201.24800000000002,
-        230.026,
-        252.05899999999997,
-        276.159,
-        303.222,
-        330.28000000000003,
-        357.076,
-        384.81399999999996,
-        413.922,
-        447.714,
-        483.80699999999996,
-        510.748,
-        537.906,
-        570.485,
-        605.125,
-        638.75,
-        674.5889999999999,
-        702.697,
-        730.345,
-        759.3760000000001,
-        788.2289999999999,
-        822.179
+        954.6700000000001,
+        986.37,
+        1013.5909999999999,
+        43.736,
+        75.624,
+        105.044,
+        133.23399999999998,
+        169.704,
+        201.655,
+        230.623,
+        260.207,
+        287.295,
+        314.799,
+        344.546,
+        373.821,
+        397.92,
+        422.30899999999997,
+        442.743,
+        471.19,
+        498.02200000000005,
+        526.32,
+        554.323,
+        581.481,
+        612.8860000000001,
+        641.025,
+        665.7330000000001,
+        693.375,
+        718.843,
+        741.34,
+        761.7570000000001
       ],
       "duration_seconds": 60.0,
-      "first_half_mean_ms": 304.565,
+      "first_half_mean_ms": 366.328,
       "jobs": 30,
       "outcomes": {
         "succeeded": 30
       },
-      "second_half_mean_ms": 604.712,
+      "second_half_mean_ms": 581.951,
       "submission_interval_seconds": 2.0
     },
     "tenant_isolation": {
@@ -469,26 +509,33 @@
         }
       ],
       "fence_reason": "lease_lost",
-      "job_id": "01c6e129-b242-440a-8266-587fe08b7f72",
-      "kill_to_fence_seconds": 60.366,
-      "kill_to_success_seconds": 70.267,
+      "job_id": "e9d16206-d960-403b-84e9-6aa6785ccb06",
+      "kill_to_fence_seconds": 60.359,
+      "kill_to_success_seconds": 70.277,
+      "progress_while_running": {
+        "attempt_number": 1,
+        "message": "analyzing recorded runs",
+        "protocol_version": 1,
+        "sequence": 2,
+        "stage": "analyzing"
+      },
       "result_artifacts": 2,
       "state": "succeeded",
       "succeeded_attempts": 1
     }
   },
-  "started_at": "2026-08-07T05:47:06Z",
+  "started_at": "2026-08-07T06:05:15Z",
   "telemetry": {
     "largest_trace_spans": 24,
-    "metric_records": 1787,
+    "metric_records": 1789,
     "metric_series": 103,
     "samples_by_metric": {
       "ArtifactCommitFailures": 2,
       "ArtifactsCommitted": 77,
       "AttemptsClaimed": 49,
       "AttemptsFenced": 6,
-      "HttpDurationMillis": 440,
-      "HttpRequests": 443,
+      "HttpDurationMillis": 441,
+      "HttpRequests": 444,
       "JobDurationMillis": 43,
       "JobsCreated": 44,
       "JobsTerminal": 43,
@@ -500,7 +547,7 @@
       "WorkerJobs": 72,
       "WorkerStageMillis": 288
     },
-    "span_count": 2487,
+    "span_count": 2496,
     "span_names": [
       "GET /internal/v1/jobs/{job}/attempts/{attempt}/inputs/{artifact}",
       "GET /internal/v1/notifications/next",
@@ -522,12 +569,13 @@
       "artifact.commit",
       "job.claim",
       "reconcile",
+      "retention.enforce",
       "worker.commit",
       "worker.download",
       "worker.execute",
       "worker.upload"
     ],
-    "trace_count": 1137,
+    "trace_count": 1146,
     "traces_crossing_services": 77
   }
 }

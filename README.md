@@ -305,19 +305,19 @@ object-store latency, autoscaling, or cost — is published at all.
 
 | Measurement | Value |
 | --- | --- |
-| 10 bundles uploaded and validated | p50 984 ms, p95 1020 ms |
+| 10 bundles uploaded and validated | p50 981 ms, p95 1017 ms |
 | 24 diff analyses submitted at once | drained in 1.28 s |
-| Their end-to-end latency | p50 1111 ms, p95 1205 ms |
-| One analysis every two seconds for a minute | 30 of 30 succeeded, p50 414 ms |
+| Their end-to-end latency | p50 1087 ms, p95 1168 ms |
+| One analysis every two seconds for a minute | 30 of 30 succeeded, p50 443 ms |
 | Killed worker to fenced attempt | 60.4 s, the attempt lease |
 | Killed worker to committed result | 70.3 s |
-| Spans emitted | 2487 across 1137 traces |
+| Spans emitted | 2496 across 1146 traces |
 | Traces spanning both languages | 77, up to 24 spans each |
 | Distinct metric series | 103 |
 
 The two latency figures are dominated by the local stack's one-second outbox
-poll; a deployment long-polls SQS instead. The soak's mean rose from 305 ms in
-its first half to 605 ms in its second, on a single worker with a growing
+poll; a deployment long-polls SQS instead. The soak's mean rose from 366 ms in
+its first half to 582 ms in its second, on a single worker with a growing
 database.
 
 The same run drove five failure conditions the deployment alarms on — worker
@@ -326,6 +326,30 @@ database outage — and every one moved the metric its alarm watches.
 CloudWatch's own evaluation engine is not exercised without a deployment, and
 alarms on platform metrics such as queue depth and task counts are reported as
 not observable locally.
+
+### The demonstration
+
+One run of the harness performs the whole correctness story in order, and
+`evidence/results/measurements.json` records what each step observed:
+
+| Step | Where it is recorded |
+| --- | --- |
+| Upload a deterministic bundle | `ingestion` |
+| Observe mandatory validation before the run is usable | `ingestion` |
+| Submit a `lexical-v1` diff with an idempotency key | `analysis_load` |
+| Observe the worker claim an attempt and report progress | `worker_recovery.progress_while_running` |
+| Kill the active worker | `worker_recovery.kill_to_fence_seconds` |
+| Observe lease expiry, fencing, and a scheduled retry | `worker_recovery.attempts` |
+| Submit a late completion from the dead attempt | `late_completion.stale_attempt_requests` |
+| Observe the replacement attempt succeed | `worker_recovery.succeeded_attempts` |
+| Repeat the idempotent request | `idempotent_replay` |
+| Inspect result, HTML companion, artifact identity, provenance, and audit | `result_provenance` |
+| Show a second workspace cannot read anything | `tenant_isolation` |
+| Run local Locus with no hosted service | `local_independence` |
+
+The same story is reachable by hand through the local control plane above:
+`locus remote upload`, `runs`, `analyze`, `job`, `artifacts`, `download`, and
+`delete`, with the worker stopped and started to interrupt an attempt.
 
 ## Persistent formats
 

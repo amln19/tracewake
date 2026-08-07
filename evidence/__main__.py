@@ -109,6 +109,7 @@ def main() -> int:
         large = bundles.pair(work / "bundles", steps=arguments.recovery_steps, prefix="large-")
         large_runs = scenarios.ingestion(client, list(large))["run_ids"]
         results["worker_recovery"] = scenarios.worker_recovery(stack, client, (large_runs[0], large_runs[1]), "recovery")
+        results["result_provenance"] = scenarios.result_provenance(client, results["worker_recovery"]["job_id"])
 
         stack.stop_worker()
         results["late_completion"] = scenarios.late_completion(stack, client, next(pairs), "late-completion")
