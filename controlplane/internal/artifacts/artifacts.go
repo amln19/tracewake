@@ -2,6 +2,7 @@ package artifacts
 
 import (
 	"context"
+	"io"
 	"path/filepath"
 	"strings"
 	"time"
@@ -37,6 +38,7 @@ type Store interface {
 	PutGrant(ctx context.Context, key, digest string, size int64, mediaType string) (Grant, error)
 	GetGrant(ctx context.Context, key, version, mediaType string) (Grant, error)
 	Commit(ctx context.Context, key, version, digest string, size int64) (Object, error)
+	Open(ctx context.Context, key, version string) (io.ReadCloser, error)
 	Cleanup(ctx context.Context, keep map[string]bool, before time.Time) (int, error)
 }
 

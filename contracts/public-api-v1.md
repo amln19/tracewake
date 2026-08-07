@@ -18,6 +18,23 @@ Authentication failures return the same response whether the prefix, token,
 workspace, run, job, or artifact is unknown. Scopes are `runs:read`,
 `runs:write`, `jobs:read`, `jobs:write`, `artifacts:read`, and `audit:read`.
 
+### Browser sessions
+
+`POST /v1/browser/sessions` is the only dashboard request that accepts a
+durable tenant token. It exchanges that token for a 15-minute opaque session,
+sets it in a `Secure`, `HttpOnly`, `SameSite=Strict`, host-only cookie, and
+returns a per-session CSRF token. The database stores only keyed verifiers for
+both values. Browser code keeps the CSRF value in memory and never stores the
+durable token or session token.
+
+`GET /v1/browser/session` authenticates the cookie, rotates the CSRF token, and
+returns the session expiry and scopes. A refresh therefore reconstructs browser
+state without browser storage. `DELETE /v1/browser/session` revokes the session
+and expires the cookie. Every other mutating request authenticated by a browser
+session must send the current token in `X-Locus-CSRF`; bearer-authenticated API
+clients are unchanged. Browser-session additions are backward-compatible API
+v1 extensions. Unknown fields remain rejected.
+
 ## Errors
 
 Errors have this shape:
@@ -97,6 +114,13 @@ object identity, digest, and size. One attempt output is at most 64 MiB.
 workspace ownership and retention, then returns a download URL valid for at
 most 15 minutes. The URL serves the artifact as an attachment rather than
 inline. The URL is never included in logs, audit payloads, or SSE.
+
+`GET /v1/browser/artifacts/{artifact_id}` accepts browser-session
+authentication and streams one authorized artifact through the control plane,
+without exposing its object key, version, bucket, or signed storage URL. The
+default disposition is attachment with `nosniff`. Only a `diff_html` artifact
+with media type `text/html` accepts `?disposition=inline`; that response has a
+restrictive CSP and sandbox and is intended for a sandboxed dashboard frame.
 
 `GET /v1/audit?cursor=...&limit=...` with `audit:read` returns at most 100
 workspace-scoped meaningful lifecycle records per page. It excludes heartbeat

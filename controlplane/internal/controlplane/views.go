@@ -64,6 +64,7 @@ type PublicArtifact struct {
 }
 type ArtifactView struct {
 	ID        string `json:"artifact_id"`
+	Kind      string `json:"kind"`
 	Key       string `json:"-"`
 	Version   string `json:"-"`
 	Digest    string `json:"digest"`
@@ -167,7 +168,7 @@ func (s *Service) GetJob(ctx context.Context, p Principal, id string) (JobView, 
 }
 func (s *Service) GetArtifact(ctx context.Context, p Principal, id string) (ArtifactView, error) {
 	var v ArtifactView
-	err := s.pool.QueryRow(ctx, `SELECT id,object_key,object_version,digest,size,media_type FROM artifacts WHERE id=$1 AND workspace_id=$2 AND authoritative AND retention_expires_at>transaction_timestamp()`, id, p.WorkspaceID).Scan(&v.ID, &v.Key, &v.Version, &v.Digest, &v.Size, &v.MediaType)
+	err := s.pool.QueryRow(ctx, `SELECT id,kind,object_key,object_version,digest,size,media_type FROM artifacts WHERE id=$1 AND workspace_id=$2 AND authoritative AND retention_expires_at>transaction_timestamp()`, id, p.WorkspaceID).Scan(&v.ID, &v.Kind, &v.Key, &v.Version, &v.Digest, &v.Size, &v.MediaType)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return v, ErrNotFound
 	}

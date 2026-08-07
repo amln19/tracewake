@@ -174,6 +174,10 @@ func (s *Service) AuthenticateWorker(ctx context.Context, token string) (string,
 }
 
 func (s *Service) Authenticate(ctx context.Context, token string, requiredScope string) (Principal, error) {
+	return s.authenticateToken(ctx, token, requiredScope)
+}
+
+func (s *Service) authenticateToken(ctx context.Context, token string, requiredScope string) (Principal, error) {
 	prefix, err := splitToken(token)
 	if err != nil {
 		return Principal{}, ErrUnauthenticated
@@ -199,7 +203,7 @@ func (s *Service) Authenticate(ctx context.Context, token string, requiredScope 
 	for _, scope := range scopes {
 		principal.Scopes[scope] = true
 	}
-	if !principal.Scopes[requiredScope] {
+	if requiredScope != "" && !principal.Scopes[requiredScope] {
 		return Principal{}, ErrForbidden
 	}
 	if _, err := s.pool.Exec(ctx, "UPDATE api_tokens SET last_used_at = transaction_timestamp() WHERE prefix = $1", prefix); err != nil {

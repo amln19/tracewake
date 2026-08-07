@@ -61,8 +61,17 @@ func TestMigrateFromSchemaOne(t *testing.T) {
 	if err := legacy.Pool().QueryRow(ctx, "SELECT array_agg(version ORDER BY version) FROM schema_migrations").Scan(&versions); err != nil {
 		t.Fatal(err)
 	}
-	if len(versions) != 4 || versions[0] != 1 || versions[1] != 2 || versions[2] != 3 || versions[3] != 4 {
+	if !slices.Equal(versions, []int{1, 2, 3, 4, 5}) {
 		t.Fatalf("versions=%v", versions)
+	}
+	var sessionColumns int
+	if err := legacy.Pool().QueryRow(ctx, `SELECT count(*) FROM information_schema.columns
+		WHERE table_schema=current_schema() AND table_name='browser_sessions'
+		AND column_name IN ('verifier','csrf_verifier','expires_at','revoked_at')`).Scan(&sessionColumns); err != nil {
+		t.Fatal(err)
+	}
+	if sessionColumns != 4 {
+		t.Fatalf("browser session columns=%d", sessionColumns)
 	}
 	var labels []string
 	if err := legacy.Pool().QueryRow(ctx, "SELECT enum_range(NULL::job_operation)::text[]").Scan(&labels); err != nil {

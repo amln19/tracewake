@@ -6,7 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"mime"
 	"net/http"
+	"os"
+	"path"
+	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,13 +25,22 @@ type API struct {
 	service   *controlplane.Service
 	artifacts artifacts.Store
 	baseURL   string
+	dashboard string
 }
 
-func New(service *controlplane.Service, store artifacts.Store, baseURL string) *API {
-	return &API{service: service, artifacts: store, baseURL: baseURL}
+func New(service *controlplane.Service, store artifacts.Store, baseURL string, dashboard ...string) *API {
+	directory := ""
+	if len(dashboard) > 0 {
+		directory = dashboard[0]
+	}
+	return &API{service: service, artifacts: store, baseURL: baseURL, dashboard: directory}
 }
 func (a *API) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/browser/sessions", a.createBrowserSession)
+	mux.HandleFunc("GET /v1/browser/session", a.refreshBrowserSession)
+	mux.HandleFunc("DELETE /v1/browser/session", a.deleteBrowserSession)
+	mux.HandleFunc("GET /v1/browser/artifacts/{artifactID}", a.browserArtifact)
 	mux.HandleFunc("POST /v1/runs/uploads", a.createUpload)
 	mux.HandleFunc("POST /v1/runs/uploads/{runID}/complete", a.completeUpload)
 	mux.HandleFunc("GET /v1/runs", a.listRuns)
@@ -35,7 +51,88 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/jobs/{jobID}/events", a.events)
 	mux.HandleFunc("GET /v1/artifacts/{artifactID}/download", a.download)
 	mux.HandleFunc("GET /v1/audit", a.audit)
-	return mux
+	if a.dashboard != "" {
+		mux.Handle("/", a.dashboardHandler())
+	}
+	return securityHeaders(mux)
+}
+
+const browserCookie = "__Host-locus_session"
+
+func (a *API) createBrowserSession(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Token string `json:"token"`
+	}
+	if decode(w, r, &body) != nil || body.Token == "" {
+		errorJSON(w, http.StatusBadRequest, "invalid_request")
+		return
+	}
+	session, err := a.service.ExchangeBrowserSession(r.Context(), body.Token)
+	if err != nil {
+		authError(w, err)
+		return
+	}
+	a.setSessionCookie(w, session.Token, session.ExpiresAt)
+	writeSession(w, http.StatusCreated, session)
+}
+
+func (a *API) refreshBrowserSession(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie(browserCookie)
+	if err != nil {
+		errorJSON(w, http.StatusUnauthorized, "unauthenticated")
+		return
+	}
+	session, err := a.service.RefreshBrowserSession(r.Context(), cookie.Value)
+	if err != nil {
+		authError(w, err)
+		return
+	}
+	writeSession(w, http.StatusOK, session)
+}
+
+func (a *API) deleteBrowserSession(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie(browserCookie)
+	if err != nil {
+		errorJSON(w, http.StatusUnauthorized, "unauthenticated")
+		return
+	}
+	if err := a.service.RevokeBrowserSession(r.Context(), cookie.Value, r.Header.Get("X-Locus-CSRF")); err != nil {
+		authError(w, err)
+		return
+	}
+	a.setSessionCookie(w, "", time.Unix(1, 0))
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func writeSession(w http.ResponseWriter, status int, session controlplane.BrowserSession) {
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, status, map[string]any{
+		"csrf_token": session.CSRFToken,
+		"expires_at": session.ExpiresAt,
+		"scopes":     session.Scopes,
+	})
+}
+
+func (a *API) setSessionCookie(w http.ResponseWriter, token string, expires time.Time) {
+	maxAge := int(time.Until(expires).Seconds())
+	if token == "" {
+		maxAge = -1
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: browserCookie, Value: token, Path: "/", Expires: expires,
+		MaxAge: maxAge, HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode,
+	})
+}
+
+func authError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, controlplane.ErrForbidden):
+		errorJSON(w, http.StatusForbidden, "forbidden")
+	case errors.Is(err, controlplane.ErrUnauthenticated):
+		errorJSON(w, http.StatusUnauthorized, "unauthenticated")
+	default:
+		errorJSON(w, http.StatusInternalServerError, "internal")
+	}
 }
 func (a *API) completeUpload(w http.ResponseWriter, r *http.Request) {
 	principal, ok := a.principal(w, r, "runs:write")
@@ -114,26 +211,69 @@ func (a *API) createUpload(w http.ResponseWriter, r *http.Request) {
 	})
 }
 func (a *API) principal(w http.ResponseWriter, r *http.Request, scope string) (controlplane.Principal, bool) {
-	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if token == r.Header.Get("Authorization") {
+	authorization := r.Header.Get("Authorization")
+	var p controlplane.Principal
+	var err error
+	if authorization != "" {
+		token := strings.TrimPrefix(authorization, "Bearer ")
+		if token == authorization {
+			errorJSON(w, http.StatusUnauthorized, "unauthenticated")
+			return controlplane.Principal{}, false
+		}
+		p, err = a.service.Authenticate(r.Context(), token, scope)
+	} else if cookie, cookieErr := r.Cookie(browserCookie); cookieErr == nil {
+		requireCSRF := r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions
+		p, _, err = a.service.AuthenticateBrowserSession(r.Context(), cookie.Value, scope, r.Header.Get("X-Locus-CSRF"), requireCSRF)
+	} else {
 		errorJSON(w, http.StatusUnauthorized, "unauthenticated")
 		return controlplane.Principal{}, false
 	}
-	p, err := a.service.Authenticate(r.Context(), token, scope)
 	if err != nil {
-		switch {
-		case errors.Is(err, controlplane.ErrForbidden):
-			errorJSON(w, http.StatusForbidden, "forbidden")
-		case errors.Is(err, controlplane.ErrUnauthenticated):
-			errorJSON(w, http.StatusUnauthorized, "unauthenticated")
-		default:
-			// A database outage is not a credential problem; saying so would
-			// tell the caller to fix a token instead of retrying.
-			errorJSON(w, http.StatusInternalServerError, "internal")
-		}
+		authError(w, err)
 		return controlplane.Principal{}, false
 	}
 	return p, true
+}
+
+func (a *API) browserArtifact(w http.ResponseWriter, r *http.Request) {
+	p, ok := a.principal(w, r, "artifacts:read")
+	if !ok {
+		return
+	}
+	artifact, err := a.service.GetArtifact(r.Context(), p, r.PathValue("artifactID"))
+	if err != nil {
+		errorJSON(w, http.StatusNotFound, "not_found")
+		return
+	}
+	input, err := a.artifacts.Open(r.Context(), artifact.Key, artifact.Version)
+	if err != nil {
+		errorJSON(w, http.StatusInternalServerError, "internal")
+		return
+	}
+	defer input.Close()
+	inline := r.URL.Query().Get("disposition") == "inline" && artifact.Kind == "diff_html" && artifact.MediaType == "text/html"
+	if inline {
+		w.Header().Set("Content-Disposition", "inline")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox; frame-ancestors 'self'")
+	} else {
+		filename := artifact.Kind + extensionFor(artifact.MediaType)
+		w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Content-Type", artifact.MediaType)
+	w.Header().Set("Content-Length", strconv.FormatInt(artifact.Size, 10))
+	w.Header().Set("ETag", `"`+artifact.Digest+`"`)
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, io.LimitReader(input, artifact.Size))
+}
+
+func extensionFor(mediaType string) string {
+	extensions, _ := mime.ExtensionsByType(mediaType)
+	if len(extensions) > 0 {
+		sort.Strings(extensions)
+		return extensions[0]
+	}
+	return ".bin"
 }
 func (a *API) listRuns(w http.ResponseWriter, r *http.Request) {
 	p, ok := a.principal(w, r, "runs:read")
@@ -308,6 +448,60 @@ func errorJSON(w http.ResponseWriter, status int, code string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": code, "message": "request could not be completed", "request_id": requestID()}})
+}
+
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; frame-src 'self'; form-action 'self'")
+		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (a *API) dashboardHandler() http.Handler {
+	root := os.DirFS(a.dashboard)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.NotFound(w, r)
+			return
+		}
+		name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+		if name == "" {
+			name = "index.html"
+		}
+		if !fs.ValidPath(name) {
+			http.NotFound(w, r)
+			return
+		}
+		file, err := root.Open(name)
+		if err != nil {
+			file, err = root.Open("index.html")
+			name = "index.html"
+		}
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		defer file.Close()
+		info, err := file.Stat()
+		if err != nil || info.IsDir() {
+			http.NotFound(w, r)
+			return
+		}
+		reader, ok := file.(io.ReadSeeker)
+		if !ok {
+			http.Error(w, "dashboard unavailable", http.StatusInternalServerError)
+			return
+		}
+		if name == "index.html" {
+			w.Header().Set("Cache-Control", "no-store")
+		} else if strings.HasPrefix(name, "assets/") {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		}
+		http.ServeContent(w, r, filepath.Base(name), info.ModTime(), reader)
+	})
 }
 
 func requestID() string {

@@ -121,6 +121,21 @@ func (s *S3) Commit(ctx context.Context, key, version, digest string, size int64
 	return Object{Key: key, Version: version, Digest: digest, Size: size}, nil
 }
 
+func (s *S3) Open(ctx context.Context, key, version string) (io.ReadCloser, error) {
+	if !safeKey(key) || version == "" {
+		return nil, errors.New("artifact identity is invalid")
+	}
+	object, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket:    aws.String(s.bucket),
+		Key:       aws.String(key),
+		VersionId: aws.String(version),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("read stored artifact: %w", err)
+	}
+	return object.Body, nil
+}
+
 func (s *S3) verifyStoredBytes(ctx context.Context, key, version, digest string, size int64) error {
 	object, err := s.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket:    aws.String(s.bucket),

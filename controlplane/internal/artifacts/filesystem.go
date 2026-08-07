@@ -87,6 +87,13 @@ func (s *Filesystem) Commit(_ context.Context, key, version, digest string, size
 	return Object{Key: key, Version: actual, Digest: actual, Size: actualSize}, nil
 }
 
+func (s *Filesystem) Open(_ context.Context, key, version string) (io.ReadCloser, error) {
+	if len(version) != 64 {
+		return nil, errors.New("artifact identity is invalid")
+	}
+	return s.open(key)
+}
+
 func (s *Filesystem) put(key, expectedDigest string, expectedSize int64, input io.Reader) (Object, error) {
 	if !validDeclaration(key, expectedDigest, expectedSize) {
 		return Object{}, errors.New("artifact declaration is invalid")

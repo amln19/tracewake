@@ -123,7 +123,7 @@ func main() {
 	workerBase := envOr("LOCUS_WORKER_BASE_URL", reachableURL(workerAddr))
 	publicMux := http.NewServeMux()
 	publicMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
-	publicMux.Handle("/", httpapi.New(service, artifactStore, publicBase).Handler())
+	publicMux.Handle("/", httpapi.New(service, artifactStore, publicBase, strings.TrimSpace(os.Getenv("LOCUS_DASHBOARD_DIR"))).Handler())
 	workerMux := http.NewServeMux()
 	workerMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	workerMux.Handle("/", workerapi.New(service, artifactStore, workerBase).Handler())

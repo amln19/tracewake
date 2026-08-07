@@ -61,16 +61,18 @@ controls rather than proof of isolation.
 
 ## Browser threats
 
-A browser never stores a permanent workspace token. A later browser session
-exchange must produce a short-lived Secure, HttpOnly, SameSite cookie and use
-CSRF protection on mutations. Refresh reconstructs server state through the
-API. SSE contains no authority or sensitive content.
+A browser never stores a permanent workspace token. Browser session exchange
+produces a 15-minute opaque Secure, HttpOnly, SameSite=Strict cookie, while the
+server stores only its keyed verifier. A per-session CSRF token is required on
+mutations and rotated when a refreshed page reconstructs its session. SSE
+contains no authority or sensitive content.
 
-HTML results are sensitive and potentially active. They are downloaded or
-served from an isolated origin with a restrictive CSP and sandbox; they are not
-inserted into the application DOM as trusted markup. Every artifact download
-is an attachment of an opaque type and is not sniffed. Artifact URLs expire
-within 15 minutes and are not retained in history, logs, or local storage.
+HTML results are sensitive and potentially active. The dashboard renders them
+only through an authenticated control-plane response with a restrictive CSP
+inside a sandboxed frame; they are never inserted into the application DOM as
+trusted markup. Other dashboard artifact responses are attachments and are not
+sniffed. Object keys, versions, buckets, and signed storage URLs are absent from
+the browser surface and are not retained in history, logs, or local storage.
 
 ## Data minimization and retention
 

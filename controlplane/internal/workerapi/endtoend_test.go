@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/amln19/locus/controlplane/internal/artifacts"
@@ -33,6 +34,11 @@ type deployment struct {
 	token       string
 	workerID    string
 	workerToken string
+}
+
+type browserCredentials struct {
+	cookie *http.Cookie
+	csrf   string
 }
 
 func hexDigest(data []byte) string {
@@ -149,6 +155,135 @@ func (d *deployment) call(t *testing.T, method, url, token string, body any, hea
 		_ = json.Unmarshal(raw, &decoded)
 	}
 	return response.StatusCode, decoded
+}
+
+func (d *deployment) browserSession(t *testing.T, token string) browserCredentials {
+	t.Helper()
+	raw, err := json.Marshal(map[string]string{"token": token})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.Post(d.public.URL+"/v1/browser/sessions", "application/json", bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("browser session status=%d body=%s", response.StatusCode, body)
+	}
+	var session map[string]any
+	if err := json.NewDecoder(response.Body).Decode(&session); err != nil {
+		t.Fatal(err)
+	}
+	cookies := response.Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("browser session cookies=%v", cookies)
+	}
+	return browserCredentials{cookie: cookies[0], csrf: session["csrf_token"].(string)}
+}
+
+func browserCall(t *testing.T, method, url string, credentials browserCredentials, body any, csrf string) (*http.Response, map[string]any) {
+	t.Helper()
+	var input io.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		input = bytes.NewReader(raw)
+	}
+	request, err := http.NewRequest(method, url, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.AddCookie(credentials.cookie)
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	if csrf != "" {
+		request.Header.Set("X-Locus-CSRF", csrf)
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded := map[string]any{}
+	if strings.HasPrefix(response.Header.Get("Content-Type"), "application/json") {
+		_ = json.NewDecoder(response.Body).Decode(&decoded)
+	}
+	return response, decoded
+}
+
+func TestBrowserSessionIsShortLivedScopedAndCSRFProtected(t *testing.T) {
+	deployed := newDeployment(t, false)
+	credentials := deployed.browserSession(t, deployed.token)
+	if credentials.cookie.Name != "__Host-locus_session" || !credentials.cookie.HttpOnly || !credentials.cookie.Secure || credentials.cookie.SameSite != http.SameSiteStrictMode || credentials.cookie.Path != "/" {
+		t.Fatalf("unsafe browser cookie: %+v", credentials.cookie)
+	}
+	if credentials.cookie.MaxAge < 14*60 || credentials.cookie.MaxAge > 15*60 {
+		t.Fatalf("browser cookie max age=%d", credentials.cookie.MaxAge)
+	}
+
+	response, _ := browserCall(t, "GET", deployed.public.URL+"/v1/runs", credentials, nil, "")
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("session-authenticated run list status=%d", response.StatusCode)
+	}
+
+	jobID := newID(t)
+	response, body := browserCall(t, "POST", deployed.public.URL+"/v1/jobs/"+jobID+"/cancel", credentials, nil, "")
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden || body["error"].(map[string]any)["code"] != "forbidden" {
+		t.Fatalf("missing CSRF status=%d body=%v", response.StatusCode, body)
+	}
+	response, _ = browserCall(t, "POST", deployed.public.URL+"/v1/jobs/"+jobID+"/cancel", credentials, nil, credentials.csrf)
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("valid CSRF status=%d", response.StatusCode)
+	}
+
+	response, refreshed := browserCall(t, "GET", deployed.public.URL+"/v1/browser/session", credentials, nil, "")
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || refreshed["csrf_token"] == credentials.csrf {
+		t.Fatalf("refresh status=%d body=%v", response.StatusCode, refreshed)
+	}
+	newCSRF := refreshed["csrf_token"].(string)
+	response, _ = browserCall(t, "POST", deployed.public.URL+"/v1/jobs/"+jobID+"/cancel", credentials, nil, credentials.csrf)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("rotated CSRF remained valid: %d", response.StatusCode)
+	}
+
+	ctx := context.Background()
+	runID := newID(t)
+	_, err := deployed.pool.Exec(ctx, `INSERT INTO runs
+        (id,workspace_id,state,declared_bundle_format,declared_bundle_digest,declared_bundle_size,bundle_object_key)
+        VALUES($1,$2,'pending',1,$3,1,$4)`, runID, deployed.workspace, hexDigest([]byte(runID)), "workspaces/"+deployed.workspace+"/runs/"+runID+"/bundle.tar")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, otherToken, err := deployed.service.CreateWorkspace(ctx, "other-browser", []string{"runs:read"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := deployed.browserSession(t, otherToken)
+	response, hidden := browserCall(t, "GET", deployed.public.URL+"/v1/runs/"+runID, other, nil, "")
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound || hidden["error"].(map[string]any)["code"] != "not_found" {
+		t.Fatalf("cross-tenant run status=%d body=%v", response.StatusCode, hidden)
+	}
+
+	response, _ = browserCall(t, "DELETE", deployed.public.URL+"/v1/browser/session", credentials, nil, newCSRF)
+	response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		t.Fatalf("session revocation status=%d", response.StatusCode)
+	}
+	response, _ = browserCall(t, "GET", deployed.public.URL+"/v1/runs", credentials, nil, "")
+	response.Body.Close()
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("revoked session status=%d", response.StatusCode)
+	}
 }
 
 // transfer uses a grant exactly as a client would: no service credential, only
