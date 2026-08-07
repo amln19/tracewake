@@ -231,6 +231,60 @@ func TestBrowserSessionIsShortLivedScopedAndCSRFProtected(t *testing.T) {
 		t.Fatalf("session-authenticated run list status=%d", response.StatusCode)
 	}
 
+	bundle := []byte("browser bundle bytes")
+	response, pending := browserCall(t, "POST", deployed.public.URL+"/v1/browser/runs/uploads", credentials, map[string]any{
+		"bundle_format_version": 1,
+		"bundle_digest":         hexDigest(bundle),
+		"bundle_size":           len(bundle),
+	}, credentials.csrf)
+	response.Body.Close()
+	if response.StatusCode != http.StatusCreated || pending["run_id"] == nil || pending["state"] != "pending" {
+		t.Fatalf("browser upload declaration status=%d body=%v", response.StatusCode, pending)
+	}
+	for _, forbidden := range []string{"upload_url", "upload_headers", "object_key", "object_version"} {
+		if _, exposed := pending[forbidden]; exposed {
+			t.Fatalf("browser upload exposed %s: %v", forbidden, pending)
+		}
+	}
+	runID := pending["run_id"].(string)
+	request, err := http.NewRequest(http.MethodPut, deployed.public.URL+"/v1/browser/runs/uploads/"+runID, bytes.NewReader(bundle))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.AddCookie(credentials.cookie)
+	request.Header.Set("Content-Type", "application/x-tar")
+	request.Header.Set("X-Locus-CSRF", credentials.csrf)
+	request.Header.Set("X-Locus-Bundle-Digest", hexDigest(bundle))
+	request.Header.Set("X-Locus-Bundle-Format", "1")
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var completed map[string]any
+	if err := json.NewDecoder(response.Body).Decode(&completed); err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || completed["state"] != "validating" {
+		t.Fatalf("browser upload status=%d body=%v", response.StatusCode, completed)
+	}
+
+	bearerRequest, err := http.NewRequest(http.MethodPost, deployed.public.URL+"/v1/browser/runs/uploads", strings.NewReader(`{"bundle_format_version":1,"bundle_digest":"`+hexDigest(bundle)+`","bundle_size":20}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bearerRequest.Header.Set("Authorization", "Bearer "+deployed.token)
+	bearerRequest.Header.Set("Content-Type", "application/json")
+	bearerRequest.Header.Set("X-Locus-CSRF", credentials.csrf)
+	response, err = http.DefaultClient.Do(bearerRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("browser upload accepted bearer token: %d", response.StatusCode)
+	}
+
 	jobID := newID(t)
 	response, body := browserCall(t, "POST", deployed.public.URL+"/v1/jobs/"+jobID+"/cancel", credentials, nil, "")
 	response.Body.Close()
@@ -256,8 +310,8 @@ func TestBrowserSessionIsShortLivedScopedAndCSRFProtected(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	runID := newID(t)
-	_, err := deployed.pool.Exec(ctx, `INSERT INTO runs
+	runID = newID(t)
+	_, err = deployed.pool.Exec(ctx, `INSERT INTO runs
         (id,workspace_id,state,declared_bundle_format,declared_bundle_digest,declared_bundle_size,bundle_object_key)
         VALUES($1,$2,'pending',1,$3,1,$4)`, runID, deployed.workspace, hexDigest([]byte(runID)), "workspaces/"+deployed.workspace+"/runs/"+runID+"/bundle.tar")
 	if err != nil {
@@ -435,6 +489,28 @@ func TestSingleRunAnalysisCommitsItsResultAndCompanion(t *testing.T) {
 	fetched.Body.Close()
 	if !bytes.Equal(body, spans) || hexDigest(body) != download["digest"] {
 		t.Fatalf("downloaded %q with digest %v", body, download["digest"])
+	}
+
+	browser := deployed.browserSession(t, deployed.token)
+	request, err := http.NewRequest("GET", deployed.public.URL+"/v1/browser/artifacts/"+registered["otlp_json"], nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.AddCookie(browser.cookie)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	browserBytes, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || !bytes.Equal(browserBytes, spans) {
+		t.Fatalf("browser artifact status=%d body=%q", response.StatusCode, browserBytes)
+	}
+	if !strings.HasPrefix(response.Header.Get("Content-Disposition"), "attachment") || response.Header.Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("browser artifact headers=%v", response.Header)
+	}
+	if bytes.Contains(browserBytes, []byte("download_url")) || bytes.Contains(browserBytes, []byte("object_key")) {
+		t.Fatalf("browser artifact exposed storage access: %s", browserBytes)
 	}
 }
 

@@ -78,13 +78,3 @@ export type Session = {
   expires_at: string;
   scopes: string[];
 };
-
-export type UploadGrant = {
-  upload_id: string;
-  run_id: string;
-  required_digest: string;
-  required_size: number;
-  upload_url: string;
-  upload_headers: Record<string, string>;
-  expires_at: string;
-};

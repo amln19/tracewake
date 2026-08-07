@@ -79,3 +79,36 @@ test("refresh reconstructs attempts and cancellation displays the database winne
   await expect(page.getByText(/Cancellation requested/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Request cancellation" })).toHaveCount(0);
 });
+
+test("uploads through the same-origin control plane without a storage capability", async ({ page }) => {
+  await commonRoutes(page);
+  const runID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const seen: string[] = [];
+  await page.route("**/v1/browser/runs/uploads", async (route) => {
+    seen.push(route.request().url());
+    expect(route.request().headers()["x-locus-csrf"]).toBe(csrf);
+    expect(route.request().postDataJSON()).toMatchObject({ bundle_format_version: 1, bundle_size: 13 });
+    await fulfillJSON(route, { run_id: runID, state: "pending" }, 201);
+  });
+  await page.route(`**/v1/browser/runs/uploads/${runID}`, async (route) => {
+    seen.push(route.request().url());
+    expect(route.request().method()).toBe("PUT");
+    expect(route.request().headers()["x-locus-csrf"]).toBe(csrf);
+    expect(route.request().headers()["x-locus-bundle-format"]).toBe("1");
+    expect(route.request().postData()).toBe("bundle bytes\n");
+    await fulfillJSON(route, { run_id: runID, state: "validating" });
+  });
+  await page.route(`**/v1/runs/${runID}`, (route) => fulfillJSON(route, {
+    run_id: runID, state: "validating", bundle_digest: "a".repeat(64), bundle_format_version: 1,
+    logical_run_digest: null, cassette_format_version: null, event_schema_version: null, event_count: null,
+    failure: null, created_at: "2026-08-06T23:00:00Z", retention_expires_at: "2026-11-04T23:00:00Z", ready_at: null,
+  }));
+
+  await page.goto("/");
+  await expect(page.getByText("Run inventory")).toBeVisible();
+  await page.locator('input[type="file"]').setInputFiles("e2e/fixtures/browser.bundle.tar");
+  await expect(page.getByText("validating")).toBeVisible();
+  expect(seen).toHaveLength(2);
+  expect(seen.every((url) => new URL(url).origin === new URL(page.url()).origin)).toBe(true);
+  expect(seen.some((url) => url.includes("amazonaws") || url.includes("s3"))).toBe(false);
+});

@@ -33,6 +33,29 @@ func NewS3(cfg aws.Config, bucket string, options ...func(*s3.Options)) (*S3, er
 	return &S3{client: client, presign: s3.NewPresignClient(client), bucket: bucket}, nil
 }
 
+func (s *S3) Put(ctx context.Context, key, digest string, size int64, mediaType string, input io.Reader) (Object, error) {
+	checksum, err := checksumOf(digest)
+	if err != nil || !validDeclaration(key, digest, size) {
+		return Object{}, errors.New("artifact declaration is invalid")
+	}
+	stored, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:         aws.String(s.bucket),
+		Key:            aws.String(key),
+		Body:           input,
+		ChecksumSHA256: aws.String(checksum),
+		ContentLength:  aws.Int64(size),
+		ContentType:    aws.String(mediaType),
+	})
+	if err != nil {
+		return Object{}, fmt.Errorf("store artifact: %w", err)
+	}
+	version := aws.ToString(stored.VersionId)
+	if version == "" {
+		return Object{}, errors.New("stored artifact has no immutable version")
+	}
+	return s.Commit(ctx, key, version, digest, size)
+}
+
 func (s *S3) PutGrant(ctx context.Context, key, digest string, size int64, mediaType string) (Grant, error) {
 	checksum, err := checksumOf(digest)
 	if err != nil || !validDeclaration(key, digest, size) {

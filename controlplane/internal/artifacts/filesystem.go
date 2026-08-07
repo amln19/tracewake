@@ -94,7 +94,7 @@ func (s *Filesystem) Open(_ context.Context, key, version string) (io.ReadCloser
 	return s.open(key)
 }
 
-func (s *Filesystem) put(key, expectedDigest string, expectedSize int64, input io.Reader) (Object, error) {
+func (s *Filesystem) Put(_ context.Context, key, expectedDigest string, expectedSize int64, _ string, input io.Reader) (Object, error) {
 	if !validDeclaration(key, expectedDigest, expectedSize) {
 		return Object{}, errors.New("artifact declaration is invalid")
 	}
@@ -127,6 +127,10 @@ func (s *Filesystem) put(key, expectedDigest string, expectedSize int64, input i
 		return Object{}, fmt.Errorf("publish artifact: %w", err)
 	}
 	return Object{Key: key, Version: digest, Digest: digest, Size: count}, nil
+}
+
+func (s *Filesystem) put(key, expectedDigest string, expectedSize int64, input io.Reader) (Object, error) {
+	return s.Put(context.Background(), key, expectedDigest, expectedSize, "", input)
 }
 
 func (s *Filesystem) open(key string) (*os.File, error) {

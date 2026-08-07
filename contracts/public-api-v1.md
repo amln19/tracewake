@@ -35,6 +35,14 @@ session must send the current token in `X-Locus-CSRF`; bearer-authenticated API
 clients are unchanged. Browser-session additions are backward-compatible API
 v1 extensions. Unknown fields remain rejected.
 
+Dashboard uploads use `POST /v1/browser/runs/uploads` for the declaration and
+`PUT /v1/browser/runs/uploads/{run_id}` for the exact bundle bytes. Both
+requests require the session cookie and current CSRF token. The `PUT` binds the
+declared content length, digest, and bundle format, streams through the control
+plane, and returns `validating`; it never returns an object key, version,
+bucket, signed URL, or other storage capability. Durable bearer clients retain
+the upload-grant protocol below.
+
 ## Errors
 
 Errors have this shape:

@@ -71,8 +71,10 @@ HTML results are sensitive and potentially active. The dashboard renders them
 only through an authenticated control-plane response with a restrictive CSP
 inside a sandboxed frame; they are never inserted into the application DOM as
 trusted markup. Other dashboard artifact responses are attachments and are not
-sniffed. Object keys, versions, buckets, and signed storage URLs are absent from
-the browser surface and are not retained in history, logs, or local storage.
+sniffed. Result object keys, versions, buckets, and signed storage URLs are
+absent from the browser surface. Bundle bytes also pass through a same-origin,
+CSRF-protected control-plane endpoint, so the browser never receives an object
+store capability or infrastructure credential.
 
 ## Data minimization and retention
 

@@ -46,6 +46,21 @@ def test_artifact_bucket_blocks_public_access_and_plain_http() -> None:
     assert 'status = "Enabled"' in storage
 
 
+def test_artifact_bucket_has_no_browser_cors_surface() -> None:
+    storage = read("storage.tf")
+    assert "aws_s3_bucket_cors_configuration" not in storage
+    assert "allowed_origins" not in storage
+
+
+def test_public_dashboard_listener_requires_tls() -> None:
+    variables = read("variables.tf")
+    load_balancer = read("loadbalancer.tf")
+    assert 'certificate_arn is required because browser sessions use Secure cookies.' in variables
+    assert 'protocol          = "HTTPS"' in load_balancer
+    assert 'ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"' in load_balancer
+    assert 'protocol    = "HTTPS"' in load_balancer
+
+
 def test_only_the_worker_security_group_reaches_the_worker_api() -> None:
     security = read("security.tf")
     internal = re.search(

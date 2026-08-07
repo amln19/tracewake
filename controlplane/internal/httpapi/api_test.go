@@ -37,6 +37,9 @@ func TestDashboardFallbackHasRestrictiveBrowserHeaders(t *testing.T) {
 			t.Fatalf("CSP %q does not contain %q", csp, directive)
 		}
 	}
+	if strings.Contains(csp, "amazonaws") {
+		t.Fatalf("dashboard CSP exposes object storage: %q", csp)
+	}
 	if strings.Contains(response.Body.String(), "<script>") {
 		t.Fatalf("route content was reflected into dashboard HTML: %q", response.Body.String())
 	}

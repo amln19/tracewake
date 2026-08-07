@@ -72,6 +72,25 @@ func TestSignedGrantStoresAndServesObject(t *testing.T) {
 	}
 }
 
+func TestControlPlanePutValidatesAndPublishesBytes(t *testing.T) {
+	store, root := testStore(t)
+	data := []byte("browser bundle")
+	key := "workspaces/a/runs/browser/bundle.tar"
+	object, err := store.Put(context.Background(), key, sha256Hex(data), int64(len(data)), "application/x-tar", bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if object.Version != sha256Hex(data) {
+		t.Fatalf("object version=%q", object.Version)
+	}
+	if got, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(key))); err != nil || !bytes.Equal(got, data) {
+		t.Fatalf("stored bytes=%q err=%v", got, err)
+	}
+	if _, err := store.Put(context.Background(), key, sha256Hex(data), int64(len(data)), "application/x-tar", strings.NewReader("wrong bytes!!!")); err == nil {
+		t.Fatal("mismatched browser upload was accepted")
+	}
+}
+
 func TestUploadGrantRejectsMismatchedBytes(t *testing.T) {
 	store, root := testStore(t)
 	key := "workspaces/a/runs/b/bundle.tar"

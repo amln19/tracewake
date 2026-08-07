@@ -90,6 +90,28 @@ func TestPresignedUploadCommitsExactObjectVersion(t *testing.T) {
 	}
 }
 
+func TestControlPlanePutCommitsExactObjectVersion(t *testing.T) {
+	store, _ := s3Store(t)
+	data := []byte("browser bundle")
+	key := "workspaces/w/runs/r/browser-bundle.tar"
+	object, err := store.Put(context.Background(), key, hexDigest(data), int64(len(data)), "application/x-tar", bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if object.Version == "" || object.Digest != hexDigest(data) || object.Size != int64(len(data)) {
+		t.Fatalf("stored object=%+v", object)
+	}
+	input, err := store.Open(context.Background(), object.Key, object.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer input.Close()
+	got, err := io.ReadAll(input)
+	if err != nil || !bytes.Equal(got, data) {
+		t.Fatalf("stored bytes=%q err=%v", got, err)
+	}
+}
+
 func TestCommitRejectsBytesThatDoNotMatchTheDeclaration(t *testing.T) {
 	store, fake := s3Store(t)
 	ctx := context.Background()

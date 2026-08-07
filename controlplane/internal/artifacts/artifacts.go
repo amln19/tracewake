@@ -35,6 +35,7 @@ type Grant struct {
 }
 
 type Store interface {
+	Put(ctx context.Context, key, digest string, size int64, mediaType string, input io.Reader) (Object, error)
 	PutGrant(ctx context.Context, key, digest string, size int64, mediaType string) (Grant, error)
 	GetGrant(ctx context.Context, key, version, mediaType string) (Grant, error)
 	Commit(ctx context.Context, key, version, digest string, size int64) (Object, error)

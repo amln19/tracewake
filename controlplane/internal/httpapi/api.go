@@ -41,6 +41,8 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/browser/session", a.refreshBrowserSession)
 	mux.HandleFunc("DELETE /v1/browser/session", a.deleteBrowserSession)
 	mux.HandleFunc("GET /v1/browser/artifacts/{artifactID}", a.browserArtifact)
+	mux.HandleFunc("POST /v1/browser/runs/uploads", a.createBrowserUpload)
+	mux.HandleFunc("PUT /v1/browser/runs/uploads/{runID}", a.putBrowserUpload)
 	mux.HandleFunc("POST /v1/runs/uploads", a.createUpload)
 	mux.HandleFunc("POST /v1/runs/uploads/{runID}/complete", a.completeUpload)
 	mux.HandleFunc("GET /v1/runs", a.listRuns)
@@ -133,6 +135,73 @@ func authError(w http.ResponseWriter, err error) {
 	default:
 		errorJSON(w, http.StatusInternalServerError, "internal")
 	}
+}
+
+func (a *API) browserPrincipal(w http.ResponseWriter, r *http.Request, scope string) (controlplane.Principal, bool) {
+	cookie, err := r.Cookie(browserCookie)
+	if err != nil {
+		errorJSON(w, http.StatusUnauthorized, "unauthenticated")
+		return controlplane.Principal{}, false
+	}
+	p, _, err := a.service.AuthenticateBrowserSession(r.Context(), cookie.Value, scope, r.Header.Get("X-Locus-CSRF"), true)
+	if err != nil {
+		authError(w, err)
+		return controlplane.Principal{}, false
+	}
+	return p, true
+}
+
+func (a *API) createBrowserUpload(w http.ResponseWriter, r *http.Request) {
+	p, ok := a.browserPrincipal(w, r, "runs:write")
+	if !ok {
+		return
+	}
+	var body struct {
+		BundleFormatVersion int    `json:"bundle_format_version"`
+		BundleDigest        string `json:"bundle_digest"`
+		BundleSize          int64  `json:"bundle_size"`
+	}
+	if decode(w, r, &body) != nil || body.BundleFormatVersion != 1 {
+		errorJSON(w, http.StatusBadRequest, "invalid_request")
+		return
+	}
+	upload, err := a.service.CreateUpload(r.Context(), p, body.BundleDigest, body.BundleSize)
+	if err != nil {
+		errorJSON(w, http.StatusConflict, "conflict")
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"run_id": upload.RunID, "state": "pending"})
+}
+
+func (a *API) putBrowserUpload(w http.ResponseWriter, r *http.Request) {
+	p, ok := a.browserPrincipal(w, r, "runs:write")
+	if !ok {
+		return
+	}
+	upload, err := a.service.UploadFor(r.Context(), p, r.PathValue("runID"))
+	if err != nil {
+		errorJSON(w, http.StatusNotFound, "not_found")
+		return
+	}
+	if upload.State != "pending" {
+		errorJSON(w, http.StatusConflict, "conflict")
+		return
+	}
+	if r.ContentLength != upload.Size || r.ContentLength < 0 || r.Header.Get("X-Locus-Bundle-Digest") != upload.Digest || r.Header.Get("X-Locus-Bundle-Format") != "1" {
+		errorJSON(w, http.StatusConflict, "conflict")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, upload.Size)
+	object, err := a.artifacts.Put(r.Context(), upload.Key, upload.Digest, upload.Size, "application/x-tar", r.Body)
+	if err != nil {
+		errorJSON(w, http.StatusConflict, "conflict")
+		return
+	}
+	if err := a.service.CompleteUpload(r.Context(), p, upload.RunID, object.Version, object.Digest, object.Size); err != nil {
+		errorJSON(w, http.StatusConflict, "conflict")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"run_id": upload.RunID, "state": "validating"})
 }
 func (a *API) completeUpload(w http.ResponseWriter, r *http.Request) {
 	principal, ok := a.principal(w, r, "runs:write")

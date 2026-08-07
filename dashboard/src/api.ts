@@ -1,4 +1,4 @@
-import type { AuditRecord, Job, Run, Session, UploadGrant } from "./types";
+import type { AuditRecord, Job, Run, Session } from "./types";
 
 const MAX_BUNDLE_SIZE = 256 * 1024 * 1024;
 let csrfToken = "";
@@ -25,7 +25,7 @@ async function decode<T>(response: Response): Promise<T> {
 async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
-  if (init.body) headers.set("Content-Type", "application/json");
+  if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (!["GET", "HEAD", "OPTIONS"].includes(method)) headers.set("X-Locus-CSRF", csrfToken);
   const response = await fetch(url, { ...init, headers, credentials: "same-origin" });
   return decode<T>(response);
@@ -69,25 +69,22 @@ export async function uploadBundle(file: File, onState: (state: string) => void)
   const bytes = await file.arrayBuffer();
   const hash = await crypto.subtle.digest("SHA-256", bytes);
   const digest = [...new Uint8Array(hash)].map((value) => value.toString(16).padStart(2, "0")).join("");
-  const grant = await request<UploadGrant>("/v1/runs/uploads", {
+  const pending = await request<{ run_id: string }>("/v1/browser/runs/uploads", {
     method: "POST",
     body: JSON.stringify({ bundle_format_version: 1, bundle_digest: digest, bundle_size: file.size }),
   });
-  onState("Uploading to the attempt-scoped grant");
-  const uploaded = await fetch(grant.upload_url, {
+  onState("Uploading through the control plane");
+  await request(`/v1/browser/runs/uploads/${encodeURIComponent(pending.run_id)}`, {
     method: "PUT",
-    headers: grant.upload_headers,
+    headers: {
+      "Content-Type": "application/x-tar",
+      "X-Locus-Bundle-Digest": digest,
+      "X-Locus-Bundle-Format": "1",
+    },
     body: bytes,
   });
-  if (!uploaded.ok) throw new Error("The bundle upload failed.");
-  const objectVersion = uploaded.headers.get("x-amz-version-id") ?? uploaded.headers.get("Locus-Object-Version");
-  if (!objectVersion) throw new Error("The artifact store did not return an immutable object version.");
   onState("Queuing mandatory validation");
-  await request(`/v1/runs/uploads/${encodeURIComponent(grant.run_id)}/complete`, {
-    method: "POST",
-    body: JSON.stringify({ object_version: objectVersion, digest, size: file.size }),
-  });
-  return getRun(grant.run_id);
+  return getRun(pending.run_id);
 }
 
 export async function createDiff(runIDs: [string, string]): Promise<string> {
