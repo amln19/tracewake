@@ -151,6 +151,28 @@ jobs:
         working-directory: controlplane
       - run: go test -run=^$ -fuzz=FuzzNormalizedDigest -fuzztime=3s ./internal/controlplane
         working-directory: controlplane
+      - run: go vet ./...
+        working-directory: controlplane
+
+  evidence:
+    name: Operational evidence harness
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: controlplane/go.mod
+          cache-dependency-path: controlplane/go.sum
+      - name: Put the PostgreSQL server binaries on PATH
+        run: ls -d /usr/lib/postgresql/*/bin | tee -a "$GITHUB_PATH"
+      - run: uv sync --locked --python 3.13
+      # Shortened: this proves the harness still drives the real services. The
+      # published numbers come from a full run retained in evidence/results.
+      - run: uv run --python 3.13 python -m evidence --quick --output "$RUNNER_TEMP/evidence"
 
   dashboard:
     name: TypeScript dashboard and browser security

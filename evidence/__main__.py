@@ -57,7 +57,17 @@ def main() -> int:
     parser.add_argument("--soak-interval", type=float, default=2.0)
     parser.add_argument("--recovery-steps", type=int, default=300, help="Agent steps in the runs the recovery scenario interrupts.")
     parser.add_argument("--keep", action="store_true", help="Leave the stack running directory in place.")
+    parser.add_argument(
+        "--quick",
+        action="store_true",
+        help="Shorten the run and skip the scenarios that only wait. For checking the harness, not for publishing numbers.",
+    )
     arguments = parser.parse_args()
+    if arguments.quick:
+        arguments.load_jobs = min(arguments.load_jobs, 6)
+        arguments.ingest_bundles = min(arguments.ingest_bundles, 6)
+        arguments.soak_seconds = min(arguments.soak_seconds, 8.0)
+        arguments.recovery_steps = min(arguments.recovery_steps, 200)
 
     repository = Path(__file__).resolve().parent.parent
     work = arguments.work or (repository / ".locus" / "evidence")
@@ -115,7 +125,8 @@ def main() -> int:
         results["late_completion"] = scenarios.late_completion(stack, client, next(pairs), "late-completion")
         results["retry_exhaustion"] = scenarios.retry_exhaustion(stack, client, next(pairs), "retry-exhaustion")
         results["artifact_mismatch"] = scenarios.artifact_mismatch(stack, client, run_ids[1], "artifact-mismatch")
-        results["outbox_backlog"] = scenarios.outbox_backlog(stack, client, run_ids[0], "outbox-backlog", 150)
+        if not arguments.quick:
+            results["outbox_backlog"] = scenarios.outbox_backlog(stack, client, run_ids[0], "outbox-backlog", 150)
         stack.start_worker()
         first, second = next(pairs)
         drained = client.analyze("diff", [first, second], "after-faults", "lexical-v1")
