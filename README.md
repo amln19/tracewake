@@ -209,6 +209,7 @@ locus remote analyze pprof <run-id> --idempotency-key spend-1
 locus remote job <job-id>
 locus remote artifacts <job-id>
 locus remote download <artifact-id> -o tokens.pb.gz
+locus remote delete <run-id>
 ```
 
 Repeating a request with the same idempotency key returns the original job
@@ -254,6 +255,78 @@ polling; the lifecycle, semantics, and result schemas are unchanged. Locus
 itself remains local-first: none of this is required to record, replay,
 verify, import, export, or compare runs.
 
+## Operations and failure semantics
+
+Both services emit operational telemetry as JSON lines on standard output:
+OpenTelemetry spans, and metrics in CloudWatch embedded metric format so a
+deployment gets alarmable metrics from container output alone. A job
+notification carries its W3C trace context, so one trace covers the request
+that created the job, the outbox publication, the claim, the worker's download,
+analysis and upload, and the artifact commit — across Go and Python. This
+telemetry describes the services and is unrelated to the OTLP artifacts Locus
+produces for a run.
+
+Metric dimensions come from fixed sets and an unrecognised value collapses to
+`other`, so the number of time series is bounded. Requests are recorded by the
+route template they matched, never by the path they used. `deploy/aws/`
+provisions every alarm from `deploy/aws/alarms.json`; the control-plane tests
+check each custom-namespace alarm against the metrics the service actually
+emits, because an alarm on a metric nothing produces stays silent and reads as
+health.
+
+Failure semantics, restated as what the system does:
+
+* A worker that dies loses its lease. The reconciler fences the attempt, which
+  can no longer report progress or commit, schedules a retry, and a replacement
+  attempt produces the one authoritative result.
+* Retryable failures get three attempts. After the third the job is terminally
+  `failed` with `retry_exhausted` and registers no artifact.
+* An artifact is refused at both boundaries that check it: the store rejects
+  bytes contradicting the declaration it signed, and the commit rejects an
+  identity that disagrees with what the store holds. Neither leaves a
+  successful job pointing at the object.
+* Terminal state is immutable, and a repeated request with its original
+  idempotency key returns the original job rather than analysing again.
+* Losing the database stops repair rather than guessing: the reconciler reports
+  the failure and resumes when the database returns.
+* Retention deadlines are enforced by the control plane, and
+  `locus remote delete <run-id>` expires a run and everything derived from it
+  immediately. `deploy/aws/README.md` documents retention, deletion, backup,
+  and recovery.
+
+### Measured behaviour
+
+Every number below comes from one retained run, reproducible with
+`uv run python -m evidence`; its measurements and the raw telemetry they were
+computed from are in `evidence/results/`. It ran on one macOS arm64 machine
+with Go 1.24.13, Python 3.13.14, PostgreSQL 17.10, one control-plane process,
+and one worker. These are not scale numbers, and no AWS deployment number —
+object-store latency, autoscaling, or cost — is published at all.
+
+| Measurement | Value |
+| --- | --- |
+| 10 bundles uploaded and validated | p50 984 ms, p95 1020 ms |
+| 24 diff analyses submitted at once | drained in 1.28 s |
+| Their end-to-end latency | p50 1111 ms, p95 1205 ms |
+| One analysis every two seconds for a minute | 30 of 30 succeeded, p50 414 ms |
+| Killed worker to fenced attempt | 60.4 s, the attempt lease |
+| Killed worker to committed result | 70.3 s |
+| Spans emitted | 2487 across 1137 traces |
+| Traces spanning both languages | 77, up to 24 spans each |
+| Distinct metric series | 103 |
+
+The two latency figures are dominated by the local stack's one-second outbox
+poll; a deployment long-polls SQS instead. The soak's mean rose from 305 ms in
+its first half to 605 ms in its second, on a single worker with a growing
+database.
+
+The same run drove five failure conditions the deployment alarms on — worker
+death, retry exhaustion, an artifact contradiction, a stalled outbox, and a
+database outage — and every one moved the metric its alarm watches.
+CloudWatch's own evaluation engine is not exercised without a deployment, and
+alarms on platform metrics such as queue depth and task counts are reported as
+not observable locally.
+
 ## Persistent formats
 
 Event schema 3, SQLite store schema 3, cassette directory format 1, and bundle
@@ -297,6 +370,7 @@ python -m locus.contracts --output contracts/schemas/v1 --check
 python -m contracttest.generate_fixtures --output contracttest/fixtures/v1 --check
 (cd contracttest/go && go test ./...)
 (cd controlplane && go test ./...)
+uv run python -m evidence --output evidence/results
 uv build
 ```
 

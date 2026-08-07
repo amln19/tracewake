@@ -150,3 +150,31 @@ def test_every_analysis_under_load_succeeded(measurements: dict[str, Any]) -> No
         "succeeded": measurements["scenarios"]["analysis_load"]["jobs"]
     }
     assert measurements["scenarios"]["soak"]["outcomes"] == {"succeeded": measurements["scenarios"]["soak"]["jobs"]}
+
+
+def test_every_published_number_comes_from_this_run(measurements: dict[str, Any]) -> None:
+    """The README's measured-behaviour table may only restate the retained run."""
+    latency = measurements["latency"]
+    scenarios = measurements["scenarios"]
+    telemetry_summary = measurements["telemetry"]
+    recovery = scenarios["worker_recovery"]
+    soak = scenarios["soak"]
+    published = [
+        f"p50 {round(latency['ingestion']['p50_ms'])} ms, p95 {round(latency['ingestion']['p95_ms'])} ms",
+        f"drained in {round(scenarios['analysis_load']['drain_seconds'], 2)} s",
+        f"p50 {round(latency['analysis_load']['p50_ms'])} ms, p95 {round(latency['analysis_load']['p95_ms'])} ms",
+        f"{soak['jobs']} of {soak['jobs']} succeeded, p50 {round(latency['soak']['p50_ms'])} ms",
+        f"{round(recovery['kill_to_fence_seconds'], 1)} s",
+        f"{round(recovery['kill_to_success_seconds'], 1)} s",
+        f"{telemetry_summary['span_count']} across {telemetry_summary['trace_count']} traces",
+        f"{telemetry_summary['traces_crossing_services']}, up to {telemetry_summary['largest_trace_spans']} spans each",
+        f"{telemetry_summary['metric_series']}",
+        f"from {round(soak['first_half_mean_ms'])} ms",
+        f"to {round(soak['second_half_mean_ms'])} ms",
+        f"{len(scenarios['ingestion']['run_ids'])} bundles",
+        f"{scenarios['analysis_load']['jobs']} diff analyses",
+    ]
+    readme = Path("README.md").read_text(encoding="utf-8")
+    section = readme.split("### Measured behaviour", 1)[-1].split("## Persistent formats", 1)[0]
+    for value in published:
+        assert value.lower() in section.lower(), f"the README does not restate {value!r} from the retained run"
