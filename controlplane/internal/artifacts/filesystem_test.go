@@ -67,8 +67,8 @@ func TestSignedGrantStoresAndServesObject(t *testing.T) {
 	if got, _ := io.ReadAll(response.Body); !bytes.Equal(got, data) {
 		t.Fatalf("got %q", got)
 	}
-	if response.Header().Get("Content-Disposition") != "attachment" {
-		t.Fatal("sensitive artifacts must not render inline")
+	if response.Header().Get("Content-Disposition") != "attachment" || response.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("sensitive artifacts must not render inline: %v", response.Header())
 	}
 }
 

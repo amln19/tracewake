@@ -56,8 +56,11 @@ func (s *Filesystem) serveDownload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "object is not available", http.StatusNotFound)
 		return
 	}
+	// An HTML report is tenant content: it downloads, and no browser may be
+	// talked into rendering it in this origin.
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", "attachment")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
 	w.Header().Set("Locus-Object-Version", version)
 	_, _ = io.Copy(w, file)

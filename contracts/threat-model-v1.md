@@ -68,7 +68,8 @@ API. SSE contains no authority or sensitive content.
 
 HTML results are sensitive and potentially active. They are downloaded or
 served from an isolated origin with a restrictive CSP and sandbox; they are not
-inserted into the application DOM as trusted markup. Artifact URLs expire
+inserted into the application DOM as trusted markup. Every artifact download
+is an attachment of an opaque type and is not sniffed. Artifact URLs expire
 within 15 minutes and are not retained in history, logs, or local storage.
 
 ## Data minimization and retention
