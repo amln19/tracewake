@@ -143,7 +143,7 @@ func (s *Service) GetJob(ctx context.Context, p Principal, id string) (JobView, 
 		v.Attempts = append(v.Attempts, a)
 	}
 	rows.Close()
-	artifactRows, err := s.pool.Query(ctx, `SELECT id,kind,digest,size,media_type,schema_name,schema_version,retention_expires_at FROM artifacts WHERE job_id=$1 AND workspace_id=$2 AND authoritative ORDER BY kind`, id, p.WorkspaceID)
+	artifactRows, err := s.pool.Query(ctx, `SELECT id,kind,digest,size,media_type,schema_name,schema_version,retention_expires_at FROM artifacts WHERE job_id=$1 AND workspace_id=$2 AND authoritative AND retention_expires_at>transaction_timestamp() ORDER BY kind`, id, p.WorkspaceID)
 	if err != nil {
 		return v, err
 	}

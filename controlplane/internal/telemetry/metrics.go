@@ -37,7 +37,7 @@ const otherValue = "other"
 var Routes = []string{
 	"POST /v1/browser/sessions", "GET /v1/browser/session", "DELETE /v1/browser/session",
 	"GET /v1/browser/artifacts/{artifactID}", "POST /v1/browser/runs/uploads", "PUT /v1/browser/runs/uploads/{runID}",
-	"POST /v1/runs/uploads", "POST /v1/runs/uploads/{runID}/complete", "GET /v1/runs", "GET /v1/runs/{runID}",
+	"POST /v1/runs/uploads", "POST /v1/runs/uploads/{runID}/complete", "GET /v1/runs", "GET /v1/runs/{runID}", "DELETE /v1/runs/{runID}",
 	"POST /v1/jobs", "GET /v1/jobs/{jobID}", "POST /v1/jobs/{jobID}/cancel", "GET /v1/jobs/{jobID}/events",
 	"GET /v1/artifacts/{artifactID}/download", "GET /v1/audit",
 	"GET /internal/v1/identity", "GET /internal/v1/notifications/next", "POST /internal/v1/notifications/{id}/ack",

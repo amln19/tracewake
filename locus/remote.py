@@ -81,6 +81,13 @@ def runs_(url: URL = "http://127.0.0.1:8080", token: Token = "") -> None:
         typer.echo(f"{run['run_id']}  {run['state']:<10}  {run['bundle_digest'][:12]}")
 
 
+@app.command("delete")
+def delete_(run_id: str, url: URL = "http://127.0.0.1:8080", token: Token = "") -> None:
+    """Request deletion of a remote run and everything derived from it."""
+    _request("DELETE", url, token, f"/v1/runs/{run_id}")
+    typer.echo(f"deleted run {run_id}")
+
+
 @app.command()
 def analyze(
     operation: Annotated[str, typer.Argument(help="diff, otlp, or pprof")],

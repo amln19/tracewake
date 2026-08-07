@@ -182,6 +182,9 @@ func main() {
 					continue
 				}
 				lastRetention = now
+				if _, err := service.EnforceRetention(ctx); err != nil && !errors.Is(err, context.Canceled) {
+					log.Printf("enforce retention: %v", err)
+				}
 				if keys, err := service.RetainedObjectKeys(ctx); err == nil {
 					if _, err = artifactStore.Cleanup(ctx, keys, time.Now().Add(-24*time.Hour)); err != nil {
 						log.Printf("artifact cleanup: %v", err)

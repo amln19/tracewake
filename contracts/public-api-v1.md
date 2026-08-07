@@ -73,6 +73,13 @@ worker, administrator, or same-digest optimization can use a run before
 `ready`. Same-bundle reuse is workspace-local and only reuses a previously
 validated compatible immutable object.
 
+`DELETE /v1/runs/{run_id}` with `runs:write` is a tenant deletion request. It
+answers `204` once the run and every artifact derived from it have stopped
+being readable, listable, analysable, and retained; object cleanup then removes
+the stored bytes. Jobs and audit records survive as the record that the work
+happened, with nothing left to download. A run that is already deleted or is
+not owned by the workspace returns `not_found`.
+
 `GET /v1/runs` returns a cursor page of workspace-owned run summaries.
 `GET /v1/runs/{run_id}` returns ingestion state, declared and validated
 versions, logical and bundle digests when known, event count, bounded failure,
@@ -138,3 +145,17 @@ and failure codes only.
 All list cursors are opaque, stable within the requested order, and scoped to
 the authenticated workspace. Requested deletion makes affected runs and
 artifacts unreadable immediately; physical objects are purged within 24 hours.
+
+## Retention
+
+Retention deadlines are visible on every run and artifact the API returns.
+Authoritative input bundles and result artifacts are retained 90 days, failed
+uploads and orphan attempt outputs 24 hours, idempotency records 24 hours, and
+audit records 365 days. The control plane enforces those windows on its own
+schedule.
+
+Past its deadline an artifact stops appearing on its job and stops being
+downloadable, and a run stops being readable, listable, and analysable. Rows a
+successful job depends on are not removed: the artifact row remains the record
+of exactly what that job committed, including its digest, size, and object
+version, after the bytes are gone.

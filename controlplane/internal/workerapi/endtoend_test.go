@@ -644,3 +644,45 @@ func TestHostedRoundTripCommitsExactArtifactIdentity(t *testing.T) {
 		})
 	}
 }
+
+func TestDeletionRemovesATenantRunThroughThePublicAPI(t *testing.T) {
+	deployed := newDeployment(t, false)
+	ctx := context.Background()
+	run := newID(t)
+	_, err := deployed.pool.Exec(ctx, `INSERT INTO runs(id,workspace_id,state,declared_bundle_format,declared_bundle_digest,declared_bundle_size,bundle_object_key,bundle_object_version,validated_bundle_format,cassette_format_version,event_schema_version,logical_run_digest,event_count,ready_at)
+        VALUES($1,$2,'ready',1,$3,1,$4,'version-1',1,1,3,$5,1,transaction_timestamp())`,
+		run, deployed.workspace, hexDigest([]byte("delete-bundle")), "workspaces/"+deployed.workspace+"/runs/"+run+"/bundle.tar", hexDigest([]byte("delete-logical")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status, _ := deployed.call(t, "GET", deployed.public.URL+"/v1/runs/"+run, deployed.token, nil, nil); status != http.StatusOK {
+		t.Fatalf("the run is not readable before deletion: %d", status)
+	}
+
+	other, otherToken, err := deployed.service.CreateWorkspace(ctx, "deletion-neighbour", []string{"runs:write"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status, _ := deployed.call(t, "DELETE", deployed.public.URL+"/v1/runs/"+run, otherToken, nil, nil); status != http.StatusNotFound {
+		t.Fatalf("a second workspace deleted another workspace's run: %d", status)
+	}
+	var state string
+	if err := deployed.pool.QueryRow(ctx, "SELECT state FROM runs WHERE id=$1", run).Scan(&state); err != nil || state != "ready" {
+		t.Fatalf("a cross-workspace delete changed the run: state=%q err=%v (neighbour %s)", state, err, other)
+	}
+
+	if status, _ := deployed.call(t, "DELETE", deployed.public.URL+"/v1/runs/"+run, deployed.token, nil, nil); status != http.StatusNoContent {
+		t.Fatalf("deletion status=%d", status)
+	}
+	if status, _ := deployed.call(t, "GET", deployed.public.URL+"/v1/runs/"+run, deployed.token, nil, nil); status != http.StatusNotFound {
+		t.Fatalf("a deleted run is still readable: %d", status)
+	}
+	status, refused := deployed.call(t, "POST", deployed.public.URL+"/v1/jobs", deployed.token,
+		map[string]any{"operation": "otlp", "run_ids": []string{run}}, map[string]string{"Idempotency-Key": "deleted-" + run})
+	if status != http.StatusConflict {
+		t.Fatalf("a deleted run was accepted for analysis: %d %v", status, refused)
+	}
+	if status, _ := deployed.call(t, "DELETE", deployed.public.URL+"/v1/runs/"+run, deployed.token, nil, nil); status != http.StatusNotFound {
+		t.Fatalf("deleting twice did not report the run as gone: %d", status)
+	}
+}

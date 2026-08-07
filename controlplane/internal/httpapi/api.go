@@ -52,6 +52,7 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/runs/uploads/{runID}/complete", a.completeUpload)
 	mux.HandleFunc("GET /v1/runs", a.listRuns)
 	mux.HandleFunc("GET /v1/runs/{runID}", a.getRun)
+	mux.HandleFunc("DELETE /v1/runs/{runID}", a.deleteRun)
 	mux.HandleFunc("POST /v1/jobs", a.createJob)
 	mux.HandleFunc("GET /v1/jobs/{jobID}", a.getJob)
 	mux.HandleFunc("POST /v1/jobs/{jobID}/cancel", a.cancelJob)
@@ -373,6 +374,21 @@ func (a *API) getRun(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, item)
 }
+
+// deleteRun answers a tenant deletion request. The run stops being readable
+// and analysable immediately; the stored bytes go with the next cleanup pass.
+func (a *API) deleteRun(w http.ResponseWriter, r *http.Request) {
+	principal, ok := a.principal(w, r, "runs:write")
+	if !ok {
+		return
+	}
+	if err := a.service.DeleteRun(r.Context(), principal, r.PathValue("runID")); err != nil {
+		errorJSON(w, http.StatusNotFound, "not_found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (a *API) createJob(w http.ResponseWriter, r *http.Request) {
 	p, ok := a.principal(w, r, "jobs:write")
 	if !ok {

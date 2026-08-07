@@ -123,6 +123,88 @@ repeatedly. Both are variables: set `database_skip_final_snapshot = false` and
 `database_deletion_protection = true`, and remove `force_destroy` from the
 bucket, before any environment holds real tenant data.
 
+## Observability
+
+Both services write operational telemetry to standard output, which the awslogs
+driver ships to the environment's CloudWatch log groups. Spans are one JSON
+object per line in the OpenTelemetry span model; metrics are CloudWatch
+embedded metric format, so they become metrics in `Locus/<environment>/…`
+without a metrics agent or collector. This telemetry describes the services. It
+is unrelated to the OTLP artifacts Locus produces for a tenant, which describe
+a recorded run.
+
+A job notification carries its W3C trace context, so one trace covers the
+request that created a job, the outbox publication, the claim, the worker's
+download, analysis, upload, and the artifact commit — across both languages.
+
+`alarms.json` holds every alarm as data; `observability.tf` provisions them
+from that file, and the control-plane tests check each custom-namespace alarm
+against the metrics the service actually emits. `alarm_actions` is empty by
+default: alarm state is visible in CloudWatch without a notification target,
+and the operator supplies one.
+
+## Retention and deletion
+
+The control plane enforces retention itself, because it is the only component
+that knows what a successful job still references:
+
+| Data | Retained |
+| --- | --- |
+| Input bundles and authoritative result artifacts | 90 days |
+| Failed uploads and orphan attempt outputs | 24 hours |
+| Idempotency records | 24 hours |
+| Published notifications | 7 days |
+| Audit records | 365 days |
+
+Past its deadline an artifact stops appearing on its job and stops being
+downloadable, and a run stops being readable, listable, and analysable. The
+artifact row itself survives: it is the record of exactly what a job committed,
+including digest, size, and object version, after the bytes are gone. Object
+cleanup removes anything the database no longer retains, which is why an
+expired or deleted object disappears without a second bookkeeping system.
+
+`DELETE /v1/runs/{run_id}` is a tenant deletion request. It expires the run and
+every artifact derived from it immediately, so the data stops being reachable
+in the same transaction that records the request; the next cleanup pass removes
+the stored bytes. Bucket lifecycle rules expire noncurrent object versions
+after one day, so a deleted object's earlier versions go too.
+
+## Backup and disaster recovery
+
+Authoritative hosted state is the RDS database. Automated backups are enabled
+with `database_backup_retention_days` (7 by default), which also enables
+point-in-time recovery. Artifacts live in a versioned bucket; their identity —
+key and object version — is recorded in the database, so a database restore and
+the bucket together describe a consistent system.
+
+Recovery objective: the database can be recovered to any point inside the
+backup window, so the exposure is the retention setting, not a snapshot
+interval. Recovery time is dominated by the RDS restore, which creates a new
+instance.
+
+To recover:
+
+1. Restore the instance to the chosen time
+   (`aws rds restore-db-instance-to-point-in-time`), or restore a snapshot.
+2. Point `LOCUS_DATABASE_URL` at the restored instance by updating the Secrets
+   Manager secret, then force a new deployment of both services.
+3. Confirm the schema ledger matches the deployed image before admitting
+   traffic. The control plane refuses to start against a newer schema.
+4. Expect duplicate notifications for work that was in flight. Duplicate
+   delivery cannot create duplicate authoritative work, and an attempt whose
+   lease expired during the outage is fenced and retried.
+5. Objects written after the restore point are orphans: no successful job
+   references them, so retention removes them on schedule.
+
+Do not restore the bucket to an earlier state independently of the database. A
+successful job records the exact object version it committed; rolling objects
+back without the database would leave a successful job referencing a version
+that no longer exists.
+
+The `backup_and_restore` scenario in `evidence/` exercises the dump, drop, and
+reload path against the same schema and confirms runs, jobs, artifacts, and
+audit records survive it.
+
 ## Boundaries this environment enforces
 
 * The database and the bucket have no public route; the bucket blocks public
