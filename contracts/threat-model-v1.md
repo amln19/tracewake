@@ -21,7 +21,10 @@ workers, and audit ledger are not state authorities.
 
 ## Tenant threats
 
-Workspace identity comes only from authentication. Every run, normalized input,
+Workspace identity comes only from authentication. Deletion is workspace-scoped
+like every other operation: a request naming another workspace's run is
+indistinguishable from a request naming one that does not exist, and changes
+nothing. Every run, normalized input,
 job, artifact, audit query, and idempotency key is scoped to it. Unknown and
 cross-workspace identifiers have indistinguishable responses. Composite
 database keys prevent a normalized input from joining runs across workspaces.
@@ -76,6 +79,24 @@ absent from the browser surface. Bundle bytes also pass through a same-origin,
 CSRF-protected control-plane endpoint, so the browser never receives an object
 store capability or infrastructure credential.
 
+## Telemetry threats
+
+Operational telemetry is an egress path and is treated as one. Spans carry
+server-generated identifiers, route templates, attempt numbers, and operation
+names; metric dimensions come from fixed sets, and an unrecognised value
+collapses to `other` rather than opening a new series. Nothing derived from
+tenant content reaches either stream: no token, attempt token, object key,
+signed URL, content digest, prompt, blob, private path, or stack trace. A
+request is recorded by the route it matched, never by the path it used, so an
+identifier cannot arrive through a URL.
+
+A notification carries W3C trace context so one trace spans both languages.
+Trace and span identifiers are random and confer no authority; a worker
+presenting one gains nothing without its attempt token.
+
+The retained operational run is checked for exactly these leaks, so the claim
+rests on the bytes two real services emitted rather than on review alone.
+
 ## Data minimization and retention
 
 Logs, traces, metrics, queues, errors, progress, and audit payloads exclude
@@ -83,10 +104,17 @@ prompts, model responses, source, tool output, blob bytes, credentials,
 presigned URLs, full tokens, private paths, and arbitrary stack traces.
 
 Authoritative bundles and results expire after 90 days. Failed uploads and
-orphan attempt objects expire after 24 hours. Audit records expire after 365
-days. A deletion request removes API access transactionally and physical purge
-finishes within 24 hours. Retention jobs verify object identity before deletion
-and never delete an artifact referenced by an authoritative success row.
+orphan attempt objects expire after 24 hours. Idempotency records expire after
+24 hours, published notifications after 7 days, and audit records after 365
+days. The control plane enforces these windows itself, because it is the only
+component that knows what a successful job still references.
+
+A deletion request expires the run and everything derived from it in the
+transaction that records it, so API access ends immediately; object cleanup
+removes the bytes within the purge window. Retention never deletes a row an
+authoritative success references: the artifact row is the record of what a job
+committed and outlives the bytes it describes, which is what lets provenance
+stay truthful after data is gone.
 
 ## Residual risks
 
