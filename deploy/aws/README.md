@@ -31,25 +31,35 @@ terraform init \
   -backend-config="bucket=<state-bucket>" \
   -backend-config="key=locus/prod.tfstate" \
   -backend-config="region=<region>"
-terraform apply -var region=<region>
+terraform apply -var region=<region> -var image_tag=$(git rev-parse --short HEAD)
 ```
 
+An AWS account still on the free-tier plan caps automated backups; pass
+`-var database_backup_retention_days=1` there.
+
 The first apply creates empty ECR repositories, so the services cannot start
-until images exist. Build and push both images, then roll the services:
+until images exist. Tasks run on `task_architecture` (ARM64 by default), and
+the images must be built for it. Build, push, then roll the services:
 
 ```sh
 account=$(aws sts get-caller-identity --query Account --output text)
-region=$(terraform output -raw ... 2>/dev/null || echo <region>)
+region=<region>
+tag=$(git rev-parse --short HEAD)
 aws ecr get-login-password --region "$region" \
   | docker login --username AWS --password-stdin "$account.dkr.ecr.$region.amazonaws.com"
 
 control_plane=$(terraform output -raw control_plane_repository)
 worker=$(terraform output -raw worker_repository)
 
-docker build -f controlplane/Dockerfile -t "$control_plane:$(git rev-parse --short HEAD)" ../..
-docker build -f Dockerfile.worker -t "$worker:$(git rev-parse --short HEAD)" ../..
-docker push "$control_plane:$(git rev-parse --short HEAD)"
-docker push "$worker:$(git rev-parse --short HEAD)"
+docker build --platform linux/arm64 -f controlplane/Dockerfile -t "$control_plane:$tag" ../..
+docker build --platform linux/arm64 -f Dockerfile.worker -t "$worker:$tag" ../..
+docker push "$control_plane:$tag"
+docker push "$worker:$tag"
+
+aws ecs update-service --cluster "$(terraform output -raw cluster_name)" \
+  --service locus-prod-control-plane --force-new-deployment
+aws ecs update-service --cluster "$(terraform output -raw cluster_name)" \
+  --service locus-prod-worker --force-new-deployment
 
 terraform apply -var region=<region> -var image_tag=$(git rev-parse --short HEAD)
 ```
@@ -124,3 +134,17 @@ bucket, before any environment holds real tenant data.
   message hidden.
 * Both services receive their credentials from Secrets Manager; no token is
   printed, logged, or committed.
+
+## Artifact integrity in object storage
+
+A presigned upload cannot bind a checksum S3 enforces: the AWS SDK places
+`x-amz-checksum-sha256` in the query string, where the service neither verifies
+nor stores it. Uploading bytes that contradict the declaration therefore
+succeeds at the object store.
+
+The declared digest is proven afterwards instead. Committing an artifact
+verifies the exact object version and size, compares the stored checksum when
+one exists, and otherwise re-reads and hashes the object up to
+`MaxVerifiedReadSize`. A bundle larger than that is proven by mandatory
+validation, which refuses to make a run `ready` unless the stored bytes hash to
+the digest its upload declared.
