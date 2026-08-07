@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 
 import locus
+from locus import worker
 from locus import (
     DecodeParams,
     Message,
@@ -37,7 +38,6 @@ from locus.pprof import (
     sample_totals,
     usage_totals,
 )
-from locus import worker
 from locus.worker import UnsupportedAnalysis, WorkerClient, run_once
 
 JOB_ID = "00000000-0000-4000-8000-000000000002"
@@ -226,7 +226,9 @@ def test_hosted_spans_match_a_local_export_of_the_same_run(tmp_path: Path, objec
     client = deploy(objects, [good])
     output = worker._otlp(client, claim_for("otlp", [good]), tmp_path)
 
-    document = json.loads(companion(client, objects, output))
+    raw = companion(client, objects, output)
+    assert raw == encode_spans(bundle_header(good.validated), list(good.validated.events))[0]
+    document = json.loads(raw)
     hosted = document["resourceSpans"][0]["scopeSpans"][0]["spans"]
     local = build_spans(good.header, good.events)["resourceSpans"][0]["scopeSpans"][0]["spans"]
 
