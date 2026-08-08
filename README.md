@@ -1,71 +1,55 @@
 # Tracewake
 
-**Record. Replay. Find the divergence.**
+**Record an AI-agent run once. Replay it offline. Compare two runs to see where their trajectories diverged.**
 
-Deterministic execution recording and replay, and differential debugging, for
-AI agents. Record a coding-agent run once, replay it offline, and align a good
-run against a bad one to find the step where their trajectories stopped
-agreeing.
+Tracewake is a local-first Python tool for making agent behavior inspectable and repeatable. It records the nondeterministic inputs an agent consumes through its supported adapters—model responses, tool results, files, time, randomness, UUIDs, and environment reads—then replays those inputs from a cassette with network access blocked. Given a successful and failing run, it aligns their tool-use trajectories and reports the first meaningful divergence.
 
-The installed package can record and replay a program without an API key:
+The name is deliberate: a run leaves an execution *wake* of model calls, tool interactions, state changes, and decisions. Tracewake captures that wake so you can trace behavior back to what happened.
+
+```sh
+git clone https://github.com/amln19/tracewake.git
+cd tracewake
+uv sync
+uv run python examples/demo.py
+```
+
+The demo is offline and needs neither an API key nor a model server. It records two short tool-calling runs, replays one, then prints a real divergence report. For `pip`, install from a checkout with `python -m pip install .`; Tracewake requires Python 3.13 or newer.
+
+## Why use it?
+
+Agent failures are often expensive to reproduce: the model response changed, a tool returned something different, the clock moved, or a retry took a new path. Logs alone can tell you that two runs differ, but not reliably compare their changing-length action sequences.
+
+Tracewake provides a small, local workflow:
+
+```mermaid
+flowchart LR
+    A["Run your agent"] --> B["Record supported nondeterministic inputs"]
+    B --> C["Local SQLite run store"]
+    C --> D["Replay offline"]
+    C --> E["Align a good and bad trajectory"]
+    C --> F["Export, validate, or submit a bundle"]
+```
+
+It is useful for regression tests, incident investigation, agent evaluation, and sharing a validated recording with a teammate or a separate analysis service.
+
+## Quick start
+
+### Wrap an existing program
 
 ```sh
 work="$(mktemp -d)"
-tracewake record --store "$work/store" --name smoke -- python -c \
+uv run tracewake record --store "$work/store" --name smoke -- python -c \
   'import tracewake; s = tracewake.current(); print(s.clock.time()); s.outcome(status="ok")'
-tracewake replay smoke --store "$work/store"
+uv run tracewake replay smoke --store "$work/store"
 ```
 
-Both commands print the same recorded clock value. Replay-only sessions install
-the network blocker even if process-wide or per-session configuration tries to
-disable it.
+Both commands print the same recorded clock value. The CLI exposes the active session through `tracewake.current()` for programs it wraps. Replay-only sessions block networking even when process-wide or per-session configuration tries to disable it.
 
-## Results
+For pytest, the included `tracewake_cassette` fixture defaults to replay-only (`none`), so a test fails when it needs an unrecorded interaction.
 
-On 41 blinded hand-labeled pairs (single annotator, synthetic injected bugs),
-the aligner lands within two steps of the label on 33/41, against 12/41 for
-first target-width difference, 6/41 for last common prefix, and 12/41 for a local
-7B judge on the same packets. On the 29 pairs where first-difference was already
-outside ±2 — the only pairs where an aligner can show a distinct win — it hit
-21/29 and first-difference hit 0/29. No named baseline beat it on a single pair.
+### Integrate the library
 
-Always guessing "step 6" scores 32/41 — one below the aligner on the full set —
-but on the contestable subset a constant still does better (best constant 23/29
-vs aligner 21/29). Labels cluster because most failing runs here ran out of
-budget while still exploring; median failing trajectory is 6 steps. The honest
-claim: the aligner beats every named baseline; against a constant it wins the
-full set by one pair and loses where first-difference already fails.
-
-Ablations on the same 41: target-width argument similarity alone matches the
-full distance (33/41); bag-of-words reasoning matches the pinned embedder
-(33/41); linear gaps lose three pairs; dropping reasoning gains one. On this
-corpus the load-bearing piece is target-width args, not affine gaps or
-embeddings.
-
-Transfer: `SWE-smith-trajectories` still yields no same-instruction pairs.
-`SWE-Gym/OpenHands-Sampled-Trajectories` does — 129 same-model (gpt-4o)
-OpenHands pairs under the corpus length gate after stripping `finish`. On an
-80-pair blinded hand-labeled subset (single annotator) the aligner hits 36/80
-within ±2 against 29/80 and 26/80 for the positional baselines, but the best
-constant scores 34/80. The whole-set number is not a win.
-
-Splitting at the median failing length separates two regimes. Under 18 steps
-the aligner hits 31/40 against 23 and 21, clearing the best constant (26/40)
-and beating last-common-prefix at p=0.031. Over 18 steps everything collapses:
-aligner 5/40, baselines 6 and 5, and a constant beats all three at 15/40.
-
-That collapse is systematic, not noise. On long runs the aligner answers late —
-25 of 40 predictions sit past the label, median predicted step 19.5 against a
-median label of 11. These are runs that go wrong early and then thrash,
-re-applying the same failed edit to the same file for twenty steps. Tool and
-target keep matching the successful run, so the traces only stop corresponding
-near the end, while the label marks where the run stopped being recoverable.
-On a thrashing run those are different places. Closing that gap is the open
-problem here, and it is a question about what divergence means rather than a
-parameter to tune. Scout notes and packets:
-`corpus/alignment/external_scout.json`, `corpus/labels/external/`.
-
-## Library use
+Use the same agent code for recording and replay. The model and tools below are Tracewake adapters around your client and dispatcher.
 
 ```python
 import tracewake
@@ -84,228 +68,138 @@ with tracewake.replay(run_id) as rep:
     agent.run(task, model, rep.tools(), rep.clock, rep.fs)
 ```
 
-Same agent code both times. Replay answers model chunks, tool results, files,
-and clock values from the log with the network off. Or wrap a program you do
-not want to edit:
+[`examples/openai_agent.py`](examples/openai_agent.py) is a runnable, no-network tool-calling example using the message and `tool_call_id` shape used by OpenAI-compatible clients. Replace its deterministic `create_fn` with an adapter for a real client that returns `tracewake.ModelResponse`.
 
-```
-tracewake record -- python my_agent.py
-tracewake replay <run-id>
-```
+### Compare a good and bad run
 
-For CI, the pytest fixture `tracewake_cassette` defaults to replay-only
-(`none`). Replay needs `PYTHONHASHSEED=0` (the CLI sets it; elsewhere Tracewake
-tells you).
-
-A runnable version of this, wired through the tool-calling shape most
-OpenAI-compatible clients speak rather than this repo's own agent, is in
-`examples/openai_agent.py`. `python examples/demo.py` records two variant
-runs and diffs them, no API key or network needed:
-
-```
-divergence at BAD eac669ff step 2
-alignment score 0.274  length ratio 1.50
-embeddings lexical@unpinned
-
-      GOOD 98ff2afd                             BAD eac669ff
-------------------------------------------------------------
-   =  1. get_weather → Lisbon                   1. get_weather → Lisbon
-      —                                         >>> 2. get_weather → Lisbon, Portugal
-   |  2. write_note → trip-notes.txt            3. write_note → error-log.txt
+```sh
+uv run tracewake diff good bad --store .tracewake --lexical
+uv run tracewake view good bad --store .tracewake --lexical -o comparison.html
 ```
 
-## How it works
+`diff` prints the alignment and selected divergence; `view` writes a self-contained side-by-side HTML report. `--lexical` uses the dependency-free profile. The richer local embedding path is optional: install it with `uv sync --extra embeddings`.
 
-- **Records** nondeterministic inputs consumed through Tracewake's supported
-  adapters: model calls (including stream chunk boundaries), tool calls,
-  `Session.fs` operations, and supported clock, random, UUID, and environment
-  reads. This is not complete syscall, native-code, subprocess, or universal
-  filesystem interception. Parallel tool batches keep an intra-batch index — a
-  batch is a partial order, not a total one.
-- **Matches** replay requests with `model` + `messages_hash` by default.
-  `ordinal` is opt-in and never a silent fallback.
-- **Modes:**
+## What Tracewake records and replays
 
-  | Mode | Behavior |
-  |---|---|
-  | `once` | Replay if the cassette exists, record if not |
-  | `none` | Replay only; error on any new request, no network |
-  | `new_episodes` | Replay what matches, record what does not |
-  | `all` | Always record |
+Tracewake records inputs that an agent consumes through its documented boundary:
 
-- **Redaction** is default-on and targets configured secret values, known secret
-  headers and environment names, and home paths. It cannot prove arbitrary
-  source, binary content, private repository data, or unknown secrets safe to
-  distribute. `tracewake record --no-redact` turns it off; the cassette records
-  that fact.
-- **Cassettes** export to JSONL + blobs (`tracewake export` / `import`). The
-  header carries model id and date so a stale cassette can warn rather than
-  pass quietly. Its digest identifies canonical logical event content.
-  Deterministic bundle v1 packages validated cassette content as uncompressed
-  USTAR; its separate digest identifies every transport byte. Bundle production
-  and pure validation are available through `tracewake.bundle`.
+* model calls, including stream chunk boundaries;
+* tool calls and results;
+* `Session.fs` operations;
+* supported clock, randomness, UUID, and environment reads.
 
-## Commands
+It preserves intra-batch position for parallel tool calls, while treating a parallel batch as a partial order rather than pretending completion arrival order is stable. Requests match on `model` and `messages_hash` by default. Ordinal matching is available only when explicitly requested; it is never a silent fallback.
 
+The record modes are deliberately small:
+
+| Mode | Behavior |
+| --- | --- |
+| `once` | Replay an existing cassette; record if none exists. |
+| `none` | Replay only; a missing request errors and networking is blocked. |
+| `new_episodes` | Replay matching requests and record misses. |
+| `all` | Always record. |
+
+Redaction is on by default. It redacts configured secret values, known credential headers and environment names, and home paths. That is useful hygiene, not a guarantee that arbitrary source, binary data, private repositories, or unknown secrets are safe to distribute. `tracewake record --no-redact` disables it and records that choice in the cassette.
+
+## Analyze the trajectory, not just the final answer
+
+Tracewake aligns good and bad runs even when they have insertions, deletions, or repeated actions. The result identifies a candidate divergence and provides context rather than claiming to prove the root cause. It can also:
+
+| Task | Command |
+| --- | --- |
+| Compare two trajectories | `tracewake diff <good> <bad> --lexical` |
+| Produce an HTML comparison | `tracewake view <good> <bad> --lexical -o out.html` |
+| Export OTLP/JSON GenAI spans | `tracewake otel <run> -o trace.json` |
+| Export token use as pprof | `tracewake pprof <run> --view tokens -o tokens.pb.gz` |
+| Replay with selected context removed | `tracewake intervene <run> --drop-tag file_read --from-step 4 -- <agent>` |
+
+Intervention replays model output but re-executes the world. Its free replay prefix therefore ends at the first re-executed tool output that is not byte-identical to the recording. Provenance tags on `Message` objects group HTML context and pprof leaves; untagged blocks become one bucket.
+
+## Local artifacts and reproducibility
+
+The normal local store is SQLite plus a content-addressed blob store. A run can be moved or reviewed without a service:
+
+```sh
+tracewake export <run> -o cassette
+tracewake verify cassette
+tracewake import cassette
 ```
-tracewake diff <good> <bad>              # align and print the divergence step
-tracewake view <good> <bad> -o out.html  # self-contained HTML, side-by-side + provenance
-tracewake verify <cassette-directory>    # validate without changing the local store
-tracewake export <run> -o cassette       # export JSONL and content-addressed blobs
-tracewake import cassette                # validate completely, then import atomically
-tracewake pprof <run> --view tokens      # token spend as standard pprof (needs provenance tags)
-tracewake intervene <run> --drop-tag file_read --from-step 4 -- <agent>
-tracewake otel <run> -o trace.json       # OTLP/JSON GenAI spans
-```
 
-`diff` / `view` use a pinned local embedder (`uv sync --extra embeddings`); pass
-`--lexical` elsewhere. Divergence needs runs that end differently — a fixed
-terminal action on every run can mask it.
+`verify` checks the cassette header and versions, dense event sequence, event schemas, logical run digest, canonical paths, and every referenced blob's presence, digest, and size without changing the store. Import validates completely before making a run visible; export re-verifies stored blob bytes before publishing its destination.
 
-`intervene` replays the model and re-executes the world, so the free prefix ends
-at the first tool output that is not byte-identical to the recording. The bench
-agent strips pytest wall-clock from suite output so a re-run does not break that
-prefix on timing alone. Provenance tags on `Message`s power both the HTML
-context grouping and the pprof leaves; untagged blocks collapse to one bucket.
-Exported profiles carry no time, file name, or platform in their gzip header, so
-the same run always exports the same bytes.
+Two distinct digests matter:
 
-## Local control plane
+* the logical run digest identifies canonical event content;
+* the bundle digest identifies the exact transport bytes.
 
-The hosted lifecycle can be exercised locally without AWS. With Go 1.24,
-PostgreSQL 17, Node 26, npm, and `uv` installed, one command starts PostgreSQL,
-the Go control plane, and the Python worker:
+`tracewake.bundle` can package a validated cassette as deterministic, uncompressed USTAR bundle v1 for the hosted path. The format, size limits, and validation rules are documented in [`contracts/bundle-v1.md`](contracts/bundle-v1.md).
+
+## Hosted analysis is optional
+
+Tracewake's local recording, replay, comparison, verification, import, and export do not require a hosted service. The repository also includes a Go control plane and Python worker for analyzing already-recorded bundles. It does not execute arbitrary uploaded agent code.
+
+The hosted workflow is:
+
+1. Upload a deterministic bundle directly to artifact storage using a short-lived grant.
+2. A mandatory Python validation job checks it before the run becomes usable.
+3. Submit `diff`, `otlp`, or `pprof` work for a ready run. `diff` uses the dependency-free, versioned `lexical-v1` profile.
+4. A worker produces immutable, attempt-scoped artifacts. The control plane registers exactly one result only if the current lease remains valid.
+
+PostgreSQL is authoritative for hosted lifecycle state; object storage holds immutable bundles and artifacts; queue delivery is at-least-once notification, not authority. Jobs use workspace-scoped idempotency, database leases, retries, cancellation, transactional outbox publication, reconciliation, and stale-attempt fencing. The complete contract set is in [`contracts/`](contracts/README.md).
+
+### Run the local hosted stack
+
+With Go 1.24, PostgreSQL 17, Node 26, npm, and `uv` installed:
 
 ```sh
 scripts/local-control-plane
 ```
 
-The command also builds and serves the TypeScript dashboard at
-`http://127.0.0.1:8080`. Paste the private workspace token from the printed
-credentials file into its one-time exchange form. The browser receives only a
-15-minute HttpOnly session; the durable token is not stored by the dashboard.
-The command stops all three processes together on Ctrl-C. Docker is an
-alternative:
-
-```sh
-docker compose up --build
-docker compose exec controlplane cat /run/tracewake/credentials.json
-```
-
-The first command starts PostgreSQL, one Go control-plane process, and the
-Python worker, with the dashboard served by the control plane. The credentials
-file is created once in a private Docker volume; use its `token` in the
-dashboard or copy it into `TRACEWAKE_TOKEN`, then upload a deterministic bundle:
+It starts PostgreSQL, the control plane, a Python worker, and the dashboard at `http://127.0.0.1:8080`. Read the one-time workspace token from the private credentials file printed by the command, then:
 
 ```sh
 export TRACEWAKE_REMOTE_URL=http://127.0.0.1:8080
-export TRACEWAKE_TOKEN=<token-from-credentials.json>
+export TRACEWAKE_TOKEN=<token-from-credentials-file>
+
 tracewake remote upload run.bundle.tar
 tracewake remote runs
-```
-
-A `ready` run can then be analyzed. `diff` compares two runs with `lexical-v1`
-and produces structured JSON plus a self-contained HTML companion; `otlp` and
-`pprof` each turn one run into the same OTLP/JSON spans and gzipped token
-profile the local commands export:
-
-```sh
 tracewake remote analyze pprof <run-id> --idempotency-key spend-1
 tracewake remote job <job-id>
 tracewake remote artifacts <job-id>
 tracewake remote download <artifact-id> -o tokens.pb.gz
-tracewake remote delete <run-id>
 ```
 
-Repeating a request with the same idempotency key returns the original job
-rather than analyzing again. Every result artifact is immutable, scoped to the
-attempt that produced it, and downloaded through a short-lived URL; `download`
-refuses bytes that disagree with the digest and size the control plane
-recorded. The authoritative result of each job is a canonical result envelope
-naming its inputs' logical and bundle digests, object versions, schema
-versions, analysis profile, Tracewake version, worker build, and the exact
-companion artifact it produced.
+Docker is an alternative: run `docker compose up --build`, then read `/run/tracewake/credentials.json` from the `controlplane` container. Remove the disposable stack and its retained data with `docker compose down --volumes`.
 
-Hosted analyses read the bundle, not a live session, so a run's name, task, and
-session start are not part of them. Only `lexical-v1` is available; a request
-naming any other profile is rejected rather than silently substituted.
+The AWS Terraform environment is optional and requires an account, state backend, certificate, and cost decision. Its deployment, retention, recovery, and threat boundaries are described in [`deploy/aws/README.md`](deploy/aws/README.md).
 
-Build a bundle from an exported cassette with
-`tracewake.bundle.build_bundle(cassette, destination)`. Remote commands are
-additive: recording, replay, verification, import, export, and comparison keep
-using the local SQLite store and do not require the service. Remove the local
-stack and all its volumes with `docker compose down --volumes` when its retained
-test data is no longer needed.
+## Evaluation: promising, bounded evidence
 
-Bundles and results never travel through the API itself. A client declares an
-exact digest and size, receives a short-lived URL for one server-generated
-object key, transfers the bytes directly, and reports the immutable object
-version the store assigned. The control plane commits only that exact version
-after verifying digest and size, and a run becomes usable only after mandatory
-validation confirms its stored bytes match the declaration.
+The alignment evaluation is intentionally small and should not be read as a claim that Tracewake diagnoses arbitrary agent failures. It measures whether the selected divergence lands within two steps of a blinded, hand-applied label on recorded trajectory pairs.
 
-## Hosted deployment
+| Dataset | Result | Important context |
+| --- | --- | --- |
+| 41 synthetic injected-bug pairs | 33/41 within ±2 steps | Single annotator; the named first-difference and last-common-prefix baselines scored 12/41 and 6/41. A constant step-6 guess scored 32/41. |
+| Same 41, 29 pairs where first-difference was outside ±2 | 21/29 | First-difference scored 0/29, but the best constant scored 23/29. |
+| 80 hand-labeled OpenHands transfer pairs | 36/80 | The positional baselines scored 29/80 and 26/80; the best constant scored 34/80, so this is not a broad whole-set win. |
+| 40 OpenHands pairs under 18 steps | 31/40 | Best constant: 26/40; last-common-prefix comparison p=0.031. |
+| 40 OpenHands pairs over 18 steps | 5/40 | A constant scored 15/40. Long traces often repeat the same failed action after the recoverability point. |
 
-`deploy/aws/` is one Terraform environment: a VPC with private subnets, a
-public load balancer for tenants, a separate internal load balancer for the
-worker API, ECS/Fargate services for the control plane and the Python worker,
-RDS PostgreSQL, a private versioned S3 bucket, an SQS job queue with a
-dead-letter queue, ECR repositories, Secrets Manager secrets, least-privilege
-roles, and CloudWatch log groups. Deployment, migration, rollback, and teardown
-are documented in `deploy/aws/README.md`.
+The main conclusion is narrow: trajectory alignment beats the named positional baselines on these labeled packets, but label clustering and long-run thrashing make constant baselines surprisingly strong. The external labels, blinded packets, task manifests, predictions, and ablations are in [`corpus/`](corpus/README.txt); the benchmark commands live in [`bench/`](bench/).
 
-The deployed system runs the same code as the local stack. Object storage
-replaces the local filesystem store and the queue replaces direct outbox
-polling; the lifecycle, semantics, and result schemas are unchanged. Tracewake
-itself remains local-first: none of this is required to record, replay,
-verify, import, export, or compare runs.
+## Operational evidence
 
-## Operations and failure semantics
+Tracewake includes a local end-to-end harness that drives bundle ingestion, mandatory validation, burst load, worker loss, stale completion, retry exhaustion, artifact contradictions, outbox backlog, database outage, tenant isolation, backup/restore, and local independence. It uses one control-plane process, one worker, PostgreSQL 17, Go 1.24.13, and Python 3.13.14 on one macOS arm64 machine. These are correctness and single-machine observations, not scale claims.
 
-Both services emit operational telemetry as JSON lines on standard output:
-OpenTelemetry spans, and metrics in CloudWatch embedded metric format so a
-deployment gets alarmable metrics from container output alone. A job
-notification carries its W3C trace context, so one trace covers the request
-that created the job, the outbox publication, the claim, the worker's download,
-analysis and upload, and the artifact commit — across Go and Python. This
-telemetry describes the services and is unrelated to the OTLP artifacts
-Tracewake produces for a run.
+Reproduce the retained local run (about ten minutes; it needs `go`, `uv`, and local PostgreSQL 17):
 
-Metric dimensions come from fixed sets and an unrecognised value collapses to
-`other`, so the number of time series is bounded. Requests are recorded by the
-route template they matched, never by the path they used. `deploy/aws/`
-provisions every alarm from `deploy/aws/alarms.json`; the control-plane tests
-check each custom-namespace alarm against the metrics the service actually
-emits, because an alarm on a metric nothing produces stays silent and reads as
-health.
+```sh
+uv run python -m evidence --output evidence/results
+```
 
-Failure semantics, restated as what the system does:
-
-* A worker that dies loses its lease. The reconciler fences the attempt, which
-  can no longer report progress or commit, schedules a retry, and a replacement
-  attempt produces the one authoritative result.
-* Retryable failures get three attempts. After the third the job is terminally
-  `failed` with `retry_exhausted` and registers no artifact.
-* An artifact is refused at both boundaries that check it: the store rejects
-  bytes contradicting the declaration it signed, and the commit rejects an
-  identity that disagrees with what the store holds. Neither leaves a
-  successful job pointing at the object.
-* Terminal state is immutable, and a repeated request with its original
-  idempotency key returns the original job rather than analysing again.
-* Losing the database stops repair rather than guessing: the reconciler reports
-  the failure and resumes when the database returns.
-* Retention deadlines are enforced by the control plane, and
-  `tracewake remote delete <run-id>` expires a run and everything derived from
-  it immediately. `deploy/aws/README.md` documents retention, deletion, backup,
-  and recovery.
+The raw telemetry and methodology are retained under [`evidence/`](evidence/README.md).
 
 ### Measured behaviour
-
-Every number below comes from one retained run, reproducible with
-`uv run python -m evidence`; its measurements and the raw telemetry they were
-computed from are in `evidence/results/`. It ran on one macOS arm64 machine
-with Go 1.24.13, Python 3.13.14, PostgreSQL 17.10, one control-plane process,
-and one worker. These are not scale numbers.
 
 | Measurement | Value |
 | --- | --- |
@@ -319,23 +213,11 @@ and one worker. These are not scale numbers.
 | Traces spanning both languages | 78, up to 20 spans each |
 | Distinct metric series | 103 |
 
-The two latency figures are dominated by the local stack's one-second outbox
-poll; a deployment long-polls SQS instead. Under the sustained rate the soak's mean
-was 634 ms across its first half and 396 ms across its second, so a single
-worker kept up rather than falling behind.
-
-The same run drove five failure conditions the deployment alarms on — worker
-death, retry exhaustion, an artifact contradiction, a stalled outbox, and a
-database outage — and every one moved the metric its alarm watches. Locally
-that is as far as it goes: CloudWatch's own evaluation engine needs a
-deployment, and alarms on platform metrics such as queue depth and task counts
-are reported as not observable locally.
+The local stack polls the outbox once per second, so it dominates these latency figures. Under the sustained rate, the mean was 634 ms across its first half and 396 ms across its second; the one worker kept up rather than falling behind. Every injected failure condition moved the metric its configured deployment alarm watches. CloudWatch's evaluation engine and platform metrics are not observable in this local harness.
 
 ### On a deployed environment
 
-The same release was deployed to the environment in `deploy/aws/` and driven
-through the same faults. `evidence/results/aws/measurements.json` retains what
-CloudWatch recorded, including every alarm state transition.
+One deployment of the same release and fault workflow is retained in [`evidence/results/aws/measurements.json`](evidence/results/aws/measurements.json). It is evidence from one environment, not a capacity study.
 
 | Measurement | Value |
 | --- | --- |
@@ -346,98 +228,54 @@ CloudWatch recorded, including every alarm state transition.
 | Fenced attempt to alarm in ALARM | 2 min 12 s |
 | Database point-in-time restore to available | 15 min 30 s |
 
-Three alarms were driven into ALARM by real faults, and their transitions are
-retained: `attempts-losing-their-lease` when a network partition cost two
-in-flight attempts their leases, `reconciler-failing` when the database was
-rebooted under a running control plane, and `worker-service-below-capacity`
-when the worker service was scaled to zero. Both partitioned jobs recovered on
-their second attempt and committed one authoritative result each.
-
-Notification latency is where a deployment and the local stack differ most: SQS
-long-polling delivered work in 38 ms at best, against the local stack's
-one-second polling floor. Scaling behaviour and cost remain unmeasured — one
-worker is not a scaling test, and the billing window had not been ingested when
-the run finished.
-
-An alarm on a platform metric needs that metric's source switched on. This
-deployment learned that the hard way: an alarm read
-`ECS/ContainerInsights/RunningTaskCount` while the cluster disabled Container
-Insights, so it sat in ALARM from creation and reported nothing. `deploy/aws/`
-now enables it, and a test refuses the combination.
+Three real-fault alarms entered `ALARM`: an attempt-lease loss under worker partition, a reconciler failure during a database reboot, and worker capacity reduced to zero. Both partitioned jobs recovered on their second attempt and committed one authoritative result. SQS long-polling gave a 38 ms best notification latency, unlike the local polling floor. Scaling behavior and cost remain unmeasured.
 
 ### The demonstration
 
-One run of the harness performs the whole correctness story in order, and
-`evidence/results/measurements.json` records what each step observed:
+The local evidence run exercises this complete lifecycle; the named observations are retained in `evidence/results/measurements.json`.
 
-| Step | Where it is recorded |
+| Step | Recorded observation |
 | --- | --- |
 | Upload a deterministic bundle | `ingestion` |
-| Observe mandatory validation before the run is usable | `ingestion` |
-| Submit a `lexical-v1` diff with an idempotency key | `analysis_load` |
-| Observe the worker claim an attempt and report progress | `worker_recovery.progress_while_running` |
-| Kill the active worker | `worker_recovery.kill_to_fence_seconds` |
-| Observe lease expiry, fencing, and a scheduled retry | `worker_recovery.attempts` |
-| Submit a late completion from the dead attempt | `late_completion.stale_attempt_requests` |
-| Observe the replacement attempt succeed | `worker_recovery.succeeded_attempts` |
+| Observe mandatory validation before it is usable | `ingestion` |
+| Submit an idempotent `lexical-v1` diff | `analysis_load` |
+| Observe a claimed attempt reporting progress | `worker_recovery.progress_while_running` |
+| Kill the active worker and wait for fencing | `worker_recovery.kill_to_fence_seconds` |
+| Observe retry and the replacement result | `worker_recovery.succeeded_attempts` |
+| Send a late completion from the old worker | `late_completion.stale_attempt_requests` |
 | Repeat the idempotent request | `idempotent_replay` |
-| Inspect result, HTML companion, artifact identity, provenance, and audit | `result_provenance` |
-| Show a second workspace cannot read anything | `tenant_isolation` |
-| Run local Tracewake with no hosted service | `local_independence` |
+| Inspect artifact identity, provenance, and audit | `result_provenance` |
+| Attempt a cross-workspace read | `tenant_isolation` |
+| Record and replay with no service running | `local_independence` |
 
-The same story is reachable by hand through the local control plane above:
-`tracewake remote upload`, `runs`, `analyze`, `job`, `artifacts`, `download`,
-and `delete`, with the worker stopped and started to interrupt an attempt.
+## Persistent formats and deeper documentation
 
-## Persistent formats
+Event schema 3, SQLite store schema 3, cassette directory format 1, bundle format 1, result schemas, and hosted APIs are separate versioned contracts. Unsupported versions are rejected rather than silently reinterpreted. Start with:
 
-Event schema 3, SQLite store schema 3, cassette directory format 1, and bundle
-format 1 are independent contracts even when values coincide. Unsupported
-versions are rejected with instructions to use a matching Tracewake version; no
-old version is silently reinterpreted. `SCHEMA_VERSION` remains a compatibility
-alias for `EVENT_SCHEMA_VERSION`, and `CASSETTE_FORMAT` remains an alias for
-`CASSETTE_FORMAT_VERSION`.
-
-`tracewake verify` checks header shape and versions, event count and dense
-sequence, event schemas, the logical digest, canonical paths, and every
-referenced blob's presence, digest, and size. It rejects symlinks, duplicate or
-unexpected blob paths, and corruption without writing to a store. Export
-performs the same blob integrity checks against local storage before publishing
-a destination.
-
-## Evaluation
-
-`bench/` clones sixteen pinned Python libraries, injects a mechanical bug, and
-runs a minimal ReAct agent against a local model. Labels, scoring sheets, the
-task manifest, and the per-run ledger are committed; the recorded runs are not,
-so example run ids will not resolve in a fresh clone.
-
-```
-uv sync --group corpus
-python -m bench setup
-python -m bench build-tasks
-python -m bench run
-python -m bench status          # works from the committed ledger alone
-python -m bench external scout  # published-trajectory inventory
-python -m bench external openhands   # needs: pip install datasets
-python -m bench external export      # blinded transfer packets (--extend to grow)
-python -m bench external score       # after filling corpus/labels/external/labels.jsonl
-```
+* [`contracts/README.md`](contracts/README.md) — bundle, public API, worker, lifecycle, persistence, and threat-model contracts.
+* [`contracts/lexical-v1.md`](contracts/lexical-v1.md) — exact hosted alignment profile.
+* [`evidence/README.md`](evidence/README.md) — reproducible operational harness and what it does not measure.
+* [`deploy/aws/README.md`](deploy/aws/README.md) — operator requirements, deployment, retention, deletion, and recovery.
+* [`examples/openai_agent.py`](examples/openai_agent.py) and [`examples/demo.py`](examples/demo.py) — runnable integration and end-to-end demo.
 
 ## Development
 
-```
+```sh
 uv sync
 PYTHONHASHSEED=0 uv run --python 3.13 pytest
 python -m tracewake.contracts --output contracts/schemas/v1 --check
 python -m contracttest.generate_fixtures --output contracttest/fixtures/v1 --check
 (cd contracttest/go && go test ./...)
 (cd controlplane && go test ./...)
-uv run python -m evidence --output evidence/results
 uv build
 ```
 
-`tracewake diff` / `view` need `uv sync --extra embeddings` unless you pass
-`--lexical`. Corpus tests skip in a fresh clone because the runs are not
-committed. `tests/test_offline.py` is the load-bearing gate: a real socket is
-recorded through the CLI, then replayed with connection count at zero.
+`tracewake diff` and `view` need `uv sync --extra embeddings` unless you pass `--lexical`. Replay needs `PYTHONHASHSEED=0`; the CLI sets it for wrapped processes, and the library explains the requirement elsewhere. The offline replay gate records a real socket through the CLI, then proves the replay process makes zero connections.
+
+## Limits
+
+Tracewake is intentionally not a universal recorder or a security sandbox. It does not claim complete syscall, native-code, subprocess, or arbitrary filesystem interception. It cannot prove redaction removed every sensitive value. A divergence report is an alignment-based debugging lead, not a causal diagnosis. Hosted analysis currently accepts recorded bundles only, and the hosted profile is `lexical-v1`; it does not remotely execute untrusted agent code.
+
+## License
+
+[MIT](LICENSE)
