@@ -1,0 +1,447 @@
+{
+  "account": "313951300823",
+  "alarm_history": [
+    {
+      "alarm": "attempts-losing-their-lease",
+      "at": "2026-08-07T20:05:37.365000-04:00",
+      "summary": "Alarm updated from ALARM to OK"
+    },
+    {
+      "alarm": "attempts-losing-their-lease",
+      "at": "2026-08-07T19:50:37.365000-04:00",
+      "summary": "Alarm updated from OK to ALARM"
+    },
+    {
+      "alarm": "attempts-losing-their-lease",
+      "at": "2026-08-07T18:47:37.365000-04:00",
+      "summary": "Alarm updated from INSUFFICIENT_DATA to OK"
+    },
+    {
+      "alarm": "reconciler-failing",
+      "at": "2026-08-07T20:26:54.995000-04:00",
+      "summary": "Alarm updated from ALARM to OK"
+    },
+    {
+      "alarm": "reconciler-failing",
+      "at": "2026-08-07T20:11:54.995000-04:00",
+      "summary": "Alarm updated from OK to ALARM"
+    },
+    {
+      "alarm": "reconciler-failing",
+      "at": "2026-08-07T18:47:55.001000-04:00",
+      "summary": "Alarm updated from INSUFFICIENT_DATA to OK"
+    },
+    {
+      "alarm": "worker-service-below-capacity",
+      "at": "2026-08-07T21:02:10.853000-04:00",
+      "summary": "Alarm updated from OK to ALARM"
+    },
+    {
+      "alarm": "worker-service-below-capacity",
+      "at": "2026-08-07T20:43:10.850000-04:00",
+      "summary": "Alarm updated from ALARM to OK"
+    },
+    {
+      "alarm": "worker-service-below-capacity",
+      "at": "2026-08-07T18:47:10.852000-04:00",
+      "summary": "Alarm updated from INSUFFICIENT_DATA to ALARM"
+    }
+  ],
+  "alarms": [
+    {
+      "dimensions": [],
+      "evaluation": 1,
+      "metric": "ArtifactCommitFailures",
+      "missing": "notBreaching",
+      "name": "locus-prod-artifact-commits-refused",
+      "namespace": "Locus/prod/ControlPlane",
+      "period": 300,
+      "state": "OK",
+      "statistic": "Sum",
+      "threshold": 0.0
+    },
+    {
+      "dimensions": [
+        {
+          "Name": "Reason",
+          "Value": "lease_expired"
+        }
+      ],
+      "evaluation": 1,
+      "metric": "AttemptsFenced",
+      "missing": "notBreaching",
+      "name": "locus-prod-attempts-losing-their-lease",
+      "namespace": "Locus/prod/ControlPlane",
+      "period": 300,
+      "state": "OK",
+      "statistic": "Sum",
+      "threshold": 1.0
+    },
+    {
+      "dimensions": [
+        {
+          "Name": "TargetGroup",
+          "Value": "targetgroup/locus-prod-public/a281d4a3b823d53e"
+        },
+        {
+          "Name": "LoadBalancer",
+          "Value": "app/locus-prod-public/d4f76d188ec2e7e9"
+        }
+      ],
+      "evaluation": 2,
+      "metric": "UnHealthyHostCount",
+      "missing": "breaching",
+      "name": "locus-prod-control-plane-targets-unhealthy",
+      "namespace": "AWS/ApplicationELB",
+      "period": 60,
+      "state": "OK",
+      "statistic": "Maximum",
+      "threshold": 0.0
+    },
+    {
+      "dimensions": [
+        {
+          "Name": "DBInstanceIdentifier",
+          "Value": "locus-prod"
+        }
+      ],
+      "evaluation": 2,
+      "metric": "CPUUtilization",
+      "missing": "notBreaching",
+      "name": "locus-prod-database-cpu-saturated",
+      "namespace": "AWS/RDS",
+      "period": 300,
+      "state": "OK",
+      "statistic": "Average",
+      "threshold": 85.0
+    },
+    {
+      "dimensions": [
+        {
+          "Name": "DBInstanceIdentifier",
+          "Value": "locus-prod"
+        }
+      ],
+      "evaluation": 1,
+      "metric": "FreeStorageSpace",
+      "missing": "breaching",
+      "name": "locus-prod-database-storage-low",
+      "namespace": "AWS/RDS",
+      "period": 300,
+      "state": "OK",
+      "statistic": "Minimum",
+      "threshold": 2147483648.0
+    },
+    {
+      "dimensions": [
+        {
+          "Name": "Operation",
+          "Value": "diff"
+        }
+      ],
+      "evaluation": 2,
+      "metric": "QueueLatencyMillis",
+      "missing": "notBreaching",
+      "name": "locus-prod-diff-queue-latency-high",
+      "namespace": "Locus/prod/ControlPlane",
+      "period": 300,
+      "state": "OK",
+      "statistic": "Average",
+      "threshold": 60000.0
+    },
+    {
+      "dimensions": [
+        {
+          "Name": "Reason",
+          "Value": "retry_exhausted"
+        }
+      ],
+      "evaluation": 1,
+      "metric": "AttemptsFenced",
+      "missing": "notBreaching",
+      "name": "locus-prod-jobs-exhausting-their-retries",
+      "namespace": "Locus/prod/ControlPlane",
+      "period": 300,
+      "state": "OK",
+      "statistic": "Sum",
+      "threshold": 0.0
+    },
+    {
+      "dimensions": [
+        {
+          "Name": "QueueName",
+          "Value": "locus-prod-jobs"
+        }
+      ],
+      "evaluation": 2,
+      "metric": "ApproximateAgeOfOldestMessage",
+      "missing": "notBreaching",
+      "name": "locus-prod-notification-backlog-aging",
+      "namespace": "AWS/SQS",
+      "period": 60,
+      "state": "OK",
+      "statistic": "Maximum",
+      "threshold": 300.0
+    },
+    {
+      "dimensions": [
+        {
+          "Name": "QueueName",
+          "Value": "locus-prod-jobs-dlq"
+        }
+      ],
+      "evaluation": 1,
+      "metric": "ApproximateNumberOfMessagesVisible",
+      "missing": "notBreaching",
+      "name": "locus-prod-notifications-in-dead-letter-queue",
+      "namespace": "AWS/SQS",
+      "period": 60,
+      "state": "OK",
+      "statistic": "Maximum",
+      "threshold": 0.0
+    },
+    {
+      "dimensions": [],
+      "evaluation": 2,
+      "metric": "OutboxPendingAgeSeconds",
+      "missing": "notBreaching",
+      "name": "locus-prod-outbox-publication-stalled",
+      "namespace": "Locus/prod/ControlPlane",
+      "period": 60,
+      "state": "OK",
+      "statistic": "Maximum",
+      "threshold": 120.0
+    },
+    {
+      "dimensions": [
+        {
+          "Name": "LoadBalancer",
+          "Value": "app/locus-prod-public/d4f76d188ec2e7e9"
+        },
+        {
+          "Name": "TargetGroup",
+          "Value": "targetgroup/locus-prod-public/a281d4a3b823d53e"
+        }
+      ],
+      "evaluation": 1,
+      "metric": "HTTPCode_Target_5XX_Count",
+      "missing": "notBreaching",
+      "name": "locus-prod-public-api-returning-server-errors",
+      "namespace": "AWS/ApplicationELB",
+      "period": 300,
+      "state": "OK",
+      "statistic": "Sum",
+      "threshold": 5.0
+    },
+    {
+      "dimensions": [],
+      "evaluation": 1,
+      "metric": "ReconcileErrors",
+      "missing": "notBreaching",
+      "name": "locus-prod-reconciler-failing",
+      "namespace": "Locus/prod/ControlPlane",
+      "period": 300,
+      "state": "OK",
+      "statistic": "Sum",
+      "threshold": 0.0
+    },
+    {
+      "dimensions": [
+        {
+          "Name": "Operation",
+          "Value": "diff"
+        },
+        {
+          "Name": "Outcome",
+          "Value": "failed"
+        }
+      ],
+      "evaluation": 1,
+      "metric": "WorkerJobs",
+      "missing": "notBreaching",
+      "name": "locus-prod-worker-jobs-failing",
+      "namespace": "Locus/prod/Worker",
+      "period": 300,
+      "state": "OK",
+      "statistic": "Sum",
+      "threshold": 0.0
+    },
+    {
+      "dimensions": [
+        {
+          "Name": "ServiceName",
+          "Value": "locus-prod-worker"
+        },
+        {
+          "Name": "ClusterName",
+          "Value": "locus-prod"
+        }
+      ],
+      "evaluation": 3,
+      "metric": "RunningTaskCount",
+      "missing": "breaching",
+      "name": "locus-prod-worker-service-below-capacity",
+      "namespace": "ECS/ContainerInsights",
+      "period": 60,
+      "state": "ALARM",
+      "statistic": "Minimum",
+      "threshold": 1.0
+    }
+  ],
+  "baseline": {
+    "artifacts": [
+      {
+        "digest_matches": true,
+        "kind": "diff_json",
+        "size": 2181
+      },
+      {
+        "digest_matches": true,
+        "kind": "diff_html",
+        "size": 31790
+      }
+    ],
+    "idempotent": true,
+    "ingestion": [
+      {
+        "run_id": "6866069a-9770-480b-ae76-7f9fa5172b92",
+        "server_ms": 1921.78,
+        "state": "ready"
+      },
+      {
+        "run_id": "a03b4810-541d-47d6-a6f5-8cd1366f7891",
+        "server_ms": 1738.059,
+        "state": "ready"
+      }
+    ],
+    "job": "0c0ce841-7cde-4a21-831b-27864c1943b0",
+    "job_server_ms": 370.70599999999996,
+    "job_state": "succeeded",
+    "public_url": "https://locus-prod-public-1971289543.us-east-2.elb.amazonaws.com",
+    "reupload_after_delete": "HTTP 409",
+    "runs": [
+      "6866069a-9770-480b-ae76-7f9fa5172b92",
+      "a03b4810-541d-47d6-a6f5-8cd1366f7891"
+    ]
+  },
+  "collected_at": "2026-08-08T01:05:40Z",
+  "evidence_version": 1,
+  "findings": [
+    {
+      "detail": "worker-service-below-capacity watched ECS/ContainerInsights/RunningTaskCount while the cluster set containerInsights=disabled, so the metric was never published and the alarm sat in ALARM from creation. Fixed by enabling Container Insights; verified ALARM->OK at 00:43:10Z once datapoints appeared, then OK->ALARM at 01:02:10Z when the service was scaled to zero.",
+      "id": "container-insights-disabled",
+      "status": "fixed and verified"
+    },
+    {
+      "detail": "runs has UNIQUE (workspace_id, declared_bundle_digest) with no state predicate, so re-uploading the identical bundle after DELETE /v1/runs/{id} returns 409 permanently.",
+      "id": "deleted-run-digest-not-released",
+      "status": "open"
+    },
+    {
+      "detail": "Worker tasks exited with code 1 during the partition: run_once does not supervise the failure of a control-plane request, so the process ends and ECS restarts it. Recovery worked, but a supervised loop would be quieter.",
+      "id": "worker-exits-on-control-plane-partition",
+      "status": "open"
+    }
+  ],
+  "image_tag": "ca9641e",
+  "kind": "deployed",
+  "metrics": {
+    "attempts_fenced_lease_expired": {
+      "Sum": 2.0,
+      "Timestamp": "2026-08-07T13:00:00-04:00",
+      "Unit": "Count"
+    },
+    "job_duration_ms_diff_succeeded": {
+      "Maximum": 1303576.188,
+      "Minimum": 370.706,
+      "SampleCount": 5.0,
+      "Sum": 2617808.188,
+      "Timestamp": "2026-08-07T13:00:00-04:00",
+      "Unit": "Milliseconds"
+    },
+    "queue_latency_ms_diff": {
+      "Maximum": 819.741,
+      "Minimum": 38.194,
+      "SampleCount": 5.0,
+      "Sum": 2104.937,
+      "Timestamp": "2026-08-07T13:00:00-04:00",
+      "Unit": "Milliseconds"
+    },
+    "queue_latency_ms_validate": {
+      "Maximum": 922.698,
+      "Minimum": 81.053,
+      "SampleCount": 6.0,
+      "Sum": 3771.456,
+      "Timestamp": "2026-08-07T13:00:00-04:00",
+      "Unit": "Milliseconds"
+    }
+  },
+  "note": "TLS used a self-signed certificate imported to ACM; clients trusted it explicitly. Cost is not reported: Cost Explorer had not ingested the usage window when this ran.",
+  "partition": {
+    "claimed_at": 1786146495.882462,
+    "jobs": [
+      "013de158-414f-45a3-a6ae-29e2f3794d12",
+      "bacfa582-2890-4464-baf6-c68bbc6e047b"
+    ],
+    "recovery": [
+      {
+        "artifacts": [
+          "diff_json",
+          "diff_html"
+        ],
+        "attempts": [
+          {
+            "failure": "lease_lost",
+            "n": 1,
+            "state": "fenced"
+          },
+          {
+            "failure": null,
+            "n": 2,
+            "state": "succeeded"
+          }
+        ],
+        "job": "013de158-414f-45a3-a6ae-29e2f3794d12",
+        "server_ms": 1303576.188,
+        "state": "succeeded"
+      },
+      {
+        "artifacts": [
+          "diff_json",
+          "diff_html"
+        ],
+        "attempts": [
+          {
+            "failure": "lease_lost",
+            "n": 1,
+            "state": "fenced"
+          },
+          {
+            "failure": null,
+            "n": 2,
+            "state": "succeeded"
+          }
+        ],
+        "job": "bacfa582-2890-4464-baf6-c68bbc6e047b",
+        "server_ms": 1280850.6970000002,
+        "state": "succeeded"
+      }
+    ],
+    "runs": [
+      "8ab6d019-5e0d-4ea3-bed6-57b8e663df74",
+      "dc6e74de-0555-4099-bc90-74798390ffd5"
+    ]
+  },
+  "point_in_time_restore": {
+    "available_at": "2026-08-08T00:36:36Z",
+    "elapsed_seconds": 930,
+    "publicly_accessible": false,
+    "row_level_verification": "not performed; the database has no route from outside the VPC. The local backup_and_restore scenario verifies row counts against the same schema.",
+    "source": "locus-prod",
+    "started_at": "2026-08-08T00:21:06Z",
+    "subnet_group": "locus-prod",
+    "target": "locus-prod-restored"
+  },
+  "region": "us-east-2",
+  "stack": "locus-prod"
+}

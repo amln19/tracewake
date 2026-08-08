@@ -300,8 +300,7 @@ Every number below comes from one retained run, reproducible with
 `uv run python -m evidence`; its measurements and the raw telemetry they were
 computed from are in `evidence/results/`. It ran on one macOS arm64 machine
 with Go 1.24.13, Python 3.13.14, PostgreSQL 17.10, one control-plane process,
-and one worker. These are not scale numbers, and no AWS deployment number —
-object-store latency, autoscaling, or cost — is published at all.
+and one worker. These are not scale numbers.
 
 | Measurement | Value |
 | --- | --- |
@@ -322,10 +321,44 @@ worker kept up rather than falling behind.
 
 The same run drove five failure conditions the deployment alarms on — worker
 death, retry exhaustion, an artifact contradiction, a stalled outbox, and a
-database outage — and every one moved the metric its alarm watches.
-CloudWatch's own evaluation engine is not exercised without a deployment, and
-alarms on platform metrics such as queue depth and task counts are reported as
-not observable locally.
+database outage — and every one moved the metric its alarm watches. Locally
+that is as far as it goes: CloudWatch's own evaluation engine needs a
+deployment, and alarms on platform metrics such as queue depth and task counts
+are reported as not observable locally.
+
+### On a deployed environment
+
+The same release was deployed to the environment in `deploy/aws/` and driven
+through the same faults. `evidence/results/aws/measurements.json` retains what
+CloudWatch recorded, including every alarm state transition.
+
+| Measurement | Value |
+| --- | --- |
+| Notification latency, diff (5 samples) | 38–820 ms |
+| Notification latency, mandatory validation (6 samples) | 81–923 ms |
+| Fastest diff, request to terminal state | 371 ms |
+| Worker partitioned to attempt fenced | 82 s, bounded by the 60 s lease |
+| Fenced attempt to alarm in ALARM | 2 min 12 s |
+| Database point-in-time restore to available | 15 min 30 s |
+
+Three alarms were driven into ALARM by real faults, and their transitions are
+retained: `attempts-losing-their-lease` when a network partition cost two
+in-flight attempts their leases, `reconciler-failing` when the database was
+rebooted under a running control plane, and `worker-service-below-capacity`
+when the worker service was scaled to zero. Both partitioned jobs recovered on
+their second attempt and committed one authoritative result each.
+
+Notification latency is where a deployment and the local stack differ most: SQS
+long-polling delivered work in 38 ms at best, against the local stack's
+one-second polling floor. Scaling behaviour and cost remain unmeasured — one
+worker is not a scaling test, and the billing window had not been ingested when
+the run finished.
+
+An alarm on a platform metric needs that metric's source switched on. This
+deployment learned that the hard way: an alarm read
+`ECS/ContainerInsights/RunningTaskCount` while the cluster disabled Container
+Insights, so it sat in ALARM from creation and reported nothing. `deploy/aws/`
+now enables it, and a test refuses the combination.
 
 ### The demonstration
 

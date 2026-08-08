@@ -204,3 +204,81 @@ def test_the_demonstration_recorded_every_step(measurements: dict[str, Any]) -> 
     for digests in provenance["input_digests"]:
         assert all(digests.values())
     assert {"job.created", "attempt.claimed", "job.succeeded"} <= set(provenance["audit_events"])
+
+
+AWS_RESULTS = RESULTS / "aws" / "measurements.json"
+
+deployed_only = pytest.mark.skipif(
+    not AWS_RESULTS.is_file(), reason="no deployed run is retained"
+)
+
+
+@pytest.fixture(scope="module")
+def deployed() -> dict[str, Any]:
+    return dict(json.loads(AWS_RESULTS.read_text(encoding="utf-8")))
+
+
+@deployed_only
+def test_alarms_transitioned_on_the_deployment(deployed: dict[str, Any]) -> None:
+    """The gate needs CloudWatch itself to have fired, not a local evaluation."""
+    fired = {
+        item["alarm"]
+        for item in deployed["alarm_history"]
+        if item["summary"].endswith("from OK to ALARM")
+    }
+    assert {"attempts-losing-their-lease", "reconciler-failing"} <= fired, fired
+    assert len(deployed["alarms"]) == 14
+
+
+@deployed_only
+def test_a_partitioned_attempt_was_fenced_and_replaced(deployed: dict[str, Any]) -> None:
+    for job in deployed["partition"]["recovery"]:
+        assert job["state"] == "succeeded"
+        assert [(a["n"], a["state"], a["failure"]) for a in job["attempts"]] == [
+            (1, "fenced", "lease_lost"),
+            (2, "succeeded", None),
+        ]
+        assert sorted(job["artifacts"]) == ["diff_html", "diff_json"]
+
+
+@deployed_only
+def test_the_deployed_baseline_verified_every_artifact(deployed: dict[str, Any]) -> None:
+    baseline = deployed["baseline"]
+    assert baseline["job_state"] == "succeeded"
+    assert baseline["idempotent"]
+    assert all(item["digest_matches"] for item in baseline["artifacts"])
+    assert all(run["state"] == "ready" for run in baseline["ingestion"])
+
+
+@deployed_only
+def test_no_cost_number_is_published(deployed: dict[str, Any]) -> None:
+    # Cost Explorer had not ingested the window. Nothing may claim otherwise.
+    assert "cost" not in json.dumps(deployed["metrics"]).lower()
+    readme = Path("README.md").read_text(encoding="utf-8")
+    section = readme.split("### On a deployed environment", 1)[-1].split("### The demonstration", 1)[0]
+    assert "cost remain unmeasured" in section or "cost remains unmeasured" in section
+
+
+@deployed_only
+def test_deployed_numbers_come_from_the_deployed_run(deployed: dict[str, Any]) -> None:
+    metrics = deployed["metrics"]
+    restore = deployed["point_in_time_restore"]
+    minutes, seconds = divmod(restore["elapsed_seconds"], 60)
+    published = [
+        f"{round(metrics['queue_latency_ms_diff']['Minimum'])}–{round(metrics['queue_latency_ms_diff']['Maximum'])} ms",
+        f"{round(metrics['queue_latency_ms_validate']['Minimum'])}–{round(metrics['queue_latency_ms_validate']['Maximum'])} ms",
+        f"{round(metrics['job_duration_ms_diff_succeeded']['Minimum'])} ms",
+        f"{minutes} min {seconds} s",
+    ]
+    # The fenced-attempt metric and the job records have to agree with each other.
+    fenced = sum(
+        1
+        for job in deployed["partition"]["recovery"]
+        for attempt in job["attempts"]
+        if attempt["failure"] == "lease_lost"
+    )
+    assert fenced == int(metrics["attempts_fenced_lease_expired"]["Sum"])
+    readme = Path("README.md").read_text(encoding="utf-8")
+    section = readme.split("### On a deployed environment", 1)[-1].split("### The demonstration", 1)[0]
+    for value in published:
+        assert value in section, f"the README does not restate {value!r} from the deployed run"
