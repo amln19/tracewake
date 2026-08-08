@@ -181,3 +181,16 @@ def test_services_report_the_environment_they_run_in() -> None:
         'name = "LOCUS_WORKER_METRIC_NAMESPACE", value = local.worker_metric_namespace',
     ):
         assert setting in ecs, setting
+
+
+def test_platform_alarms_have_the_metric_source_they_need() -> None:
+    """An alarm on a metric the deployment never publishes is worse than none.
+
+    Custom-namespace alarms are checked against the emitted metric stream by the
+    control-plane tests. Platform namespaces need their source switched on here.
+    """
+    namespaces = {str(alarm["namespace"]) for alarm in alarms()}
+    if "ECS/ContainerInsights" in namespaces:
+        assert 'value = "enabled"' in read("ecs.tf").split('"containerInsights"', 1)[1][:120], (
+            "an alarm reads ECS/ContainerInsights but the cluster does not enable it"
+        )

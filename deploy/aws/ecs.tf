@@ -31,9 +31,12 @@ resource "aws_cloudwatch_log_group" "worker" {
 resource "aws_ecs_cluster" "main" {
   name = local.prefix
 
+  # RunningTaskCount, which the worker-capacity alarm watches, is only
+  # published when Container Insights is on. An alarm on a metric the cluster
+  # never emits sits in ALARM from creation and reads as noise.
   setting {
     name  = "containerInsights"
-    value = "disabled"
+    value = "enabled"
   }
 }
 
