@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 # Captured before anything is patched. Tracewake records wall-clock metadata and
 # mints its own ids while the patches are live; going through the patched
-# functions would record tracewake's own bookkeeping as agent input, and recording
+# functions would record Tracewake's own bookkeeping as agent input, and recording
 # an event would recurse into the recorder that is writing it.
 real_time = time.time
 real_monotonic = time.monotonic

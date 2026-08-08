@@ -130,8 +130,8 @@ driver ships to the environment's CloudWatch log groups. Spans are one JSON
 object per line in the OpenTelemetry span model; metrics are CloudWatch
 embedded metric format, so they become metrics in `Tracewake/<environment>/…`
 without a metrics agent or collector. This telemetry describes the services. It
-is unrelated to the OTLP artifacts Tracewake produces for a tenant, which describe
-a recorded run.
+is unrelated to the OTLP artifacts Tracewake produces for a tenant, which
+describe a recorded run.
 
 A job notification carries its W3C trace context, so one trace covers the
 request that created a job, the outbox publication, the claim, the worker's
@@ -186,8 +186,8 @@ To recover:
 
 1. Restore the instance to the chosen time
    (`aws rds restore-db-instance-to-point-in-time`), or restore a snapshot.
-2. Point `TRACEWAKE_DATABASE_URL` at the restored instance by updating the Secrets
-   Manager secret, then force a new deployment of both services.
+2. Point `TRACEWAKE_DATABASE_URL` at the restored instance by updating the
+   Secrets Manager secret, then force a new deployment of both services.
 3. Confirm the schema ledger matches the deployed image before admitting
    traffic. The control plane refuses to start against a newer schema.
 4. Expect duplicate notifications for work that was in flight. Duplicate

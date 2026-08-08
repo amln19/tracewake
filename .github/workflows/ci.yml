@@ -72,9 +72,9 @@ jobs:
                       "README.md",
                       "contracts",
                       "contracttest",
-                      "tracewake",
                       "pyproject.toml",
                       "tests",
+                      "tracewake",
                   }
                   assert roots <= allowed, (artifact, roots - allowed)
           PY

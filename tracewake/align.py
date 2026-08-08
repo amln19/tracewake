@@ -462,7 +462,7 @@ class MlxEmbedder:
             # TracewakeError rather than ImportError so the CLI prints the one line
             # that says what to install instead of a traceback through it.
             raise TracewakeError(
-                "tracewake alignment needs the embeddings extra. Install with "
+                "Tracewake alignment needs the embeddings extra. Install with "
                 "`uv sync --extra embeddings` (or `pip install 'tracewake[embeddings]'`), "
                 "or pass --lexical to skip the model."
             ) from exc

@@ -36,7 +36,6 @@ def telemetry() -> str:
 
 
 FORBIDDEN = {
-    "a tenant token": "tracewake_",
     "a worker credential": "worker_",
     "an attempt token": "attempt_",
     "an authorization header": "Bearer",
@@ -51,6 +50,18 @@ FORBIDDEN = {
 @pytest.mark.parametrize("description,needle", sorted(FORBIDDEN.items()))
 def test_telemetry_carries_nothing_sensitive(telemetry: str, description: str, needle: str) -> None:
     assert needle not in telemetry, f"the telemetry stream contains {description}"
+
+
+# Every issued credential is `<kind>_<16 hex>` before its secret, and one kind
+# is named for the product. A literal needle per kind only catches the kinds
+# somebody remembered to list, and stops matching a kind whose name changes;
+# the shape catches all of them and any kind added later.
+CREDENTIAL_PREFIX = re.compile(r"[a-z]+_[0-9a-f]{16}")
+
+
+def test_telemetry_carries_no_credential_prefix(telemetry: str) -> None:
+    found = CREDENTIAL_PREFIX.search(telemetry)
+    assert found is None, f"the telemetry stream contains the credential prefix {found.group()!r}"
 
 
 def test_telemetry_carries_no_content_digests(telemetry: str) -> None:

@@ -79,9 +79,10 @@ the parser rather than expressing a permitted compression ratio.
 
 ## Production and validation
 
-`tracewake.bundle.build_bundle` consumes only a fully validated cassette directory,
-writes to a temporary file beside the destination, flushes it, and atomically
-replaces the destination. `tracewake.bundle.validate_bundle` performs no writes.
+`tracewake.bundle.build_bundle` consumes only a fully validated cassette
+directory, writes to a temporary file beside the destination, flushes it, and
+atomically replaces the destination. `tracewake.bundle.validate_bundle` performs
+no writes.
 
 Validation checks the outer byte limit before parsing; validates archive type,
 names, entry count, metadata, and exact canonical bytes; validates the manifest

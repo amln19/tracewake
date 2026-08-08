@@ -129,11 +129,11 @@ type runProvenance struct {
 }
 
 type resultProvenance struct {
-	Inputs          []runProvenance `json:"inputs"`
-	AnalysisProfile string          `json:"analysis_profile"`
-	TracewakeVersion    string          `json:"tracewake_version"`
-	WorkerBuild     string          `json:"worker_build"`
-	ProducedAt      string          `json:"produced_at"`
+	Inputs           []runProvenance `json:"inputs"`
+	AnalysisProfile  string          `json:"analysis_profile"`
+	TracewakeVersion string          `json:"tracewake_version"`
+	WorkerBuild      string          `json:"worker_build"`
+	ProducedAt       string          `json:"produced_at"`
 }
 
 type validationResult struct {

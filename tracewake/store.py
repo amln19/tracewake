@@ -136,7 +136,7 @@ class Store:
         if version != STORE_SCHEMA_VERSION:
             raise ValueError(
                 f"the store at {self.root} was written in format {version or 1}, but this "
-                f"tracewake reads format {STORE_SCHEMA_VERSION}. Export anything you need from it "
+                f"Tracewake reads format {STORE_SCHEMA_VERSION}. Export anything you need from it "
                 f"with the older version, or point --store at a new directory."
             )
         self._db.executescript(SCHEMA_SQL)
@@ -280,7 +280,7 @@ class Store:
         if header.schema_version != EVENT_SCHEMA_VERSION:
             raise ValueError(
                 f"run {header.run_id} was written with schema version "
-                f"{header.schema_version}, but this tracewake reads version "
+                f"{header.schema_version}, but this Tracewake reads version "
                 f"{EVENT_SCHEMA_VERSION}. "
                 f"Re-record the run."
             )

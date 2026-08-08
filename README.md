@@ -93,8 +93,9 @@ tracewake record -- python my_agent.py
 tracewake replay <run-id>
 ```
 
-For CI, the pytest fixture `tracewake_cassette` defaults to replay-only (`none`).
-Replay needs `PYTHONHASHSEED=0` (the CLI sets it; elsewhere Tracewake tells you).
+For CI, the pytest fixture `tracewake_cassette` defaults to replay-only
+(`none`). Replay needs `PYTHONHASHSEED=0` (the CLI sets it; elsewhere Tracewake
+tells you).
 
 A runnable version of this, wired through the tool-calling shape most
 OpenAI-compatible clients speak rather than this repo's own agent, is in
@@ -135,14 +136,14 @@ embeddings lexical@unpinned
 - **Redaction** is default-on and targets configured secret values, known secret
   headers and environment names, and home paths. It cannot prove arbitrary
   source, binary content, private repository data, or unknown secrets safe to
-  distribute. `tracewake record --no-redact` turns it off; the cassette records that
-  fact.
-- **Cassettes** export to JSONL + blobs (`tracewake export` / `import`). The header
-  carries model id and date so a stale cassette can warn rather than pass quietly.
-  Its digest identifies canonical logical event content. Deterministic bundle
-  v1 packages validated cassette content as uncompressed USTAR; its separate
-  digest identifies every transport byte. Bundle production and pure validation
-  are available through `tracewake.bundle`.
+  distribute. `tracewake record --no-redact` turns it off; the cassette records
+  that fact.
+- **Cassettes** export to JSONL + blobs (`tracewake export` / `import`). The
+  header carries model id and date so a stale cassette can warn rather than
+  pass quietly. Its digest identifies canonical logical event content.
+  Deterministic bundle v1 packages validated cassette content as uncompressed
+  USTAR; its separate digest identifies every transport byte. Bundle production
+  and pure validation are available through `tracewake.bundle`.
 
 ## Commands
 
@@ -267,8 +268,8 @@ deployment gets alarmable metrics from container output alone. A job
 notification carries its W3C trace context, so one trace covers the request
 that created the job, the outbox publication, the claim, the worker's download,
 analysis and upload, and the artifact commit — across Go and Python. This
-telemetry describes the services and is unrelated to the OTLP artifacts Tracewake
-produces for a run.
+telemetry describes the services and is unrelated to the OTLP artifacts
+Tracewake produces for a run.
 
 Metric dimensions come from fixed sets and an unrecognised value collapses to
 `other`, so the number of time series is bounded. Requests are recorded by the
@@ -294,8 +295,8 @@ Failure semantics, restated as what the system does:
 * Losing the database stops repair rather than guessing: the reconciler reports
   the failure and resumes when the database returns.
 * Retention deadlines are enforced by the control plane, and
-  `tracewake remote delete <run-id>` expires a run and everything derived from it
-  immediately. `deploy/aws/README.md` documents retention, deletion, backup,
+  `tracewake remote delete <run-id>` expires a run and everything derived from
+  it immediately. `deploy/aws/README.md` documents retention, deletion, backup,
   and recovery.
 
 ### Measured behaviour
@@ -385,23 +386,24 @@ One run of the harness performs the whole correctness story in order, and
 | Run local Tracewake with no hosted service | `local_independence` |
 
 The same story is reachable by hand through the local control plane above:
-`tracewake remote upload`, `runs`, `analyze`, `job`, `artifacts`, `download`, and
-`delete`, with the worker stopped and started to interrupt an attempt.
+`tracewake remote upload`, `runs`, `analyze`, `job`, `artifacts`, `download`,
+and `delete`, with the worker stopped and started to interrupt an attempt.
 
 ## Persistent formats
 
 Event schema 3, SQLite store schema 3, cassette directory format 1, and bundle
 format 1 are independent contracts even when values coincide. Unsupported
-versions are rejected with instructions to use a matching Tracewake version; no old
-version is silently reinterpreted. `SCHEMA_VERSION` remains a compatibility
+versions are rejected with instructions to use a matching Tracewake version; no
+old version is silently reinterpreted. `SCHEMA_VERSION` remains a compatibility
 alias for `EVENT_SCHEMA_VERSION`, and `CASSETTE_FORMAT` remains an alias for
 `CASSETTE_FORMAT_VERSION`.
 
-`tracewake verify` checks header shape and versions, event count and dense sequence,
-event schemas, the logical digest, canonical paths, and every referenced blob's
-presence, digest, and size. It rejects symlinks, duplicate or unexpected blob
-paths, and corruption without writing to a store. Export performs the same blob
-integrity checks against local storage before publishing a destination.
+`tracewake verify` checks header shape and versions, event count and dense
+sequence, event schemas, the logical digest, canonical paths, and every
+referenced blob's presence, digest, and size. It rejects symlinks, duplicate or
+unexpected blob paths, and corruption without writing to a store. Export
+performs the same blob integrity checks against local storage before publishing
+a destination.
 
 ## Evaluation
 

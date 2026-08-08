@@ -47,8 +47,8 @@ from .events import (
 from .matching import ReplayReport
 from .patches import (
     HashSeedError,
-    TracewakeError,
     NetworkBlocked,
+    TracewakeError,
     block_network,
     patch_environment,
     real_time,
@@ -89,7 +89,6 @@ __all__ = [
     "HashSeedError",
     "Intervention",
     "InterventionEvent",
-    "TracewakeError",
     "Message",
     "ModelCallEvent",
     "ModelIdentity",
@@ -110,6 +109,7 @@ __all__ = [
     "ToolCallEvent",
     "ToolCallRequest",
     "ToolOutcome",
+    "TracewakeError",
     "Usage",
     "canonical_order",
     "configure",
