@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-import locus
+import tracewake
 from bench.counterfactual import _run_index, fork_diff
 
 from mock_agent import MockBackend, Transcript, run_agent
@@ -19,7 +19,7 @@ from mock_agent import MockBackend, Transcript, run_agent
 
 def _record(store: Path) -> str:
     backend = MockBackend()
-    with locus.record("bidict-deleted_guard-3#1", store=store, mode="all") as s:
+    with tracewake.record("bidict-deleted_guard-3#1", store=store, mode="all") as s:
         model = s.model(
             provider="mock",
             model_id="mock-1",
@@ -33,7 +33,7 @@ def _record(store: Path) -> str:
 
 def _fork(source: str, store: Path, fork_store: Path) -> str:
     live = MockBackend()
-    with locus.intervene(
+    with tracewake.intervene(
         source,
         drop_tags=["tool_output"],
         from_turn=1,

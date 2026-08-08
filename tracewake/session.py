@@ -35,7 +35,7 @@ from .events import (
 from .fs import Fs, tool_scope
 from .matching import CallMatcher, ReplayReport, build_request
 from .patches import (
-    LocusError,
+    TracewakeError,
     real_monotonic,
     real_perf_counter,
     real_time,
@@ -51,7 +51,7 @@ DispatchFn = Callable[[str, dict[str, Any]], ToolOutcome]
 SECONDS_PER_DAY = 86400.0
 
 
-class ReplayMiss(LocusError):
+class ReplayMiss(TracewakeError):
     """The replayed agent asked for something the recorded run does not contain."""
 
 

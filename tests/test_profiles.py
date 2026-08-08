@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from locus.align import Step
-from locus.profiles import LEXICAL_V1, lexical_v1_align
+from tracewake.align import Step
+from tracewake.profiles import LEXICAL_V1, lexical_v1_align
 
 
 def test_lexical_v1_parameters_are_frozen() -> None:

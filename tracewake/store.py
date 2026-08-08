@@ -109,13 +109,13 @@ class BlobStore:
 
 
 class Store:
-    def __init__(self, root: str | Path = ".locus") -> None:
+    def __init__(self, root: str | Path = ".tracewake") -> None:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self.blobs = BlobStore(self.root / "blobs")
         # Parallel tool batches append from worker threads, so the connection is
         # shared across threads and every write goes through _lock.
-        self._db = sqlite3.connect(self.root / "locus.db", check_same_thread=False)
+        self._db = sqlite3.connect(self.root / "tracewake.db", check_same_thread=False)
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA synchronous=NORMAL")
@@ -136,7 +136,7 @@ class Store:
         if version != STORE_SCHEMA_VERSION:
             raise ValueError(
                 f"the store at {self.root} was written in format {version or 1}, but this "
-                f"locus reads format {STORE_SCHEMA_VERSION}. Export anything you need from it "
+                f"tracewake reads format {STORE_SCHEMA_VERSION}. Export anything you need from it "
                 f"with the older version, or point --store at a new directory."
             )
         self._db.executescript(SCHEMA_SQL)
@@ -280,7 +280,7 @@ class Store:
         if header.schema_version != EVENT_SCHEMA_VERSION:
             raise ValueError(
                 f"run {header.run_id} was written with schema version "
-                f"{header.schema_version}, but this locus reads version "
+                f"{header.schema_version}, but this tracewake reads version "
                 f"{EVENT_SCHEMA_VERSION}. "
                 f"Re-record the run."
             )
@@ -317,7 +317,7 @@ class Store:
         named = self.latest_named(run_or_name)
         if named is not None:
             return named
-        # Whatever `locus ls` prints has to be valid input to `locus replay`,
+        # Whatever `tracewake ls` prints has to be valid input to `tracewake replay`,
         # and it prints an abbreviated id. Compared by substring rather than
         # LIKE, whose `_` and `%` are wildcards: an id prefix is a literal, and
         # matching it as a pattern would resolve to a run nobody asked for.

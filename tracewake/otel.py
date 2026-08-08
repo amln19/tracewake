@@ -25,7 +25,7 @@ from .events import (
     sha256_hex,
 )
 
-SCOPE = "locus"
+SCOPE = "tracewake"
 SPAN_KIND_CLIENT = 3
 SPAN_KIND_INTERNAL = 1
 STATUS_OK = 1
@@ -127,8 +127,8 @@ def build_spans(header: RunHeader, events: Sequence[StoredEvent]) -> dict[str, A
                         "gen_ai.response.finish_reasons": [event.response.finish_reason],
                         "gen_ai.usage.input_tokens": event.response.usage.input_tokens,
                         "gen_ai.usage.output_tokens": event.response.usage.output_tokens,
-                        "locus.messages_hash": event.messages_hash,
-                        "locus.run_id": run_id,
+                        "tracewake.messages_hash": event.messages_hash,
+                        "tracewake.run_id": run_id,
                     },
                 )
             )
@@ -146,8 +146,8 @@ def build_spans(header: RunHeader, events: Sequence[StoredEvent]) -> dict[str, A
                         "gen_ai.operation.name": "execute_tool",
                         "gen_ai.tool.name": event.name,
                         "gen_ai.tool.call.id": event.tool_call_id,
-                        "locus.tool.batch_index": event.batch_index,
-                        "locus.tool.result_bytes": event.result.size,
+                        "tracewake.tool.batch_index": event.batch_index,
+                        "tracewake.tool.result_bytes": event.result.size,
                     },
                     error=event.error,
                 )
@@ -166,9 +166,9 @@ def build_spans(header: RunHeader, events: Sequence[StoredEvent]) -> dict[str, A
             start=root_start,
             end=root_end,
             attributes={
-                "locus.run_id": run_id,
-                "locus.cassette": header.name,
-                "locus.task_id": header.task_id,
+                "tracewake.run_id": run_id,
+                "tracewake.cassette": header.name,
+                "tracewake.task_id": header.task_id,
                 "gen_ai.request.model": header.models[0].model_id if header.models else None,
                 "gen_ai.system": header.models[0].provider if header.models else None,
             },
@@ -181,7 +181,7 @@ def build_spans(header: RunHeader, events: Sequence[StoredEvent]) -> dict[str, A
             {
                 "resource": {
                     "attributes": _attributes(
-                        {"service.name": SCOPE, "locus.run_id": run_id}
+                        {"service.name": SCOPE, "tracewake.run_id": run_id}
                     )
                 },
                 "scopeSpans": [{"scope": {"name": SCOPE}, "spans": spans}],

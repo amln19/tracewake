@@ -35,8 +35,8 @@ func provider(t *testing.T) (*Provider, *bytes.Buffer) {
 	t.Helper()
 	buffer := &bytes.Buffer{}
 	instance, err := Start(context.Background(), Options{
-		ServiceName: "locus-test", ServiceVersion: "0.0.0", Environment: "test",
-		Namespace: "Locus/Test", Writer: buffer, MetricInterval: time.Hour, Synchronous: true,
+		ServiceName: "tracewake-test", ServiceVersion: "0.0.0", Environment: "test",
+		Namespace: "Tracewake/Test", Writer: buffer, MetricInterval: time.Hour, Synchronous: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -68,7 +68,7 @@ func TestSpansCarryParentAndResourceIdentity(t *testing.T) {
 	if first["trace_id"] != second["trace_id"] {
 		t.Fatalf("spans landed in different traces: %v", records)
 	}
-	if first["service_name"] != "locus-test" || first["deployment_environment"] != "test" {
+	if first["service_name"] != "tracewake-test" || first["deployment_environment"] != "test" {
 		t.Fatalf("span lost its resource identity: %v", first)
 	}
 	if first["kind"] != "producer" || second["kind"] != "server" {
@@ -111,7 +111,7 @@ func TestMetricsExportEmbeddedFormat(t *testing.T) {
 		directives := metadata["CloudWatchMetrics"].([]any)
 		for _, directive := range directives {
 			details := directive.(map[string]any)
-			if details["Namespace"] != "Locus/Test" {
+			if details["Namespace"] != "Tracewake/Test" {
 				t.Fatalf("metric landed in namespace %v", details["Namespace"])
 			}
 			for _, definition := range details["Metrics"].([]any) {

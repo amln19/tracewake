@@ -32,7 +32,7 @@ func (s *Filesystem) serveUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "object does not match its grant", http.StatusBadRequest)
 		return
 	}
-	w.Header().Set("Locus-Object-Version", object.Version)
+	w.Header().Set("Tracewake-Object-Version", object.Version)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(object)
@@ -62,7 +62,7 @@ func (s *Filesystem) serveDownload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", "attachment")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
-	w.Header().Set("Locus-Object-Version", version)
+	w.Header().Set("Tracewake-Object-Version", version)
 	_, _ = io.Copy(w, file)
 }
 

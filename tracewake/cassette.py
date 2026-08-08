@@ -38,7 +38,7 @@ class CassetteHeader(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     format_version: int = CASSETTE_FORMAT_VERSION
-    locus_version: str
+    tracewake_version: str
     schema_version: int
     run_id: str
     name: str
@@ -161,7 +161,7 @@ def _read_events(path: Path, header: CassetteHeader, source: Path) -> list[Store
                     event = EVENT_ADAPTER.validate_python(data)
                 except (ValidationError, ValueError) as exc:
                     raise ValueError(
-                        f"cassette {source} entry {path} line {number} expected a valid locus "
+                        f"cassette {source} entry {path} line {number} expected a valid Tracewake "
                         f"event; actual value failed validation: {exc}."
                     ) from exc
                 parsed.append((seq, event, number))
@@ -286,7 +286,7 @@ def _validate_cassette(source: str | Path) -> _ValidatedCassette:
         raise ValueError(
             f"cassette {path} entry {cassette_path} expected event schema version "
             f"{EVENT_SCHEMA_VERSION}; actual version {header.schema_version}. Re-record the run "
-            "with a matching locus version."
+            "with a matching Tracewake version."
         )
 
     events = _read_events(cassette_path, header, path)
@@ -410,10 +410,10 @@ def export_cassette(store: Store, run_or_name: str, dest: str | Path) -> Path:
 
     out = Path(dest)
     out.parent.mkdir(parents=True, exist_ok=True)
-    staging = Path(tempfile.mkdtemp(prefix=f".{out.name}.locus-export-", dir=out.parent))
+    staging = Path(tempfile.mkdtemp(prefix=f".{out.name}.tracewake-export-", dir=out.parent))
     try:
         cassette = CassetteHeader(
-            locus_version=version("locus"),
+            tracewake_version=version("tracewake"),
             schema_version=EVENT_SCHEMA_VERSION,
             run_id=header.run_id,
             name=header.name,

@@ -15,8 +15,8 @@ from mock_agent import (
     run_agent,
 )
 
-import locus
-from locus import (
+import tracewake
+from tracewake import (
     DecodeParams,
     Message,
     ModelCallEvent,
@@ -34,7 +34,7 @@ from locus import (
 def record_run(store: Path, task: str = TASK) -> tuple[str, Transcript, MockBackend]:
     backend = MockBackend()
     transcript = Transcript()
-    with locus.record("gate", store=store) as rec:
+    with tracewake.record("gate", store=store) as rec:
         model = rec.model(
             provider="mock",
             model_id="mock-1",
@@ -49,7 +49,7 @@ def record_run(store: Path, task: str = TASK) -> tuple[str, Transcript, MockBack
 
 def replay_run(store: Path, run_id: str, task: str = TASK) -> Transcript:
     transcript = Transcript()
-    with locus.replay(run_id, store=store) as rep:
+    with tracewake.replay(run_id, store=store) as rep:
         model = rep.model(
             provider="mock",
             model_id="mock-1",
@@ -141,7 +141,7 @@ def test_canonical_bytes_survive_the_store_round_trip(tmp_path: Path) -> None:
 
 def test_divergent_request_raises_instead_of_replaying_something_else(tmp_path: Path) -> None:
     run_id, _, _ = record_run(tmp_path)
-    with pytest.raises(locus.ReplayMiss, match="never made"):
+    with pytest.raises(tracewake.ReplayMiss, match="never made"):
         replay_run(tmp_path, run_id, task="a completely different task")
 
 
@@ -152,7 +152,7 @@ def test_divergent_tool_args_raise(tmp_path: Path) -> None:
     recorded_tool = call.response.tool_calls[0]
     store.close()
 
-    with locus.replay(run_id, store=tmp_path) as rep:
+    with tracewake.replay(run_id, store=tmp_path) as rep:
         tools = rep.tools()
         mutated = ToolCallRequest(
             id=recorded_tool.id,
@@ -160,14 +160,14 @@ def test_divergent_tool_args_raise(tmp_path: Path) -> None:
             args={"path": "src/somewhere_else.py"},
             batch_index=recorded_tool.batch_index,
         )
-        with pytest.raises(locus.ReplayMiss, match="different arguments"):
+        with pytest.raises(tracewake.ReplayMiss, match="different arguments"):
             tools.call(call.call_id, mutated)
 
 
 def test_unknown_tool_id_raises(tmp_path: Path) -> None:
     run_id, _, _ = record_run(tmp_path)
-    with locus.replay(run_id, store=tmp_path) as rep:
-        with pytest.raises(locus.ReplayMiss, match="no recorded result"):
+    with tracewake.replay(run_id, store=tmp_path) as rep:
+        with pytest.raises(tracewake.ReplayMiss, match="no recorded result"):
             rep.tools().call(
                 "nonexistent-call",
                 ToolCallRequest(id="x", name="read_file", args={}, batch_index=0),
@@ -180,7 +180,7 @@ def test_streaming_and_non_streaming_are_not_interchangeable(tmp_path: Path) -> 
     def create(model_id: str, msgs: list[Message], params: DecodeParams) -> ModelResponse:
         return ModelResponse(text="hello", finish_reason="end_turn", usage=Usage())
 
-    with locus.record("nonstream", store=tmp_path) as rec:
+    with tracewake.record("nonstream", store=tmp_path) as rec:
         model = rec.model(
             provider="mock", model_id="mock-1", create_fn=create, stream_fn=forbidden_stream
         )
@@ -188,9 +188,9 @@ def test_streaming_and_non_streaming_are_not_interchangeable(tmp_path: Path) -> 
         rec.outcome(status="ok")
         run_id = rec.run_id
 
-    with locus.replay(run_id, store=tmp_path) as rep:
+    with tracewake.replay(run_id, store=tmp_path) as rep:
         model = rep.model(provider="mock", model_id="mock-1")
-        with pytest.raises(locus.ReplayMiss, match="no chunk boundaries"):
+        with pytest.raises(tracewake.ReplayMiss, match="no chunk boundaries"):
             model.stream(messages=messages)
 
 
@@ -207,7 +207,7 @@ def test_mutating_the_message_list_before_draining_does_not_corrupt_the_record(
 
     backend = MockBackend()
     recorded = Transcript()
-    with locus.record("leaky", store=tmp_path) as rec:
+    with tracewake.record("leaky", store=tmp_path) as rec:
         leaky(
             rec.model(
                 provider="mock",
@@ -221,7 +221,7 @@ def test_mutating_the_message_list_before_draining_does_not_corrupt_the_record(
         run_id = rec.run_id
 
     replayed = Transcript()
-    with locus.replay(run_id, store=tmp_path) as rep:
+    with tracewake.replay(run_id, store=tmp_path) as rep:
         leaky(
             rep.model(
                 provider="mock",
@@ -244,7 +244,7 @@ def test_a_partially_consumed_stream_is_still_recorded(tmp_path: Path) -> None:
 
     backend = MockBackend()
     recorded = Transcript()
-    with locus.record("partial", store=tmp_path) as rec:
+    with tracewake.record("partial", store=tmp_path) as rec:
         first_chunk_only(
             rec.model(
                 provider="mock",
@@ -262,7 +262,7 @@ def test_a_partially_consumed_stream_is_still_recorded(tmp_path: Path) -> None:
     store.close()
 
     replayed = Transcript()
-    with locus.replay(run_id, store=tmp_path) as rep:
+    with tracewake.replay(run_id, store=tmp_path) as rep:
         first_chunk_only(
             rep.model(
                 provider="mock",
@@ -281,7 +281,7 @@ def test_a_stream_that_errors_mid_flight_is_still_recorded(tmp_path: Path) -> No
         yield StreamChunk(index=1, text_delta="answer")
         raise RuntimeError("provider dropped")
 
-    with locus.record("broken-stream", store=tmp_path) as rec:
+    with tracewake.record("broken-stream", store=tmp_path) as rec:
         model = rec.model(
             provider="mock",
             model_id="mock-1",
@@ -305,5 +305,5 @@ def test_a_stream_that_errors_mid_flight_is_still_recorded(tmp_path: Path) -> No
 def test_replay_of_a_missing_run_names_what_exists(tmp_path: Path) -> None:
     record_run(tmp_path)
     with pytest.raises(KeyError, match="Known runs"):
-        with locus.replay("does-not-exist", store=tmp_path):
+        with tracewake.replay("does-not-exist", store=tmp_path):
             pass

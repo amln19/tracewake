@@ -1,6 +1,6 @@
 # AWS environment
 
-This directory deploys one Locus environment: a VPC, an application load
+This directory deploys one Tracewake environment: a VPC, an application load
 balancer for tenants, a private load balancer for workers, ECS/Fargate services
 for the Go control plane and the Python worker, RDS PostgreSQL for
 authoritative hosted state, a private versioned S3 bucket for bundles and
@@ -8,7 +8,7 @@ results, an SQS job queue with a dead-letter queue, ECR repositories, Secrets
 Manager secrets, least-privilege IAM roles, and CloudWatch log groups.
 
 The same code runs locally against PostgreSQL and the filesystem store; nothing
-here changes Locus semantics. Local recording, replay, verification, import,
+here changes Tracewake semantics. Local recording, replay, verification, import,
 export, and comparison never need this environment.
 
 ## What the operator must decide
@@ -29,7 +29,7 @@ in use.
 cd deploy/aws
 terraform init \
   -backend-config="bucket=<state-bucket>" \
-  -backend-config="key=locus/prod.tfstate" \
+  -backend-config="key=tracewake/prod.tfstate" \
   -backend-config="region=<region>"
 terraform apply -var region=<region> -var certificate_arn=<acm-certificate-arn> \
   -var image_tag=$(git rev-parse --short HEAD)
@@ -58,9 +58,9 @@ docker push "$control_plane:$tag"
 docker push "$worker:$tag"
 
 aws ecs update-service --cluster "$(terraform output -raw cluster_name)" \
-  --service locus-prod-control-plane --force-new-deployment
+  --service tracewake-prod-control-plane --force-new-deployment
 aws ecs update-service --cluster "$(terraform output -raw cluster_name)" \
-  --service locus-prod-worker --force-new-deployment
+  --service tracewake-prod-worker --force-new-deployment
 
 terraform apply -var region=<region> -var certificate_arn=<acm-certificate-arn> \
   -var image_tag=$(git rev-parse --short HEAD)
@@ -78,10 +78,10 @@ aws secretsmanager get-secret-value \
 Then use the ordinary remote commands:
 
 ```sh
-export LOCUS_REMOTE_URL=$(terraform output -raw public_base_url)
-export LOCUS_TOKEN=<token-from-secrets-manager>
-locus remote upload run.bundle.tar
-locus remote runs
+export TRACEWAKE_REMOTE_URL=$(terraform output -raw public_base_url)
+export TRACEWAKE_TOKEN=<token-from-secrets-manager>
+tracewake remote upload run.bundle.tar
+tracewake remote runs
 ```
 
 ## Schema migrations
@@ -128,9 +128,9 @@ bucket, before any environment holds real tenant data.
 Both services write operational telemetry to standard output, which the awslogs
 driver ships to the environment's CloudWatch log groups. Spans are one JSON
 object per line in the OpenTelemetry span model; metrics are CloudWatch
-embedded metric format, so they become metrics in `Locus/<environment>/…`
+embedded metric format, so they become metrics in `Tracewake/<environment>/…`
 without a metrics agent or collector. This telemetry describes the services. It
-is unrelated to the OTLP artifacts Locus produces for a tenant, which describe
+is unrelated to the OTLP artifacts Tracewake produces for a tenant, which describe
 a recorded run.
 
 A job notification carries its W3C trace context, so one trace covers the
@@ -186,7 +186,7 @@ To recover:
 
 1. Restore the instance to the chosen time
    (`aws rds restore-db-instance-to-point-in-time`), or restore a snapshot.
-2. Point `LOCUS_DATABASE_URL` at the restored instance by updating the Secrets
+2. Point `TRACEWAKE_DATABASE_URL` at the restored instance by updating the Secrets
    Manager secret, then force a new deployment of both services.
 3. Confirm the schema ledger matches the deployed image before admitting
    traffic. The control plane refuses to start against a newer schema.

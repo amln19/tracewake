@@ -14,8 +14,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from locus import Store
-from locus.align import (
+from tracewake import Store
+from tracewake.align import (
     DEFAULT_CONFIG,
     EMBEDDING_MODEL,
     EMBEDDING_REVISION,
@@ -383,7 +383,7 @@ def run_llm_judge(
     seed: int = JUDGE_SEED,
 ) -> str:
     """Baseline (c): same packets the annotator saw, one integer back."""
-    from locus import DecodeParams, Message
+    from tracewake import DecodeParams, Message
 
     from .backend import DEFAULT_MODEL, LocalModel
 

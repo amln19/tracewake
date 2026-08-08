@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-import locus
-from locus import Message, ModelResponse, Store, Usage, run_digest
+import tracewake
+from tracewake import Message, ModelResponse, Store, Usage, run_digest
 
 
 def backend(model_id, messages, params):
@@ -24,7 +24,7 @@ def recorded(tmp_path):
     (work / "recorded.txt").write_text("recorded", encoding="utf-8")
     (work / "unrecorded.txt").write_text("live secret", encoding="utf-8")
     store = tmp_path / "store"
-    with locus.record("probe", store=store, block_network=False) as session:
+    with tracewake.record("probe", store=store, block_network=False) as session:
         ask(session)
         session.fs.rooted(work).read_text("recorded.txt")
     return (store, work)
@@ -32,8 +32,8 @@ def recorded(tmp_path):
 
 def test_reading_a_file_the_recording_never_read_raises(recorded):
     store, work = recorded
-    with pytest.raises(locus.ReplayMiss, match="never accessed"):
-        with locus.replay("probe", store=store) as session:
+    with pytest.raises(tracewake.ReplayMiss, match="never accessed"):
+        with tracewake.replay("probe", store=store) as session:
             ask(session)
             session.fs.rooted(work).read_text("unrecorded.txt")
 
@@ -41,23 +41,23 @@ def test_reading_a_file_the_recording_never_read_raises(recorded):
 def test_a_replay_never_returns_live_file_contents(recorded):
     store, work = recorded
     (work / "recorded.txt").write_text("changed on disk", encoding="utf-8")
-    with locus.replay("probe", store=store) as session:
+    with tracewake.replay("probe", store=store) as session:
         ask(session)
         assert session.fs.rooted(work).read_text("recorded.txt") == "recorded"
 
 
 def test_listing_a_directory_the_recording_never_listed_raises(recorded):
     store, work = recorded
-    with pytest.raises(locus.ReplayMiss, match="never accessed"):
-        with locus.replay("probe", store=store) as session:
+    with pytest.raises(tracewake.ReplayMiss, match="never accessed"):
+        with tracewake.replay("probe", store=store) as session:
             ask(session)
             session.fs.rooted(work).listdir(".")
 
 
 def test_writing_a_file_the_recording_never_wrote_raises(recorded):
     store, work = recorded
-    with pytest.raises(locus.ReplayMiss, match="never accessed"):
-        with locus.replay("probe", store=store) as session:
+    with pytest.raises(tracewake.ReplayMiss, match="never accessed"):
+        with tracewake.replay("probe", store=store) as session:
             ask(session)
             session.fs.rooted(work).write_text("fresh.txt", "written during replay")
     assert not (work / "fresh.txt").exists()
@@ -70,8 +70,8 @@ def test_a_replayed_run_is_unchanged_by_the_replay(recorded):
     before = db.events(run_id)
     db.close()
 
-    with pytest.raises(locus.ReplayMiss):
-        with locus.replay("probe", store=store) as session:
+    with pytest.raises(tracewake.ReplayMiss):
+        with tracewake.replay("probe", store=store) as session:
             ask(session)
             session.fs.rooted(work).read_text("unrecorded.txt")
 
@@ -94,11 +94,11 @@ def test_the_append_boundary_refuses_a_write_during_replay(recorded):
     before = run_digest(db.events(run_id))
     db.close()
 
-    with locus.replay("probe", store=store) as session:
-        with pytest.raises(locus.ReplayMiss, match="read-only"):
+    with tracewake.replay("probe", store=store) as session:
+        with pytest.raises(tracewake.ReplayMiss, match="read-only"):
             session._append(
-                locus.EnvironmentEvent(
-                    source="clock", value=1.0, meta=locus.EventMeta(recorded_at=0.0)
+                tracewake.EnvironmentEvent(
+                    source="clock", value=1.0, meta=tracewake.EventMeta(recorded_at=0.0)
                 )
             )
 
@@ -109,6 +109,6 @@ def test_the_append_boundary_refuses_a_write_during_replay(recorded):
 
 def test_a_divergent_replay_can_still_be_captured_as_a_new_episode(recorded):
     store, work = recorded
-    with locus.session("probe", store=store, mode="new_episodes", block_network=False) as session:
+    with tracewake.session("probe", store=store, mode="new_episodes", block_network=False) as session:
         ask(session)
         assert session.fs.rooted(work).read_text("unrecorded.txt") == "live secret"

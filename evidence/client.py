@@ -75,7 +75,7 @@ class Client:
 def put_object(url: str, headers: dict[str, str], data: bytes) -> str:
     request = urllib.request.Request(url, data=data, headers=headers, method="PUT")
     with urllib.request.urlopen(request, timeout=300) as response:
-        version = response.headers.get("x-amz-version-id") or response.headers.get("Locus-Object-Version")
+        version = response.headers.get("x-amz-version-id") or response.headers.get("Tracewake-Object-Version")
     if not version:
         raise RuntimeError("object store did not report an immutable object version")
     return str(version)

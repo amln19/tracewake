@@ -1,6 +1,6 @@
 // Package telemetry carries operational evidence about the control plane:
 // traces of the lifecycle paths and bounded metrics an operator can alarm on.
-// It is unrelated to the OTLP artifacts Locus produces for tenants, which
+// It is unrelated to the OTLP artifacts Tracewake produces for tenants, which
 // describe a recorded run rather than this service.
 package telemetry
 
@@ -23,7 +23,7 @@ import (
 
 // ScopeName identifies spans this service emits, so a collector can separate
 // them from spans produced by any library that shares the pipeline.
-const ScopeName = "github.com/amln19/locus/controlplane"
+const ScopeName = "github.com/amln19/tracewake/controlplane"
 
 type Options struct {
 	ServiceName    string
@@ -56,7 +56,7 @@ func Start(ctx context.Context, options Options) (*Provider, error) {
 		options.MetricInterval = time.Minute
 	}
 	if strings.TrimSpace(options.Namespace) == "" {
-		options.Namespace = "Locus/ControlPlane"
+		options.Namespace = "Tracewake/ControlPlane"
 	}
 	attributes := resourceAttributes(options)
 	details, err := resource.Merge(resource.Default(), resource.NewWithAttributes(resource.Default().SchemaURL(), attributes...))
@@ -147,7 +147,7 @@ func Continue(ctx context.Context, parent string) context.Context {
 
 func resourceAttributes(options Options) []attribute.KeyValue {
 	return []attribute.KeyValue{
-		attribute.String("service.name", nonEmpty(options.ServiceName, "locus-control-plane")),
+		attribute.String("service.name", nonEmpty(options.ServiceName, "tracewake-control-plane")),
 		attribute.String("service.version", nonEmpty(options.ServiceVersion, "unknown")),
 		attribute.String("deployment.environment", nonEmpty(options.Environment, "local")),
 	}

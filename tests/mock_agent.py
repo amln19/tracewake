@@ -2,7 +2,7 @@
 
 The agent records everything it observes into a `Transcript`. Byte-equality of
 two transcripts is the gate: it compares what the agent actually saw, not what
-locus stored.
+Tracewake stored.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 
-from locus import (
+from tracewake import (
     DecodeParams,
     Message,
     ModelResponse,

@@ -330,7 +330,7 @@ def build_token_profile(
     if header.finished_at is not None:
         duration = max(0, int((header.finished_at - header.started_at) * 1_000_000_000))
     comments = [
-        "locus token profile",
+        "tracewake token profile",
         "input tokens split across context blocks by character share "
         "(proportional, not measured per block)",
         f"run {header.run_id}",

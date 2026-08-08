@@ -1,7 +1,7 @@
 """An agent whose model backend genuinely goes over the network.
 
-Run under `locus record -- ...` it connects to the test server for every model
-call. Run under `locus replay <id>` it must answer from the log instead, and any
+Run under `tracewake record -- ...` it connects to the test server for every model
+call. Run under `tracewake replay <id>` it must answer from the log instead, and any
 attempt to reach the server is both blocked and counted.
 
 The transcript is written with a plain file write rather than through the
@@ -18,8 +18,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-import locus
-from locus import (
+import tracewake
+from tracewake import (
     DecodeParams,
     Message,
     ModelResponse,
@@ -33,7 +33,7 @@ TASK = "summarize the module"
 
 
 def fetch(prompt_size: int) -> dict[str, Any]:
-    port = int(os.environ["LOCUS_TEST_PORT"])
+    port = int(os.environ["TRACEWAKE_TEST_PORT"])
     with socket.create_connection(("127.0.0.1", port), timeout=5) as sock:
         sock.sendall(f"{prompt_size}\n".encode())
         with sock.makefile("r") as stream:
@@ -59,7 +59,7 @@ def dispatch(name: str, args: dict[str, Any]) -> ToolOutcome:
 
 def main() -> None:
     lines: list[str] = []
-    with locus.record("net-agent") as rec:
+    with tracewake.record("net-agent") as rec:
         model = rec.model(provider="testnet", model_id="testnet-1", create_fn=create)
         tools = rec.tools(dispatch)
         messages = [
@@ -85,14 +85,14 @@ def main() -> None:
         # Every nondeterministic input the agent consumes, through the ordinary
         # module-level calls an agent would actually make.
         lines.append(f"source-bytes\t{len(rec.fs.read_text(__file__))}")
-        lines.append(f"env\t{os.environ['LOCUS_TEST_TAG']}")
+        lines.append(f"env\t{os.environ['TRACEWAKE_TEST_TAG']}")
         lines.append(f"random\t{random.random()!r}")
         lines.append(f"randint\t{random.randint(0, 10**9)}")
         lines.append(f"uuid\t{uuid.uuid4()}")
         lines.append(f"wall\t{rec.clock.time()!r}")
         rec.outcome(status="ok")
 
-    Path(os.environ["LOCUS_TEST_TRANSCRIPT"]).write_text("\n".join(lines), encoding="utf-8")
+    Path(os.environ["TRACEWAKE_TEST_TRANSCRIPT"]).write_text("\n".join(lines), encoding="utf-8")
 
 
 if __name__ == "__main__":

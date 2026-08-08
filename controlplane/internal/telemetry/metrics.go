@@ -223,7 +223,7 @@ type metricExporter struct {
 }
 
 func newMetricExporter(writer io.Writer, namespace, service, environment string) *metricExporter {
-	return &metricExporter{writer: writer, namespace: namespace, service: nonEmpty(service, "locus-control-plane"), environment: nonEmpty(environment, "local")}
+	return &metricExporter{writer: writer, namespace: namespace, service: nonEmpty(service, "tracewake-control-plane"), environment: nonEmpty(environment, "local")}
 }
 
 func (e *metricExporter) Temporality(kind sdkmetric.InstrumentKind) metricdata.Temporality {

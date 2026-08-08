@@ -38,7 +38,7 @@ locals {
   # Tokens carry a non-secret prefix so the control plane can look up one
   # verifier without scanning, and the secret half never leaves this state or
   # Secrets Manager.
-  tenant_token = "locus_${random_id.tenant_token_prefix.hex}.${random_password.tenant_token_secret.result}"
+  tenant_token = "tracewake_${random_id.tenant_token_prefix.hex}.${random_password.tenant_token_secret.result}"
   worker_token = "worker_${random_id.worker_token_prefix.hex}.${random_password.worker_token_secret.result}"
 
   secret_values = {

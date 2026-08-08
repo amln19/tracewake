@@ -11,14 +11,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amln19/locus/controlplane/internal/artifacts"
-	"github.com/amln19/locus/controlplane/internal/awstest"
+	"github.com/amln19/tracewake/controlplane/internal/artifacts"
+	"github.com/amln19/tracewake/controlplane/internal/awstest"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 func s3Store(t *testing.T) (*artifacts.S3, *awstest.S3) {
 	t.Helper()
-	fake := awstest.NewS3("locus-artifacts")
+	fake := awstest.NewS3("tracewake-artifacts")
 	t.Cleanup(fake.Close)
 	store, err := artifacts.NewS3(awstest.Config(fake.Server.URL), fake.Bucket, func(options *s3.Options) {
 		options.UsePathStyle = true

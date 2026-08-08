@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-import locus
-from locus import (
+import tracewake
+from tracewake import (
     InterventionEvent,
     ModelCallEvent,
     Store,
@@ -15,14 +15,14 @@ from locus import (
     import_cassette,
     run_digest,
 )
-from locus.session import ReplayMiss
+from tracewake.session import ReplayMiss
 
 from mock_agent import MockBackend, Transcript, run_agent
 
 
 def _record(tmp_path: Path) -> tuple[str, MockBackend]:
     backend = MockBackend()
-    with locus.record("agent", store=tmp_path, mode="all") as s:
+    with tracewake.record("agent", store=tmp_path, mode="all") as s:
         model = s.model(
             provider="mock", model_id="mock-1", create_fn=backend.create, stream_fn=backend.stream
         )
@@ -49,7 +49,7 @@ def test_turns_before_the_change_replay_and_the_rest_runs_live(tmp_path: Path):
     source, _ = _record(tmp_path)
 
     live = MockBackend()
-    with locus.intervene(
+    with tracewake.intervene(
         source, drop_tags=["tool_output"], from_turn=1, store=tmp_path
     ) as s:
         model = s.model(
@@ -73,7 +73,7 @@ def test_the_forked_run_holds_no_dropped_block_and_the_source_is_untouched(tmp_p
     before = _digest(tmp_path, source)
 
     live = MockBackend()
-    with locus.intervene(
+    with tracewake.intervene(
         source, drop_tags=["tool_output"], from_turn=1, store=tmp_path
     ) as s:
         model = s.model(
@@ -94,7 +94,7 @@ def test_the_fork_records_what_it_was_forked_from(tmp_path: Path):
     source, _ = _record(tmp_path)
 
     live = MockBackend()
-    with locus.intervene(
+    with tracewake.intervene(
         source, drop_tags=["tool_output"], from_turn=1, store=tmp_path
     ) as s:
         model = s.model(
@@ -121,7 +121,7 @@ def test_tools_re_execute_so_the_world_reaches_the_state_the_prefix_describes(tm
     source, _ = _record(tmp_path)
 
     live = MockBackend()
-    with locus.intervene(
+    with tracewake.intervene(
         source, drop_tags=["tool_output"], from_turn=1, store=tmp_path
     ) as s:
         model = s.model(
@@ -145,7 +145,7 @@ def test_an_intervention_that_would_change_nothing_is_refused_before_it_runs(tmp
     source, _ = _record(tmp_path)
 
     with pytest.raises(ValueError) as caught:
-        locus.plan_intervention(source, drop_tags=["repo_map"], store=tmp_path)
+        tracewake.plan_intervention(source, drop_tags=["repo_map"], store=tmp_path)
     message = str(caught.value)
     assert "repo_map" in message
     # The message names what is actually there, because guessing a tag is the
@@ -155,7 +155,7 @@ def test_an_intervention_that_would_change_nothing_is_refused_before_it_runs(tmp
 
 def test_plan_describe_names_how_many_blocks_the_drop_will_remove(tmp_path: Path):
     source, _ = _record(tmp_path)
-    plan = locus.plan_intervention(source, drop_tags=["tool_output"], from_turn=1, store=tmp_path)
+    plan = tracewake.plan_intervention(source, drop_tags=["tool_output"], from_turn=1, store=tmp_path)
     assert plan.blocks > 0
     assert f"{plan.blocks} block" in plan.describe()
 
@@ -164,7 +164,7 @@ def test_intervening_past_the_end_of_the_run_is_refused(tmp_path: Path):
     source, _ = _record(tmp_path)
 
     with pytest.raises(ValueError, match="no turn 99"):
-        locus.plan_intervention(source, drop_tags=["tool_output"], from_turn=99, store=tmp_path)
+        tracewake.plan_intervention(source, drop_tags=["tool_output"], from_turn=99, store=tmp_path)
 
 
 def test_an_intervention_without_a_live_model_says_so(tmp_path: Path):
@@ -172,7 +172,7 @@ def test_an_intervention_without_a_live_model_says_so(tmp_path: Path):
     live = MockBackend()
 
     with pytest.raises(ReplayMiss, match="stream_fn"):
-        with locus.intervene(
+        with tracewake.intervene(
             source, drop_tags=["tool_output"], from_turn=1, store=tmp_path
         ) as s:
             model = s.model(provider="mock", model_id="mock-1")
@@ -186,7 +186,7 @@ def test_an_intervention_without_live_tools_says_so(tmp_path: Path):
     # The replayed prefix still needs real tools, so this fails on the first
     # turn rather than at the point the context was changed.
     with pytest.raises(ReplayMiss, match="no dispatch function"):
-        with locus.intervene(
+        with tracewake.intervene(
             source, drop_tags=["tool_output"], from_turn=1, store=tmp_path
         ) as s:
             model = s.model(provider="mock", model_id="mock-1", stream_fn=live.stream)
@@ -201,7 +201,7 @@ def test_a_fork_can_write_to_a_different_store_than_it_reads(tmp_path: Path):
     before = _digest(source_store, source)
 
     live = MockBackend()
-    with locus.intervene(
+    with tracewake.intervene(
         source,
         drop_tags=["tool_output"],
         from_turn=1,
@@ -230,7 +230,7 @@ def test_a_fork_survives_a_cassette_round_trip(tmp_path: Path):
     source, _ = _record(tmp_path)
 
     live = MockBackend()
-    with locus.intervene(
+    with tracewake.intervene(
         source, drop_tags=["tool_output"], from_turn=1, store=tmp_path
     ) as s:
         model = s.model(
@@ -259,7 +259,7 @@ def test_dropping_from_turn_zero_makes_every_turn_live(tmp_path: Path):
     source, _ = _record(tmp_path)
 
     live = MockBackend()
-    with locus.intervene(
+    with tracewake.intervene(
         source, drop_tags=["system_prompt"], from_turn=0, store=tmp_path
     ) as s:
         model = s.model(

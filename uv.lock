@@ -389,48 +389,6 @@ wheels = [
 ]
 
 [[package]]
-name = "locus"
-version = "0.3.1"
-source = { editable = "." }
-dependencies = [
-    { name = "pydantic" },
-    { name = "typer" },
-]
-
-[package.optional-dependencies]
-aws = [
-    { name = "boto3" },
-]
-embeddings = [
-    { name = "mlx-embeddings" },
-]
-
-[package.dev-dependencies]
-corpus = [
-    { name = "mlx-embeddings" },
-    { name = "mlx-lm" },
-]
-dev = [
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "boto3", marker = "extra == 'aws'", specifier = ">=1.35" },
-    { name = "mlx-embeddings", marker = "extra == 'embeddings'", specifier = ">=0.1.0" },
-    { name = "pydantic", specifier = ">=2.11" },
-    { name = "typer", specifier = ">=0.15" },
-]
-provides-extras = ["embeddings", "aws"]
-
-[package.metadata.requires-dev]
-corpus = [
-    { name = "mlx-embeddings", specifier = ">=0.1.0" },
-    { name = "mlx-lm", specifier = ">=0.28" },
-]
-dev = [{ name = "pytest", specifier = ">=8.4" }]
-
-[[package]]
 name = "markdown-it-py"
 version = "4.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1251,6 +1209,48 @@ sdist = { url = "https://files.pythonhosted.org/packages/21/3b/6c24bec5be5e743ff
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f9/1c/01bfd571a64e7f270e6bab5e33777debe0edc56759233ce84f27dec92d14/tqdm-4.70.0-py3-none-any.whl", hash = "sha256:7f585706bfddbdebf89daac705b2dfcc16890130727d3197ca62c732b4310953", size = 80184, upload-time = "2026-07-27T11:33:13.167Z" },
 ]
+
+[[package]]
+name = "tracewake"
+version = "0.3.1"
+source = { editable = "." }
+dependencies = [
+    { name = "pydantic" },
+    { name = "typer" },
+]
+
+[package.optional-dependencies]
+aws = [
+    { name = "boto3" },
+]
+embeddings = [
+    { name = "mlx-embeddings" },
+]
+
+[package.dev-dependencies]
+corpus = [
+    { name = "mlx-embeddings" },
+    { name = "mlx-lm" },
+]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "boto3", marker = "extra == 'aws'", specifier = ">=1.35" },
+    { name = "mlx-embeddings", marker = "extra == 'embeddings'", specifier = ">=0.1.0" },
+    { name = "pydantic", specifier = ">=2.11" },
+    { name = "typer", specifier = ">=0.15" },
+]
+provides-extras = ["embeddings", "aws"]
+
+[package.metadata.requires-dev]
+corpus = [
+    { name = "mlx-embeddings", specifier = ">=0.1.0" },
+    { name = "mlx-lm", specifier = ">=0.28" },
+]
+dev = [{ name = "pytest", specifier = ">=8.4" }]
 
 [[package]]
 name = "transformers"

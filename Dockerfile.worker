@@ -1,8 +1,8 @@
 FROM python:3.13-slim
 WORKDIR /src
 COPY pyproject.toml README.md LICENSE ./
-COPY locus/ locus/
+COPY tracewake/ tracewake/
 RUN pip install --no-cache-dir ".[aws]"
-RUN useradd --create-home --uid 10001 locus
-USER locus
-ENTRYPOINT ["locus-worker"]
+RUN useradd --create-home --uid 10001 tracewake
+USER tracewake
+ENTRYPOINT ["tracewake-worker"]

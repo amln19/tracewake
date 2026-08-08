@@ -21,7 +21,7 @@ from .events import (
     StoredEvent,
     ToolCallEvent,
 )
-from .patches import LocusError
+from .patches import TracewakeError
 
 # ---------------------------------------------------------------------------
 # Frozen a priori. Do not change after evaluation numbers are published.
@@ -409,7 +409,7 @@ def step_similarity(
             if not a.reasoning and not b.reasoning:
                 parts.append(config.weight_reasoning * 1.0)
             else:
-                raise LocusError(
+                raise TracewakeError(
                     "alignment needs an embedder when steps carry reasoning text. "
                     "Pass embed=... (MlxEmbedder or LexicalEmbedder), or set "
                     "weight_reasoning=0 for an ablation."
@@ -459,11 +459,11 @@ class MlxEmbedder:
             from huggingface_hub import snapshot_download
             from mlx_embeddings import generate, load
         except ImportError as exc:
-            # LocusError rather than ImportError so the CLI prints the one line
+            # TracewakeError rather than ImportError so the CLI prints the one line
             # that says what to install instead of a traceback through it.
-            raise LocusError(
-                "locus alignment needs the embeddings extra. Install with "
-                "`uv sync --extra embeddings` (or `pip install 'locus[embeddings]'`), "
+            raise TracewakeError(
+                "tracewake alignment needs the embeddings extra. Install with "
+                "`uv sync --extra embeddings` (or `pip install 'tracewake[embeddings]'`), "
                 "or pass --lexical to skip the model."
             ) from exc
 

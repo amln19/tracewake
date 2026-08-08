@@ -283,15 +283,15 @@
           "title": "Inputs",
           "type": "array"
         },
-        "locus_version": {
-          "maxLength": 64,
-          "minLength": 1,
-          "title": "Locus Version",
-          "type": "string"
-        },
         "produced_at": {
           "format": "date-time",
           "title": "Produced At",
+          "type": "string"
+        },
+        "tracewake_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Tracewake Version",
           "type": "string"
         },
         "worker_build": {
@@ -304,7 +304,7 @@
       "required": [
         "inputs",
         "analysis_profile",
-        "locus_version",
+        "tracewake_version",
         "worker_build",
         "produced_at"
       ],

@@ -31,7 +31,7 @@ durable token or session token.
 returns the session expiry and scopes. A refresh therefore reconstructs browser
 state without browser storage. `DELETE /v1/browser/session` revokes the session
 and expires the cookie. Every other mutating request authenticated by a browser
-session must send the current token in `X-Locus-CSRF`; bearer-authenticated API
+session must send the current token in `X-Tracewake-CSRF`; bearer-authenticated API
 clients are unchanged. Browser-session additions are backward-compatible API
 v1 extensions. Unknown fields remain rejected.
 

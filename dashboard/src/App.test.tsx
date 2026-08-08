@@ -46,15 +46,15 @@ describe("browser session exchange", () => {
 
     render(<App />);
     const token = await screen.findByLabelText("Workspace token") as HTMLInputElement;
-    await userEvent.type(token, "locus_secret-that-must-not-persist");
+    await userEvent.type(token, "tracewake_secret-that-must-not-persist");
     await userEvent.click(screen.getByRole("button", { name: "Open control room" }));
     await screen.findByText("Run inventory");
 
     expect(token.value).toBe("");
     expect(stored).not.toHaveBeenCalled();
     const exchange = calls.find((call) => call.url === "/v1/browser/sessions");
-    expect(String(exchange?.init?.body)).toContain("locus_secret-that-must-not-persist");
-    expect(calls.filter((call) => call.url !== "/v1/browser/sessions").every((call) => !String(call.init?.body).includes("locus_secret"))).toBe(true);
+    expect(String(exchange?.init?.body)).toContain("tracewake_secret-that-must-not-persist");
+    expect(calls.filter((call) => call.url !== "/v1/browser/sessions").every((call) => !String(call.init?.body).includes("tracewake_secret"))).toBe(true);
   });
 });
 
@@ -97,7 +97,7 @@ describe("authoritative job rendering", () => {
       if (url.startsWith("/v1/audit")) return json({ records: [] });
       if (url === `/v1/jobs/${jobID}/cancel` && init?.method === "POST") {
         cancelled = true;
-        expect(new Headers(init.headers).get("X-Locus-CSRF")).toBe(session.csrf_token);
+        expect(new Headers(init.headers).get("X-Tracewake-CSRF")).toBe(session.csrf_token);
         return json(succeeded);
       }
       if (url === `/v1/jobs/${jobID}`) return json(cancelled ? succeeded : running);

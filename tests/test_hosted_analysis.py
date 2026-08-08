@@ -1,6 +1,6 @@
 """Hosted analyses of a bundle against the same analyses run locally.
 
-The worker reaches Locus through the Python APIs, so these tests replace only
+The worker reaches Tracewake through the Python APIs, so these tests replace only
 the control plane and the object store: the semantics under test are the ones
 the CLI uses.
 """
@@ -15,9 +15,9 @@ from typing import Any
 
 import pytest
 
-import locus
-from locus import worker
-from locus import (
+import tracewake
+from tracewake import worker
+from tracewake import (
     DecodeParams,
     Message,
     ModelResponse,
@@ -26,11 +26,11 @@ from locus import (
     ToolOutcome,
     Usage,
 )
-from locus.align import LexicalEmbedder, diff_runs
-from locus.bundle import build_bundle, bundle_header, validate_bundle
-from locus.cassette import export_cassette
-from locus.otel import build_spans, encode_spans
-from locus.pprof import (
+from tracewake.align import LexicalEmbedder, diff_runs
+from tracewake.bundle import build_bundle, bundle_header, validate_bundle
+from tracewake.cassette import export_cassette
+from tracewake.otel import build_spans, encode_spans
+from tracewake.pprof import (
     attribute_tokens,
     build_token_profile,
     gzip_profile,
@@ -38,7 +38,7 @@ from locus.pprof import (
     sample_totals,
     usage_totals,
 )
-from locus.worker import UnsupportedAnalysis, WorkerClient, run_once
+from tracewake.worker import UnsupportedAnalysis, WorkerClient, run_once
 
 JOB_ID = "00000000-0000-4000-8000-000000000002"
 WORKER_ID = "00000000-0000-4000-8000-000000000001"
@@ -70,7 +70,7 @@ def _record(store: Path, *, second_tool: str) -> str:
                 return ToolOutcome(content=content)
         raise AssertionError(f"unexpected tool {name} {args}")
 
-    with locus.record(second_tool, store=store, task_id="win-off_by_one-1") as rec:
+    with tracewake.record(second_tool, store=store, task_id="win-off_by_one-1") as rec:
         model = rec.model(provider="acme", model_id="acme-1", create_fn=create)
         tools = rec.tools(dispatch_fn=dispatch)
         messages = [
@@ -102,7 +102,7 @@ class Recorded:
             cassette = export_cassette(store, self.run_id, root / f"cassette-{name}")
         finally:
             store.close()
-        self.path = build_bundle(cassette, root / f"{name}.locus")
+        self.path = build_bundle(cassette, root / f"{name}.tracewake")
         self.raw = self.path.read_bytes()
         self.digest = hashlib.sha256(self.raw).hexdigest()
         self.validated = validate_bundle(self.path)
@@ -294,7 +294,7 @@ def test_analyses_are_deterministic_from_normalized_inputs(
 
     assert first["companions"][0]["digest"] == second["companions"][0]["digest"]
     assert companion(client, objects, first) == companion(client, objects, second)
-    stable = {"analysis_profile", "inputs", "locus_version", "worker_build"}
+    stable = {"analysis_profile", "inputs", "tracewake_version", "worker_build"}
     for value in (first, second):
         result = result_of(value)
         result.pop("artifact", None)

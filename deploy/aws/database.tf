@@ -21,8 +21,8 @@ resource "aws_db_instance" "main" {
   storage_type          = "gp3"
   storage_encrypted     = true
 
-  db_name  = "locus"
-  username = "locus"
+  db_name  = "tracewake"
+  username = "tracewake"
   password = random_password.database.result
   port     = 5432
 

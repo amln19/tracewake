@@ -11,9 +11,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/amln19/locus/controlplane/internal/artifacts"
-	"github.com/amln19/locus/controlplane/internal/controlplane"
-	"github.com/amln19/locus/controlplane/internal/telemetry"
+	"github.com/amln19/tracewake/controlplane/internal/artifacts"
+	"github.com/amln19/tracewake/controlplane/internal/controlplane"
+	"github.com/amln19/tracewake/controlplane/internal/telemetry"
 )
 
 type API struct {
@@ -139,12 +139,12 @@ func (a *API) heartbeat(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_request")
 		return
 	}
-	lease, err := a.service.Heartbeat(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Locus-Attempt-Token"))
+	lease, err := a.service.Heartbeat(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Tracewake-Attempt-Token"))
 	if err != nil {
 		writeError(w, 409, "lease_lost")
 		return
 	}
-	w.Header().Set("Locus-Lease-Expires-At", lease.Format("2006-01-02T15:04:05.999999999Z07:00"))
+	w.Header().Set("Tracewake-Lease-Expires-At", lease.Format("2006-01-02T15:04:05.999999999Z07:00"))
 	w.WriteHeader(http.StatusNoContent)
 }
 func (a *API) progress(w http.ResponseWriter, r *http.Request) {
@@ -166,7 +166,7 @@ func (a *API) progress(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_request")
 		return
 	}
-	err = a.service.UpdateProgress(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Locus-Attempt-Token"), controlplane.Progress{Sequence: body.Sequence, Stage: body.Stage, Message: body.Message})
+	err = a.service.UpdateProgress(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Tracewake-Attempt-Token"), controlplane.Progress{Sequence: body.Sequence, Stage: body.Stage, Message: body.Message})
 	if err != nil {
 		writeError(w, 409, "lease_lost")
 		return
@@ -182,7 +182,7 @@ func (a *API) cancellation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_request")
 		return
 	}
-	cancelled, err := a.service.Cancellation(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Locus-Attempt-Token"))
+	cancelled, err := a.service.Cancellation(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Tracewake-Attempt-Token"))
 	if err != nil {
 		writeError(w, 409, "lease_lost")
 		return
@@ -207,7 +207,7 @@ func (a *API) fail(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_request")
 		return
 	}
-	state, err := a.service.FailAttempt(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Locus-Attempt-Token"), body.Code, body.Message, body.Retryable)
+	state, err := a.service.FailAttempt(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Tracewake-Attempt-Token"), body.Code, body.Message, body.Retryable)
 	if err != nil {
 		writeError(w, 409, "lease_lost")
 		return
@@ -244,7 +244,7 @@ func (a *API) declareArtifact(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 413, "invalid_request")
 		return
 	}
-	workspace, err := a.service.AuthorizeAttempt(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Locus-Attempt-Token"))
+	workspace, err := a.service.AuthorizeAttempt(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Tracewake-Attempt-Token"))
 	if err != nil {
 		writeError(w, 409, "lease_lost")
 		return
@@ -299,7 +299,7 @@ func (a *API) complete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 409, "artifact_commit_failed")
 		return
 	}
-	err = a.service.CompleteAttempt(ctx, r.PathValue("job"), attempt, r.Header.Get("Locus-Attempt-Token"), body)
+	err = a.service.CompleteAttempt(ctx, r.PathValue("job"), attempt, r.Header.Get("Tracewake-Attempt-Token"), body)
 	if err != nil {
 		writeError(w, 409, "lease_lost")
 		return
@@ -316,7 +316,7 @@ func (a *API) input(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_request")
 		return
 	}
-	value, err := a.service.InputArtifact(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Locus-Attempt-Token"), r.PathValue("artifact"))
+	value, err := a.service.InputArtifact(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Tracewake-Attempt-Token"), r.PathValue("artifact"))
 	if err != nil {
 		writeError(w, 409, "lease_lost")
 		return

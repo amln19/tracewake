@@ -1,4 +1,4 @@
-"""The gate: `locus replay <id>` reproduces a recorded run with no network.
+"""The gate: `tracewake replay <id>` reproduces a recorded run with no network.
 
 The agent under test reaches a real socket for every model call. The server
 counts connections, so a replay that touched the network fails this test twice
@@ -17,10 +17,10 @@ from pathlib import Path
 
 import pytest
 
-import locus
-from locus import Store
-from locus.config import Config
-from locus.redaction import Redactor
+import tracewake
+from tracewake import Store
+from tracewake.config import Config
+from tracewake.redaction import Redactor
 
 
 def _scrubbed(parts: list[str]) -> list[str]:
@@ -81,9 +81,9 @@ def server() -> _Server:
     srv.server_close()
 
 
-def _locus(*args: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+def _tracewake(*args: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "locus", *args],
+        [sys.executable, "-m", "tracewake", *args],
         env=env,
         capture_output=True,
         text=True,
@@ -97,9 +97,9 @@ def env(server: _Server, tmp_path: Path) -> dict[str, str]:
 
     return {
         **os.environ,
-        "LOCUS_TEST_PORT": str(server.server_address[1]),
-        "LOCUS_TEST_TRANSCRIPT": str(tmp_path / "transcript.txt"),
-        "LOCUS_TEST_TAG": "gate-tag",
+        "TRACEWAKE_TEST_PORT": str(server.server_address[1]),
+        "TRACEWAKE_TEST_TRANSCRIPT": str(tmp_path / "transcript.txt"),
+        "TRACEWAKE_TEST_TAG": "gate-tag",
     }
 
 
@@ -107,9 +107,9 @@ def test_replay_reproduces_the_run_with_the_network_disabled(
     server: _Server, tmp_path: Path, env: dict[str, str]
 ) -> None:
     store = tmp_path / "store"
-    transcript = Path(env["LOCUS_TEST_TRANSCRIPT"])
+    transcript = Path(env["TRACEWAKE_TEST_TRANSCRIPT"])
 
-    recorded = _locus(
+    recorded = _tracewake(
         "record", "--store", str(store), "--name", "gate", "--", sys.executable, str(AGENT), env=env
     )
     assert recorded.returncode == 0, recorded.stderr
@@ -120,7 +120,7 @@ def test_replay_reproduces_the_run_with_the_network_disabled(
     run_id = Store(store).latest_named("gate").run_id
     server.reset()
 
-    replayed = _locus("replay", run_id, "--store", str(store), env=env)
+    replayed = _tracewake("replay", run_id, "--store", str(store), env=env)
     assert replayed.returncode == 0, replayed.stderr
     assert transcript.read_text(encoding="utf-8") == recorded_transcript
     assert server.connections == 0, "replay reached the network"
@@ -131,15 +131,15 @@ def test_a_network_call_during_replay_fails_the_run(
 ) -> None:
     """The negative control: without it, the count above could be zero by luck."""
     store = tmp_path / "store"
-    recorded = _locus(
+    recorded = _tracewake(
         "record", "--store", str(store), "--name", "gate", "--", sys.executable, str(AGENT), env=env
     )
     assert recorded.returncode == 0, recorded.stderr
     run_id = Store(store).latest_named("gate").run_id
     server.reset()
 
-    with locus.replay(run_id, store=store):
-        with pytest.raises(locus.NetworkBlocked, match="network call was attempted"):
+    with tracewake.replay(run_id, store=store):
+        with pytest.raises(tracewake.NetworkBlocked, match="network call was attempted"):
             socket.create_connection(("127.0.0.1", server.server_address[1]), timeout=5)
     assert server.connections == 0
 
@@ -158,15 +158,15 @@ def test_none_mode_cannot_be_configured_to_reach_the_network(
     options: dict[str, object],
 ) -> None:
     store = tmp_path / "store"
-    recorded = _locus(
+    recorded = _tracewake(
         "record", "--store", str(store), "--name", "gate", "--", sys.executable, str(AGENT), env=env
     )
     assert recorded.returncode == 0, recorded.stderr
     run_id = Store(store).latest_named("gate").run_id
     server.reset()
 
-    with locus.replay(run_id, store=store, **options):
-        with pytest.raises(locus.NetworkBlocked, match="record-capable mode"):
+    with tracewake.replay(run_id, store=store, **options):
+        with pytest.raises(tracewake.NetworkBlocked, match="record-capable mode"):
             socket.create_connection(("127.0.0.1", server.server_address[1]), timeout=5)
     assert server.connections == 0
 
@@ -175,14 +175,14 @@ def test_once_mode_is_blocked_when_it_resolves_to_pure_replay(
     server: _Server, tmp_path: Path, env: dict[str, str]
 ) -> None:
     store = tmp_path / "store"
-    recorded = _locus(
+    recorded = _tracewake(
         "record", "--store", str(store), "--name", "gate", "--", sys.executable, str(AGENT), env=env
     )
     assert recorded.returncode == 0, recorded.stderr
     server.reset()
 
-    with locus.session("gate", store=store, mode="once", block_network=False):
-        with pytest.raises(locus.NetworkBlocked):
+    with tracewake.session("gate", store=store, mode="once", block_network=False):
+        with pytest.raises(tracewake.NetworkBlocked):
             socket.create_connection(("127.0.0.1", server.server_address[1]), timeout=5)
     assert server.connections == 0
 
@@ -191,9 +191,9 @@ def test_the_socket_block_is_lifted_when_the_session_ends(
     server: _Server, tmp_path: Path, env: dict[str, str]
 ) -> None:
     store = tmp_path / "store"
-    _locus("record", "--store", str(store), "--name", "gate", "--", sys.executable, str(AGENT), env=env)
+    _tracewake("record", "--store", str(store), "--name", "gate", "--", sys.executable, str(AGENT), env=env)
     run_id = Store(store).latest_named("gate").run_id
-    with locus.replay(run_id, store=store):
+    with tracewake.replay(run_id, store=store):
         pass
 
     server.reset()
@@ -210,14 +210,14 @@ def test_an_intervention_replays_the_prefix_and_pays_only_for_the_rest(
 ) -> None:
     """A fork's cost is the inference after the change, not the whole run."""
     store = tmp_path / "store"
-    recorded = _locus(
+    recorded = _tracewake(
         "record", "--store", str(store), "--name", "gate", "--", sys.executable, str(AGENT), env=env
     )
     assert recorded.returncode == 0, recorded.stderr
     source = Store(store).latest_named("gate").run_id
     server.reset()
 
-    forked = _locus(
+    forked = _tracewake(
         "intervene", source, "--store", str(store),
         "--drop-tag", "user_task", "--from-step", "1",
         "--", sys.executable, str(AGENT),
@@ -230,7 +230,7 @@ def test_an_intervention_replays_the_prefix_and_pays_only_for_the_rest(
     out = forked.stdout
     assert "block" in out and "dropping" in out
     assert "matched" in out
-    assert f"locus diff {source}" in out and "--store" in out
+    assert f"tracewake diff {source}" in out and "--store" in out
 
     db = Store(store)
     runs = {h.run_id for h in db.runs()}
@@ -255,11 +255,11 @@ def test_an_intervention_that_changes_nothing_is_refused_by_the_cli(
     server: _Server, tmp_path: Path, env: dict[str, str]
 ) -> None:
     store = tmp_path / "store"
-    _locus("record", "--store", str(store), "--name", "gate", "--", sys.executable, str(AGENT), env=env)
+    _tracewake("record", "--store", str(store), "--name", "gate", "--", sys.executable, str(AGENT), env=env)
     source = Store(store).latest_named("gate").run_id
     server.reset()
 
-    refused = _locus(
+    refused = _tracewake(
         "intervene", source, "--store", str(store), "--drop-tag", "repo_map",
         "--", sys.executable, str(AGENT),
         env=env,
@@ -274,7 +274,7 @@ def test_recording_through_the_cli_captures_the_whole_environment(
     server: _Server, tmp_path: Path, env: dict[str, str]
 ) -> None:
     store = tmp_path / "store"
-    _locus("record", "--store", str(store), "--name", "gate", "--", sys.executable, str(AGENT), env=env)
+    _tracewake("record", "--store", str(store), "--name", "gate", "--", sys.executable, str(AGENT), env=env)
 
     db = Store(store)
     header = db.latest_named("gate")

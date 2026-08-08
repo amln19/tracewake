@@ -17,8 +17,8 @@ from collections import Counter
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-import locus
-from locus import Store
+import tracewake
+from tracewake import Store
 
 from . import agent, repos
 from .backend import DEFAULT_MODEL, PROVIDER, LocalModel
@@ -143,7 +143,7 @@ def attempt(
         return (report.output or report.summary, report.green)
 
     try:
-        with locus.record(
+        with tracewake.record(
             f"{task.task_id}#{run_index}",
             store=store,
             task_id=task.task_id,

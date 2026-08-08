@@ -35,7 +35,7 @@ type SQS struct {
 func NewSQS() *SQS {
 	fake := &SQS{}
 	fake.Server = httptest.NewServer(http.HandlerFunc(fake.serve))
-	fake.QueueURL = fake.Server.URL + "/000000000000/locus-jobs"
+	fake.QueueURL = fake.Server.URL + "/000000000000/tracewake-jobs"
 	return fake
 }
 

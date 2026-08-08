@@ -25,7 +25,7 @@ func (m *Metrics) Instrument(surface string, mux *http.ServeMux) http.Handler {
 			trace.WithAttributes(
 				attribute.String("http.request.method", r.Method),
 				attribute.String("http.route", bounded(route, Routes)),
-				attribute.String("locus.surface", surface),
+				attribute.String("tracewake.surface", surface),
 			))
 		defer span.End()
 		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}

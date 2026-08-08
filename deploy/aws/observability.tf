@@ -3,8 +3,8 @@
 locals {
   alarm_specification = jsondecode(file("${path.module}/alarms.json"))
 
-  control_plane_metric_namespace = "Locus/${var.environment}/ControlPlane"
-  worker_metric_namespace        = "Locus/${var.environment}/Worker"
+  control_plane_metric_namespace = "Tracewake/${var.environment}/ControlPlane"
+  worker_metric_namespace        = "Tracewake/${var.environment}/Worker"
 
   alarm_namespaces = {
     "@control_plane" = local.control_plane_metric_namespace

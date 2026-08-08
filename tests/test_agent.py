@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-import locus
-from locus import DecodeParams, Message, ModelCallEvent, ModelResponse, Store, StreamChunk, Usage
+import tracewake
+from tracewake import DecodeParams, Message, ModelCallEvent, ModelResponse, Store, StreamChunk, Usage
 
 from bench import agent
 
@@ -60,7 +60,7 @@ def drive(
         calls.append(1)
         return ("1 failed, 3 passed", green)
 
-    with locus.record("agent", store=store) as session:
+    with tracewake.record("agent", store=store) as session:
         tools = agent.Tools(session, repo, ("pkg",), run_tests)
         model = session.model(provider="test", model_id="test-1", stream_fn=scripted(replies))
         trace = agent.run(
@@ -245,7 +245,7 @@ def test_the_run_replays_from_the_log_without_the_model(tmp_path: Path, repo: Pa
     def forbidden_tests() -> tuple[str, bool]:
         raise AssertionError("replay reached the test runner")
 
-    with locus.replay(run_id, store=store) as session:
+    with tracewake.replay(run_id, store=store) as session:
         tools = agent.Tools(session, repo, ("pkg",), forbidden_tests)
         model = session.model(provider="test", model_id="test-1", stream_fn=forbidden)
         replayed = agent.run(session, model, "it is broken", tools, max_steps=len(replies))

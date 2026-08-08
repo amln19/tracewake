@@ -41,7 +41,7 @@ func upload(t *testing.T, store *Filesystem, key string, data []byte) Object {
 	if response.Code != http.StatusCreated {
 		t.Fatalf("upload status=%d body=%s", response.Code, response.Body)
 	}
-	object, err := store.Commit(context.Background(), key, response.Header().Get("Locus-Object-Version"), sha256Hex(data), int64(len(data)))
+	object, err := store.Commit(context.Background(), key, response.Header().Get("Tracewake-Object-Version"), sha256Hex(data), int64(len(data)))
 	if err != nil {
 		t.Fatal(err)
 	}

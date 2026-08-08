@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/amln19/locus/controlplane/internal/controlplane"
+	"github.com/amln19/tracewake/controlplane/internal/controlplane"
 )
 
 // succeed drives one job to a committed result the way a worker would.

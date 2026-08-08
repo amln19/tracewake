@@ -51,10 +51,10 @@ jobs:
                   with zipfile.ZipFile(artifact) as archive:
                       names = archive.namelist()
                   roots = {Path(name).parts[0] for name in names}
-                  assert "locus" in roots
+                  assert "tracewake" in roots
                   assert all(
-                      root == "locus"
-                      or (root.startswith("locus-") and root.endswith(".dist-info"))
+                      root == "tracewake"
+                      or (root.startswith("tracewake-") and root.endswith(".dist-info"))
                       for root in roots
                   ), (artifact, roots)
               else:
@@ -72,7 +72,7 @@ jobs:
                       "README.md",
                       "contracts",
                       "contracttest",
-                      "locus",
+                      "tracewake",
                       "pyproject.toml",
                       "tests",
                   }
@@ -80,17 +80,17 @@ jobs:
           PY
       - name: Install wheel in a clean environment
         run: |
-          python -m venv "$RUNNER_TEMP/locus-wheel"
-          "$RUNNER_TEMP/locus-wheel/bin/python" -m pip install dist/*.whl
+          python -m venv "$RUNNER_TEMP/tracewake-wheel"
+          "$RUNNER_TEMP/tracewake-wheel/bin/python" -m pip install dist/*.whl
       - name: Run installed-package smoke example
         run: |
-          smoke="$RUNNER_TEMP/locus-smoke"
+          smoke="$RUNNER_TEMP/tracewake-smoke"
           mkdir "$smoke"
-          recorded=$("$RUNNER_TEMP/locus-wheel/bin/locus" record \
+          recorded=$("$RUNNER_TEMP/tracewake-wheel/bin/tracewake" record \
             --store "$smoke/store" --name smoke -- \
-            "$RUNNER_TEMP/locus-wheel/bin/python" -c \
-            'import locus; s = locus.current(); print(s.clock.time()); s.outcome(status="ok")')
-          replayed=$("$RUNNER_TEMP/locus-wheel/bin/locus" replay smoke --store "$smoke/store")
+            "$RUNNER_TEMP/tracewake-wheel/bin/python" -c \
+            'import tracewake; s = tracewake.current(); print(s.clock.time()); s.outcome(status="ok")')
+          replayed=$("$RUNNER_TEMP/tracewake-wheel/bin/tracewake" replay smoke --store "$smoke/store")
           test "$(printf '%s\n' "$recorded" | head -n 1)" = \
             "$(printf '%s\n' "$replayed" | head -n 1)"
 
@@ -112,7 +112,7 @@ jobs:
           go-version-file: contracttest/go/go.mod
           cache: false
       - run: uv sync --locked --python 3.13
-      - run: uv run --python 3.13 python -m locus.contracts --output contracts/schemas/v1 --check
+      - run: uv run --python 3.13 python -m tracewake.contracts --output contracts/schemas/v1 --check
       - run: uv run --python 3.13 python -m contracttest.generate_fixtures --output contracttest/fixtures/v1 --check
       - run: go test ./...
         working-directory: contracttest/go
@@ -138,7 +138,7 @@ jobs:
           --health-timeout 3s
           --health-retries 30
     env:
-      LOCUS_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1/postgres?sslmode=disable
+      TRACEWAKE_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1/postgres?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -197,7 +197,7 @@ jobs:
         working-directory: dashboard
       - run: npm run test:e2e
         working-directory: dashboard
-      - run: docker build -f controlplane/Dockerfile -t locus-control-plane:test .
+      - run: docker build -f controlplane/Dockerfile -t tracewake-control-plane:test .
 
   terraform:
     name: Terraform configuration

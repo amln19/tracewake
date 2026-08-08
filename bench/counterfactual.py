@@ -14,8 +14,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-import locus
-from locus import Store
+import tracewake
+from tracewake import Store
 
 from . import agent, repos
 from .backend import DEFAULT_MODEL, PROVIDER, LocalModel
@@ -73,8 +73,8 @@ def fork_diff(
     run: str, store: Path = STORE, fork_store: Path = FORK_STORE, lexical: bool = False
 ) -> str:
     """Align a fork against the run it was forked from, across the two stores."""
-    from locus.align import LexicalEmbedder, MlxEmbedder, diff_runs, format_diff
-    from locus.events import InterventionEvent
+    from tracewake.align import LexicalEmbedder, MlxEmbedder, diff_runs, format_diff
+    from tracewake.events import InterventionEvent
 
     forks = Store(fork_store)
     try:
@@ -163,7 +163,7 @@ def fork(
         return (report.output or report.summary, report.green)
 
     try:
-        with locus.intervene(
+        with tracewake.intervene(
             source.run_id,
             drop_tags=drop_tags,
             from_turn=from_turn,

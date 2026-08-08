@@ -35,7 +35,7 @@ type SpanRecord struct {
 // IdleAttribute marks a span that looked for work and found none. Polling
 // loops would otherwise dominate the trace stream and its cost while saying
 // nothing; an idle span that failed is still exported, because that is work.
-const IdleAttribute = "locus.idle"
+const IdleAttribute = "tracewake.idle"
 
 func idle(span sdktrace.ReadOnlySpan) bool {
 	if span.Status().Code == codes.Error {

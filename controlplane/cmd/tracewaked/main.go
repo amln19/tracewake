@@ -16,20 +16,20 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/amln19/locus/controlplane/internal/artifacts"
-	"github.com/amln19/locus/controlplane/internal/controlplane"
-	"github.com/amln19/locus/controlplane/internal/httpapi"
-	"github.com/amln19/locus/controlplane/internal/notify"
-	"github.com/amln19/locus/controlplane/internal/store"
-	"github.com/amln19/locus/controlplane/internal/telemetry"
-	"github.com/amln19/locus/controlplane/internal/workerapi"
+	"github.com/amln19/tracewake/controlplane/internal/artifacts"
+	"github.com/amln19/tracewake/controlplane/internal/controlplane"
+	"github.com/amln19/tracewake/controlplane/internal/httpapi"
+	"github.com/amln19/tracewake/controlplane/internal/notify"
+	"github.com/amln19/tracewake/controlplane/internal/store"
+	"github.com/amln19/tracewake/controlplane/internal/telemetry"
+	"github.com/amln19/tracewake/controlplane/internal/workerapi"
 	"github.com/aws/aws-sdk-go-v2/config"
 )
 
 func main() {
-	databaseURL := os.Getenv("LOCUS_DATABASE_URL")
+	databaseURL := os.Getenv("TRACEWAKE_DATABASE_URL")
 	if databaseURL == "" {
-		log.Fatal("LOCUS_DATABASE_URL is required")
+		log.Fatal("TRACEWAKE_DATABASE_URL is required")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -41,7 +41,7 @@ func main() {
 	if err := database.Migrate(ctx); err != nil {
 		log.Fatal(err)
 	}
-	service, err := controlplane.New(database.Pool(), keyRing("LOCUS_TOKEN_PEPPER"), keyRing("LOCUS_WORKER_PEPPER"))
+	service, err := controlplane.New(database.Pool(), keyRing("TRACEWAKE_TOKEN_PEPPER"), keyRing("TRACEWAKE_WORKER_PEPPER"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func main() {
 	// filesystem store is built only when it is the selected one.
 	var artifactStore artifacts.Store
 	var localStore *artifacts.Filesystem
-	if bucket := strings.TrimSpace(os.Getenv("LOCUS_ARTIFACT_BUCKET")); bucket != "" {
+	if bucket := strings.TrimSpace(os.Getenv("TRACEWAKE_ARTIFACT_BUCKET")); bucket != "" {
 		awsConfig, err := config.LoadDefaultConfig(ctx)
 		if err != nil {
 			log.Fatalf("load AWS configuration: %v", err)
@@ -70,7 +70,7 @@ func main() {
 			log.Fatal(err)
 		}
 	} else {
-		localStore, err = artifacts.NewFilesystem(envOr("LOCUS_ARTIFACT_ROOT", ".locus-hosted/artifacts"), objectSigningKey())
+		localStore, err = artifacts.NewFilesystem(envOr("TRACEWAKE_ARTIFACT_ROOT", ".tracewake-hosted/artifacts"), objectSigningKey())
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -89,7 +89,7 @@ func main() {
 		fmt.Printf("workspace_id=%s\ntoken=%s\nworker_id=%s\nworker_token=%s\n", workspace, token, workerID, workerToken)
 		return
 	}
-	if path := os.Getenv("LOCUS_BOOTSTRAP_FILE"); path != "" {
+	if path := os.Getenv("TRACEWAKE_BOOTSTRAP_FILE"); path != "" {
 		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 			workspace, token, err := service.CreateWorkspace(ctx, "local", scopes)
 			if err != nil {
@@ -110,18 +110,18 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	if token := strings.TrimSpace(os.Getenv("LOCUS_BOOTSTRAP_TOKEN")); token != "" {
-		if _, err := service.EnsureWorkspaceToken(ctx, envOr("LOCUS_BOOTSTRAP_WORKSPACE", "default"), token, scopes); err != nil {
+	if token := strings.TrimSpace(os.Getenv("TRACEWAKE_BOOTSTRAP_TOKEN")); token != "" {
+		if _, err := service.EnsureWorkspaceToken(ctx, envOr("TRACEWAKE_BOOTSTRAP_WORKSPACE", "default"), token, scopes); err != nil {
 			log.Fatal(err)
 		}
 	}
-	if token := strings.TrimSpace(os.Getenv("LOCUS_WORKER_BOOTSTRAP_TOKEN")); token != "" {
+	if token := strings.TrimSpace(os.Getenv("TRACEWAKE_WORKER_BOOTSTRAP_TOKEN")); token != "" {
 		if _, err := service.EnsureWorkerCredential(ctx, token); err != nil {
 			log.Fatal(err)
 		}
 	}
 	var publisher controlplane.Notifier
-	if queueURL := strings.TrimSpace(os.Getenv("LOCUS_JOB_QUEUE_URL")); queueURL != "" {
+	if queueURL := strings.TrimSpace(os.Getenv("TRACEWAKE_JOB_QUEUE_URL")); queueURL != "" {
 		awsConfig, err := config.LoadDefaultConfig(ctx)
 		if err != nil {
 			log.Fatalf("load AWS configuration: %v", err)
@@ -130,13 +130,13 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	publicAddr := envOr("LOCUS_LISTEN_ADDR", "127.0.0.1:8080")
-	workerAddr := envOr("LOCUS_WORKER_LISTEN_ADDR", "127.0.0.1:8081")
-	publicBase := envOr("LOCUS_PUBLIC_BASE_URL", reachableURL(publicAddr))
-	workerBase := envOr("LOCUS_WORKER_BASE_URL", reachableURL(workerAddr))
+	publicAddr := envOr("TRACEWAKE_LISTEN_ADDR", "127.0.0.1:8080")
+	workerAddr := envOr("TRACEWAKE_WORKER_LISTEN_ADDR", "127.0.0.1:8081")
+	publicBase := envOr("TRACEWAKE_PUBLIC_BASE_URL", reachableURL(publicAddr))
+	workerBase := envOr("TRACEWAKE_WORKER_BASE_URL", reachableURL(workerAddr))
 	publicMux := http.NewServeMux()
 	publicMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
-	publicAPI := httpapi.New(service, artifactStore, publicBase, strings.TrimSpace(os.Getenv("LOCUS_DASHBOARD_DIR")))
+	publicAPI := httpapi.New(service, artifactStore, publicBase, strings.TrimSpace(os.Getenv("TRACEWAKE_DASHBOARD_DIR")))
 	publicAPI.UseTelemetry(observability.Metrics())
 	publicMux.Handle("/", publicAPI.Handler())
 	workerMux := http.NewServeMux()
@@ -211,18 +211,18 @@ const retentionInterval = 10 * time.Minute
 // go to standard output because the deployment already ships container output
 // to its log service, which is also where embedded metrics become alarmable.
 func startTelemetry(ctx context.Context) (*telemetry.Provider, error) {
-	if strings.EqualFold(os.Getenv("LOCUS_TELEMETRY"), "off") {
+	if strings.EqualFold(os.Getenv("TRACEWAKE_TELEMETRY"), "off") {
 		return telemetry.Disabled(), nil
 	}
-	interval, err := time.ParseDuration(envOr("LOCUS_TELEMETRY_INTERVAL", "60s"))
+	interval, err := time.ParseDuration(envOr("TRACEWAKE_TELEMETRY_INTERVAL", "60s"))
 	if err != nil {
-		return nil, fmt.Errorf("LOCUS_TELEMETRY_INTERVAL must be a duration: %w", err)
+		return nil, fmt.Errorf("TRACEWAKE_TELEMETRY_INTERVAL must be a duration: %w", err)
 	}
 	return telemetry.Start(ctx, telemetry.Options{
-		ServiceName:    "locus-control-plane",
-		ServiceVersion: envOr("LOCUS_SERVICE_VERSION", "unknown"),
-		Environment:    envOr("LOCUS_ENVIRONMENT", "local"),
-		Namespace:      envOr("LOCUS_METRIC_NAMESPACE", "Locus/ControlPlane"),
+		ServiceName:    "tracewake-control-plane",
+		ServiceVersion: envOr("TRACEWAKE_SERVICE_VERSION", "unknown"),
+		Environment:    envOr("TRACEWAKE_ENVIRONMENT", "local"),
+		Namespace:      envOr("TRACEWAKE_METRIC_NAMESPACE", "Tracewake/ControlPlane"),
 		MetricInterval: interval,
 	})
 }
@@ -230,8 +230,8 @@ func startTelemetry(ctx context.Context) (*telemetry.Provider, error) {
 // Signed object URLs are an extension of worker and tenant authentication, so
 // they are derived from the worker pepper rather than configured separately.
 func objectSigningKey() []byte {
-	mac := hmac.New(sha256.New, []byte(os.Getenv("LOCUS_WORKER_PEPPER")))
-	_, _ = mac.Write([]byte("locus-object-url-v1"))
+	mac := hmac.New(sha256.New, []byte(os.Getenv("TRACEWAKE_WORKER_PEPPER")))
+	_, _ = mac.Write([]byte("tracewake-object-url-v1"))
 	return mac.Sum(nil)
 }
 

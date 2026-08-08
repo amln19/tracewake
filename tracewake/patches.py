@@ -20,9 +20,9 @@ from .config import Config
 if TYPE_CHECKING:
     from .session import Session
 
-# Captured before anything is patched. Locus records wall-clock metadata and
+# Captured before anything is patched. Tracewake records wall-clock metadata and
 # mints its own ids while the patches are live; going through the patched
-# functions would record locus's own bookkeeping as agent input, and recording
+# functions would record tracewake's own bookkeeping as agent input, and recording
 # an event would recurse into the recorder that is writing it.
 real_time = time.time
 real_monotonic = time.monotonic
@@ -30,20 +30,20 @@ real_perf_counter = time.perf_counter
 real_uuid4 = uuid.uuid4
 
 
-class LocusError(Exception):
+class TracewakeError(Exception):
     pass
 
 
-class NetworkBlocked(LocusError):
+class NetworkBlocked(TracewakeError):
     pass
 
 
-class HashSeedError(LocusError):
+class HashSeedError(TracewakeError):
     pass
 
 
 _STDLIB = Path(sysconfig.get_paths()["stdlib"]).resolve()
-_LOCUS = Path(__file__).parent.resolve()
+_TRACEWAKE = Path(__file__).parent.resolve()
 def _frame_files(*functions: Any) -> frozenset[str]:
     """The filenames these functions' frames will actually carry.
 
@@ -90,7 +90,7 @@ def _is_instrumented_code(code: CodeType) -> bool:
         path = Path(name)
         resolved = path.resolve() if path.is_absolute() else path
         verdict = not (
-            resolved.is_relative_to(_STDLIB) or resolved.is_relative_to(_LOCUS)
+            resolved.is_relative_to(_STDLIB) or resolved.is_relative_to(_TRACEWAKE)
         )
     _instrumented[code] = verdict
     return verdict
@@ -134,7 +134,7 @@ def require_hash_seed(config: Config) -> None:
     raise HashSeedError(
         "replay needs PYTHONHASHSEED=0: set iteration order otherwise varies between "
         "runs and silently breaks determinism in agent code you do not control. Re-run "
-        f"as `PYTHONHASHSEED=0 {Path(sys.argv[0]).name or 'python'} ...`, use the locus "
+        f"as `PYTHONHASHSEED=0 {Path(sys.argv[0]).name or 'python'} ...`, use the tracewake "
         "CLI, which sets it for you, or pass require_hash_seed=False to accept the risk."
     )
 

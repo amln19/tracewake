@@ -1,4 +1,4 @@
-module github.com/amln19/locus/controlplane
+module github.com/amln19/tracewake/controlplane
 
 go 1.24.0
 

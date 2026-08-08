@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from locus.contracts import (
+from tracewake.contracts import (
     CONTRACT_SCHEMA_VERSION,
     Failure,
     FailureCode,
@@ -82,7 +82,7 @@ def test_result_envelope_discriminates_success_and_failure() -> None:
                         }
                     ],
                     "analysis_profile": "bundle-validation-v1",
-                    "locus_version": "0.2.0",
+                    "tracewake_version": "0.2.0",
                     "worker_build": "test-build",
                     "produced_at": "2026-08-06T12:00:00Z",
                 },

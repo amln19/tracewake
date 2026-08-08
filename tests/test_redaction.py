@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 
-import locus
-from locus import (
+import tracewake
+from tracewake import (
     DecodeParams,
     Message,
     ModelResponse,
@@ -29,7 +29,7 @@ def _dispatch(name: str, args: dict[str, Any]) -> ToolOutcome:
 
 def _record(store: Path, output: Path | None = None, **overrides: Any) -> str:
     output = output or store.parent / "out.txt"
-    with locus.record("redact", store=store, **overrides) as rec:
+    with tracewake.record("redact", store=store, **overrides) as rec:
         model = rec.model(provider="p", model_id="m", create_fn=_create)
         completion = model.create(
             messages=[
@@ -82,7 +82,7 @@ def test_a_header_key_is_scrubbed_even_when_the_value_is_unknown(tmp_path: Path)
     db = Store(store)
     (tool,) = [e.event for e in db.events(run_id) if e.event.type == "tool_call"]
     db.close()
-    assert tool.args["headers"]["authorization"] == locus.REDACTED
+    assert tool.args["headers"]["authorization"] == tracewake.REDACTED
     assert tool.args["url"] == "https://x"
 
 
@@ -106,7 +106,7 @@ def test_a_cassette_replays_where_the_same_variable_holds_a_different_secret(
 
     other = "sk-live-9876543210-different-secret"
     monkeypatch.setenv("DEMO_API_KEY", other)
-    with locus.replay(run_id, store=store) as rep:
+    with tracewake.replay(run_id, store=store) as rep:
         model = rep.model(provider="p", model_id="m")
         completion = model.create(
             messages=[
@@ -123,7 +123,7 @@ def test_a_secret_too_short_to_be_one_is_left_alone(
 ) -> None:
     monkeypatch.setenv("SHORT_TOKEN", "abc")
     store = tmp_path / "store"
-    with locus.record("short", store=store) as rec:
+    with tracewake.record("short", store=store) as rec:
         model = rec.model(provider="p", model_id="m", create_fn=_create)
         model.create(messages=[Message(role="user", content="abc is a normal word")])
         rec.outcome(status="ok")
@@ -139,7 +139,7 @@ def test_an_unredacted_cassette_still_replays(
     store = tmp_path / "store"
     run_id = _record(store, redact=False)
 
-    with locus.replay(run_id, store=store) as rep:
+    with tracewake.replay(run_id, store=store) as rep:
         model = rep.model(provider="p", model_id="m")
         completion = model.create(
             messages=[
@@ -157,7 +157,7 @@ def test_a_home_path_is_scrubbed_in_the_log_but_usable_on_replay(tmp_path: Path)
     import os
 
     store = tmp_path / "store"
-    with locus.record("home", store=store) as rec:
+    with tracewake.record("home", store=store) as rec:
         assert os.environ["HOME"] == str(Path.home())
         rec.outcome(status="ok")
         run_id = rec.run_id
@@ -168,17 +168,17 @@ def test_a_home_path_is_scrubbed_in_the_log_but_usable_on_replay(tmp_path: Path)
     assert event.value == "<HOME>"
     assert str(Path.home()) not in _store_bytes(store).decode("utf-8", "replace")
 
-    with locus.replay(run_id, store=store) as rep:
+    with tracewake.replay(run_id, store=store) as rep:
         assert os.environ["HOME"] == str(Path.home())
         rep.outcome(status="ok")
 
 
 def test_configure_sets_the_process_default(tmp_path: Path) -> None:
-    original = locus.current_config()
+    original = tracewake.current_config()
     try:
-        locus.configure(filter_values=("a-hardcoded-secret-value",))
+        tracewake.configure(filter_values=("a-hardcoded-secret-value",))
         store = tmp_path / "store"
-        with locus.record("configured", store=store) as rec:
+        with tracewake.record("configured", store=store) as rec:
             model = rec.model(provider="p", model_id="m", create_fn=_create)
             model.create(
                 messages=[Message(role="user", content="key is a-hardcoded-secret-value")]
@@ -186,12 +186,12 @@ def test_configure_sets_the_process_default(tmp_path: Path) -> None:
             rec.outcome(status="ok")
         assert b"a-hardcoded-secret-value" not in _store_bytes(store)
     finally:
-        locus.configure(**{f: getattr(original, f) for f in type(original).__dataclass_fields__})
+        tracewake.configure(**{f: getattr(original, f) for f in type(original).__dataclass_fields__})
 
 
 def test_before_record_can_drop_an_event(tmp_path: Path) -> None:
     store = tmp_path / "store"
-    with locus.record(
+    with tracewake.record(
         "hook",
         store=store,
         before_record=lambda ev: None if ev.type == "environment" else ev,
@@ -211,7 +211,7 @@ def test_the_run_header_command_is_scrubbed(tmp_path: Path) -> None:
     secret = "sk-live-9d2f4a7b1c8e0356"
     command = ["python", f"{home}/work/agent.py", "--api-key", secret]
 
-    with locus._open_session(
+    with tracewake._open_session(
         "demo", store=tmp_path / "s", mode="all", command=command, filter_values=(secret,)
     ) as s:
         s.outcome(status="ok")
@@ -223,7 +223,7 @@ def test_the_run_header_command_is_scrubbed(tmp_path: Path) -> None:
     assert home not in (header.command or [])
     assert secret not in (header.command or [])
     assert any("<HOME>" in part for part in header.command or [])
-    assert locus.REDACTED in (header.command or [])
+    assert tracewake.REDACTED in (header.command or [])
 
 
 def test_an_env_var_named_like_a_secret_is_redacted_by_name(
@@ -231,7 +231,7 @@ def test_an_env_var_named_like_a_secret_is_redacted_by_name(
 ) -> None:
     monkeypatch.setenv("SOMETHING_TOKEN", "a-value-nobody-would-guess")
     store = tmp_path / "store"
-    with locus.record("env", store=store) as rec:
+    with tracewake.record("env", store=store) as rec:
         import os
 
         assert os.environ["SOMETHING_TOKEN"] == "a-value-nobody-would-guess"
@@ -242,4 +242,4 @@ def test_an_env_var_named_like_a_secret_is_redacted_by_name(
     (event,) = [e.event for e in db.events(run_id) if e.event.type == "environment"]
     db.close()
     assert event.key == "SOMETHING_TOKEN"
-    assert event.value == locus.REDACTED
+    assert event.value == tracewake.REDACTED

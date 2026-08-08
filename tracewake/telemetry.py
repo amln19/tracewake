@@ -1,12 +1,12 @@
 """Operational telemetry for the hosted worker.
 
 This describes the worker process — what it claimed, how long each stage took,
-whether it committed. It is unrelated to `locus.otel`, which encodes a recorded
+whether it committed. It is unrelated to `tracewake.otel`, which encodes a recorded
 run as spans for the tenant who asked for that artifact.
 
 Records leave as one JSON object per line: OpenTelemetry span records in the
 same shape the control plane emits, and CloudWatch embedded metric format for
-the counters an alarm watches. Nothing here is needed for local Locus, so the
+the counters an alarm watches. Nothing here is needed for local Tracewake, so the
 module depends only on the standard library.
 """
 
@@ -22,7 +22,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import IO, Any
 
-SCOPE = "locus.worker"
+SCOPE = "tracewake.worker"
 TRACEPARENT = re.compile(r"^00-(?P<trace>[0-9a-f]{32})-(?P<span>[0-9a-f]{16})-[0-9a-f]{2}$")
 
 # Every dimension value comes from one of these sets, so an unexpected value
@@ -66,10 +66,10 @@ class Telemetry:
     def __init__(
         self,
         *,
-        service: str = "locus-worker",
+        service: str = "tracewake-worker",
         version: str = "unknown",
         environment: str = "local",
-        namespace: str = "Locus/Worker",
+        namespace: str = "Tracewake/Worker",
         stream: IO[str] | None = None,
         enabled: bool = True,
     ) -> None:
@@ -83,11 +83,11 @@ class Telemetry:
     @classmethod
     def from_environment(cls, stream: IO[str] | None = None) -> Telemetry:
         return cls(
-            version=os.environ.get("LOCUS_SERVICE_VERSION", "unknown"),
-            environment=os.environ.get("LOCUS_ENVIRONMENT", "local"),
-            namespace=os.environ.get("LOCUS_WORKER_METRIC_NAMESPACE", "Locus/Worker"),
+            version=os.environ.get("TRACEWAKE_SERVICE_VERSION", "unknown"),
+            environment=os.environ.get("TRACEWAKE_ENVIRONMENT", "local"),
+            namespace=os.environ.get("TRACEWAKE_WORKER_METRIC_NAMESPACE", "Tracewake/Worker"),
             stream=stream,
-            enabled=os.environ.get("LOCUS_TELEMETRY", "").lower() != "off",
+            enabled=os.environ.get("TRACEWAKE_TELEMETRY", "").lower() != "off",
         )
 
     def _write(self, record: Mapping[str, Any]) -> None:

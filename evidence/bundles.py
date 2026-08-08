@@ -1,7 +1,7 @@
 """Deterministic bundles for the measured scenarios.
 
 Every bundle comes from a real recorded session with a scripted model and
-scripted tools, so what the hosted path analyses is what local Locus records.
+scripted tools, so what the hosted path analyses is what local Tracewake records.
 """
 
 from __future__ import annotations
@@ -10,11 +10,11 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-import locus
-from locus import DecodeParams, Message, ModelResponse, ToolCallRequest, ToolOutcome, Usage
-from locus.bundle import build_bundle
-from locus.cassette import export_cassette
-from locus.store import Store
+import tracewake
+from tracewake import DecodeParams, Message, ModelResponse, ToolCallRequest, ToolOutcome, Usage
+from tracewake.bundle import build_bundle
+from tracewake.cassette import export_cassette
+from tracewake.store import Store
 
 
 def _script(flavour: str, steps: int) -> list[dict[str, Any]]:
@@ -63,7 +63,7 @@ def _dispatch(name: str, args: dict[str, Any]) -> ToolOutcome:
 
 def _record(root: Path, name: str, flavour: str, steps: int) -> Path:
     store_path = root / f"{name}-store"
-    with locus.record(name, store=store_path) as session:
+    with tracewake.record(name, store=store_path) as session:
         model = session.model(provider="scripted", model_id="scripted-1", create_fn=_create(flavour, steps))
         tools = session.tools(_dispatch)
         messages = [
@@ -86,7 +86,7 @@ def _record(root: Path, name: str, flavour: str, steps: int) -> Path:
         cassette = export_cassette(store, run_id, root / f"{name}-cassette")
     finally:
         store.close()
-    bundle = build_bundle(cassette, root / f"{name}.locus")
+    bundle = build_bundle(cassette, root / f"{name}.tracewake")
     shutil.rmtree(store_path, ignore_errors=True)
     shutil.rmtree(cassette, ignore_errors=True)
     return bundle

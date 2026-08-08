@@ -34,7 +34,7 @@ HEARTBEAT_SECONDS = 20
 MAX_ARTIFACT_BYTES = 64 * 1024 * 1024
 HOSTED_PROFILE = "lexical-v1"
 
-log = logging.getLogger("locus.worker")
+log = logging.getLogger("tracewake.worker")
 
 
 @dataclass
@@ -50,7 +50,7 @@ class _Execution:
         return self.stages.get("download", 0.0) + self.stages.get("upload", 0.0)
 
 
-_execution: contextvars.ContextVar[_Execution | None] = contextvars.ContextVar("locus_worker_execution", default=None)
+_execution: contextvars.ContextVar[_Execution | None] = contextvars.ContextVar("tracewake_worker_execution", default=None)
 
 
 @contextmanager
@@ -111,7 +111,7 @@ class QueueNotifications:
 
     def __init__(self, queue_url: str, client: Any = None) -> None:
         if client is None:
-            import boto3  # imported lazily so local Locus never needs an AWS SDK
+            import boto3  # imported lazily so local Tracewake never needs an AWS SDK
 
             client = boto3.client("sqs")
         self._client = client
@@ -174,7 +174,7 @@ class WorkerClient:
         if body is not None and "Content-Type" not in request_headers:
             request_headers["Content-Type"] = "application/json"
         if attempt_token is not None:
-            request_headers["Locus-Attempt-Token"] = attempt_token
+            request_headers["Tracewake-Attempt-Token"] = attempt_token
         request = urllib.request.Request(
             self.base_url + path, data=body, headers=request_headers, method=method
         )
@@ -210,7 +210,7 @@ def _store_object(grant: dict[str, Any], data: bytes) -> str:
         method=grant.get("upload_method", "PUT"),
     )
     with urllib.request.urlopen(request, timeout=120) as response:
-        version = response.headers.get("x-amz-version-id") or response.headers.get("Locus-Object-Version")
+        version = response.headers.get("x-amz-version-id") or response.headers.get("Tracewake-Object-Version")
     if not version:
         raise RuntimeError("object store did not report an immutable object version")
     return version
@@ -263,8 +263,8 @@ def _validate(client: WorkerClient, claim: dict[str, Any], root: Path) -> dict[s
             )
         ],
         analysis_profile="bundle-validation-v1",
-        locus_version=version("locus"),
-        worker_build=os.environ.get("LOCUS_WORKER_BUILD", "local"),
+        tracewake_version=version("tracewake"),
+        worker_build=os.environ.get("TRACEWAKE_WORKER_BUILD", "local"),
         produced_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     )
     result = ValidationResult(
@@ -324,7 +324,7 @@ def _reference(identity: dict[str, Any]) -> ArtifactRef:
 
 
 def _result_provenance(claim: dict[str, Any], bundles: list[ValidatedBundle], profile: str) -> ResultProvenance:
-    return ResultProvenance(inputs=[_provenance(artifact,bundle) for artifact,bundle in zip(claim["input_artifacts"],bundles,strict=True)],analysis_profile=profile,locus_version=version("locus"),worker_build=os.environ.get("LOCUS_WORKER_BUILD","local"),produced_at=time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()))
+    return ResultProvenance(inputs=[_provenance(artifact,bundle) for artifact,bundle in zip(claim["input_artifacts"],bundles,strict=True)],analysis_profile=profile,tracewake_version=version("tracewake"),worker_build=os.environ.get("TRACEWAKE_WORKER_BUILD","local"),produced_at=time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()))
 
 
 def _analysis(envelope: ResultEnvelope, kind: str, companion: dict[str, Any]) -> dict[str, Any]:
@@ -422,7 +422,7 @@ def _attempt(client: WorkerClient, delivery: Delivery, recorder: Telemetry, span
         handler = _operation(claim)
         transferred = execution.transferred()
         started = time.perf_counter()
-        with tempfile.TemporaryDirectory(prefix="locus-worker-") as temporary:
+        with tempfile.TemporaryDirectory(prefix="tracewake-worker-") as temporary:
             stage="validating" if claim["operation"]=="validate" else "analyzing"
             client.json("PUT",progress_path,{"protocol_version":1,"attempt_number":attempt,"sequence":2,"stage":stage,"message":f"{stage} recorded runs"},attempt_token=attempt_token)
             output = handler(client, claim, Path(temporary))
@@ -515,18 +515,18 @@ def _resolve_identity(client: WorkerClient, attempts: int = 30) -> str:
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     credentials: dict[str, str] = {}
-    if path := os.environ.get("LOCUS_WORKER_CREDENTIALS_FILE"):
+    if path := os.environ.get("TRACEWAKE_WORKER_CREDENTIALS_FILE"):
         while not Path(path).exists():
             time.sleep(0.2)
         credentials = json.loads(Path(path).read_text(encoding="utf-8"))
     client = WorkerClient(
-        os.environ.get("LOCUS_WORKER_URL", "http://127.0.0.1:8081"),
-        os.environ.get("LOCUS_WORKER_ID", credentials.get("worker_id", "")),
-        os.environ.get("LOCUS_WORKER_TOKEN", credentials.get("worker_token", "")),
+        os.environ.get("TRACEWAKE_WORKER_URL", "http://127.0.0.1:8081"),
+        os.environ.get("TRACEWAKE_WORKER_ID", credentials.get("worker_id", "")),
+        os.environ.get("TRACEWAKE_WORKER_TOKEN", credentials.get("worker_token", "")),
     )
     if not client.worker_id:
         client.worker_id = _resolve_identity(client)
-    queue_url = os.environ.get("LOCUS_JOB_QUEUE_URL", "")
+    queue_url = os.environ.get("TRACEWAKE_JOB_QUEUE_URL", "")
     notifications: Any = QueueNotifications(queue_url) if queue_url else ControlPlaneNotifications(client)
     telemetry = Telemetry.from_environment()
     try:

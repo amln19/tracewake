@@ -84,7 +84,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 		if applied {
 			continue
 		}
-		for _, statement := range strings.Split(byVersion[version], "-- locus-statement-break") {
+		for _, statement := range strings.Split(byVersion[version], "-- tracewake-statement-break") {
 			if _, err := s.pool.Exec(ctx, statement); err != nil {
 				return fmt.Errorf("apply hosted schema migration %d: %w", version, err)
 			}

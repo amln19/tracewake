@@ -25,7 +25,7 @@ from . import bundles, scenarios, telemetry
 from .client import Client
 from .stack import Stack, wait_for
 
-NAMESPACES = {"@control_plane": "Locus/ControlPlane", "@worker": "Locus/Worker"}
+NAMESPACES = {"@control_plane": "Tracewake/ControlPlane", "@worker": "Tracewake/Worker"}
 
 
 def _versions(repository: Path) -> dict[str, str]:
@@ -33,9 +33,9 @@ def _versions(repository: Path) -> dict[str, str]:
         return subprocess.run(args, capture_output=True, text=True, check=True).stdout.strip()
 
     return {
-        "locus": json.loads(
+        "tracewake": json.loads(
             subprocess.run(
-                [sys.executable, "-c", "import json,importlib.metadata as m; print(json.dumps(m.version('locus')))"],
+                [sys.executable, "-c", "import json,importlib.metadata as m; print(json.dumps(m.version('tracewake')))"],
                 capture_output=True, text=True, check=True, cwd=repository,
             ).stdout
         ),
@@ -70,7 +70,7 @@ def main() -> int:
         arguments.recovery_steps = min(arguments.recovery_steps, 200)
 
     repository = Path(__file__).resolve().parent.parent
-    work = arguments.work or (repository / ".locus" / "evidence")
+    work = arguments.work or (repository / ".tracewake" / "evidence")
     if work.exists() and not arguments.keep:
         shutil.rmtree(work)
     stack = Stack(root=work, repository=repository)
@@ -135,7 +135,7 @@ def main() -> int:
         results["reconciler_failure"] = scenarios.reconciler_failure(stack, 20)
 
         workspace = subprocess.run(
-            [str(stack.root / "locusd"), "bootstrap"],
+            [str(stack.root / "tracewaked"), "bootstrap"],
             env=stack._environment(), capture_output=True, text=True, check=True,
         ).stdout
         other_token = dict(line.split("=", 1) for line in workspace.strip().splitlines())["token"]

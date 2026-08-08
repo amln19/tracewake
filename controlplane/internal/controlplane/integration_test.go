@@ -11,8 +11,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/amln19/locus/controlplane/internal/controlplane"
-	"github.com/amln19/locus/controlplane/internal/store"
+	"github.com/amln19/tracewake/controlplane/internal/controlplane"
+	"github.com/amln19/tracewake/controlplane/internal/store"
 )
 
 func testID(t *testing.T) string {
@@ -31,9 +31,9 @@ func digest(value string) string {
 }
 
 func TestPostgresLifecycle(t *testing.T) {
-	databaseURL := os.Getenv("LOCUS_TEST_DATABASE_URL")
+	databaseURL := os.Getenv("TRACEWAKE_TEST_DATABASE_URL")
 	if databaseURL == "" {
-		t.Skip("LOCUS_TEST_DATABASE_URL is not set")
+		t.Skip("TRACEWAKE_TEST_DATABASE_URL is not set")
 	}
 	ctx := context.Background()
 	database, err := store.Open(ctx, databaseURL)

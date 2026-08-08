@@ -17,9 +17,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amln19/locus/controlplane/internal/artifacts"
-	"github.com/amln19/locus/controlplane/internal/controlplane"
-	"github.com/amln19/locus/controlplane/internal/telemetry"
+	"github.com/amln19/tracewake/controlplane/internal/artifacts"
+	"github.com/amln19/tracewake/controlplane/internal/controlplane"
+	"github.com/amln19/tracewake/controlplane/internal/telemetry"
 )
 
 type API struct {
@@ -65,7 +65,7 @@ func (a *API) Handler() http.Handler {
 	return securityHeaders(a.metrics.Instrument("public", mux))
 }
 
-const browserCookie = "__Host-locus_session"
+const browserCookie = "__Host-tracewake_session"
 
 func (a *API) createBrowserSession(w http.ResponseWriter, r *http.Request) {
 	var body struct {
@@ -104,7 +104,7 @@ func (a *API) deleteBrowserSession(w http.ResponseWriter, r *http.Request) {
 		errorJSON(w, http.StatusUnauthorized, "unauthenticated")
 		return
 	}
-	if err := a.service.RevokeBrowserSession(r.Context(), cookie.Value, r.Header.Get("X-Locus-CSRF")); err != nil {
+	if err := a.service.RevokeBrowserSession(r.Context(), cookie.Value, r.Header.Get("X-Tracewake-CSRF")); err != nil {
 		authError(w, err)
 		return
 	}
@@ -149,7 +149,7 @@ func (a *API) browserPrincipal(w http.ResponseWriter, r *http.Request, scope str
 		errorJSON(w, http.StatusUnauthorized, "unauthenticated")
 		return controlplane.Principal{}, false
 	}
-	p, _, err := a.service.AuthenticateBrowserSession(r.Context(), cookie.Value, scope, r.Header.Get("X-Locus-CSRF"), true)
+	p, _, err := a.service.AuthenticateBrowserSession(r.Context(), cookie.Value, scope, r.Header.Get("X-Tracewake-CSRF"), true)
 	if err != nil {
 		authError(w, err)
 		return controlplane.Principal{}, false
@@ -193,7 +193,7 @@ func (a *API) putBrowserUpload(w http.ResponseWriter, r *http.Request) {
 		errorJSON(w, http.StatusConflict, "conflict")
 		return
 	}
-	if r.ContentLength != upload.Size || r.ContentLength < 0 || r.Header.Get("X-Locus-Bundle-Digest") != upload.Digest || r.Header.Get("X-Locus-Bundle-Format") != "1" {
+	if r.ContentLength != upload.Size || r.ContentLength < 0 || r.Header.Get("X-Tracewake-Bundle-Digest") != upload.Digest || r.Header.Get("X-Tracewake-Bundle-Format") != "1" {
 		errorJSON(w, http.StatusConflict, "conflict")
 		return
 	}
@@ -298,7 +298,7 @@ func (a *API) principal(w http.ResponseWriter, r *http.Request, scope string) (c
 		p, err = a.service.Authenticate(r.Context(), token, scope)
 	} else if cookie, cookieErr := r.Cookie(browserCookie); cookieErr == nil {
 		requireCSRF := r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions
-		p, _, err = a.service.AuthenticateBrowserSession(r.Context(), cookie.Value, scope, r.Header.Get("X-Locus-CSRF"), requireCSRF)
+		p, _, err = a.service.AuthenticateBrowserSession(r.Context(), cookie.Value, scope, r.Header.Get("X-Tracewake-CSRF"), requireCSRF)
 	} else {
 		errorJSON(w, http.StatusUnauthorized, "unauthenticated")
 		return controlplane.Principal{}, false

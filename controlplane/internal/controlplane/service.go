@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/amln19/locus/controlplane/internal/telemetry"
+	"github.com/amln19/tracewake/controlplane/internal/telemetry"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -51,7 +51,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, name string, scopes []str
 	if err != nil {
 		return "", "", err
 	}
-	prefix, err := randomPrefix("locus")
+	prefix, err := randomPrefix("tracewake")
 	if err != nil {
 		return "", "", err
 	}

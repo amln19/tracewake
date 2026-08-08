@@ -131,7 +131,7 @@ type runProvenance struct {
 type resultProvenance struct {
 	Inputs          []runProvenance `json:"inputs"`
 	AnalysisProfile string          `json:"analysis_profile"`
-	LocusVersion    string          `json:"locus_version"`
+	TracewakeVersion    string          `json:"tracewake_version"`
 	WorkerBuild     string          `json:"worker_build"`
 	ProducedAt      string          `json:"produced_at"`
 }
@@ -375,7 +375,7 @@ func validRunProvenance(value runProvenance) bool {
 
 func validProvenance(value resultProvenance, inputs int) bool {
 	if len(value.Inputs) != inputs || len(value.AnalysisProfile) < 1 || len(value.AnalysisProfile) > 64 ||
-		len(value.LocusVersion) < 1 || len(value.WorkerBuild) < 1 || len(value.ProducedAt) < 1 {
+		len(value.TracewakeVersion) < 1 || len(value.WorkerBuild) < 1 || len(value.ProducedAt) < 1 {
 		return false
 	}
 	for _, input := range value.Inputs {

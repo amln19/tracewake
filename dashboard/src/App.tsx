@@ -81,8 +81,8 @@ export function App() {
 function LoadingScreen() {
   return (
     <main className="centered" aria-live="polite">
-      <div className="brand-mark">L</div>
-      <p className="eyebrow">Locus control room</p>
+      <div className="brand-mark">T</div>
+      <p className="eyebrow">Tracewake control room</p>
       <h1>Reconstructing authoritative state</h1>
       <div className="loading-line" />
     </main>
@@ -113,7 +113,7 @@ function SessionExchange({ onSession }: { onSession: (session: Session) => void 
   return (
     <main className="exchange-grid">
       <section className="exchange-story">
-        <div className="brand-lockup"><span className="brand-mark">L</span><span>Locus</span></div>
+        <div className="brand-lockup"><span className="brand-mark">T</span><span>Tracewake</span></div>
         <p className="eyebrow">Recorded execution, made inspectable</p>
         <h1>Find the precise turn where trajectories part ways.</h1>
         <p className="lede">Upload immutable run bundles, follow validation and retries, and inspect results without moving lifecycle authority into the browser.</p>
@@ -163,7 +163,7 @@ function Shell({ session, route, onExpired, onSignOut }: { session: Session; rou
   return (
     <div className="app-shell">
       <header className="topbar">
-        <button className="wordmark" onClick={() => navigate("/")} aria-label="Locus overview"><span className="brand-mark">L</span><span>Locus</span></button>
+        <button className="wordmark" onClick={() => navigate("/")} aria-label="Tracewake overview"><span className="brand-mark">T</span><span>Tracewake</span></button>
         <div className="system-state"><span className="status-dot ready" />API state is authoritative</div>
         <div className="top-actions"><span className="session-time">Session until {date(session.expires_at)}</span><button className="quiet" onClick={() => void onSignOut()}>Sign out</button></div>
       </header>
@@ -341,7 +341,7 @@ function JobDetail({ jobID, onExpired }: { jobID: string; onExpired: () => void 
           {job.artifacts.map((artifact) => <ArtifactCard key={artifact.artifact_id} artifact={artifact} onReport={artifact.kind === "diff_html" ? () => setReport((value) => !value) : undefined} />)}
           {job.artifacts.length === 0 && <div className="empty-state">Artifacts appear only after an authoritative success.</div>}
         </div>
-        {report && html && <div className="report-frame"><div><strong>Sandboxed HTML report</strong><button onClick={() => setReport(false)}>Close</button></div><iframe title="Locus diff report" sandbox="" src={artifactURL(html.artifact_id, true)} /></div>}
+        {report && html && <div className="report-frame"><div><strong>Sandboxed HTML report</strong><button onClick={() => setReport(false)}>Close</button></div><iframe title="Tracewake diff report" sandbox="" src={artifactURL(html.artifact_id, true)} /></div>}
       </section>
     </>
   );

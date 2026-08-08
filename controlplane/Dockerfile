@@ -10,14 +10,14 @@ WORKDIR /src
 COPY controlplane/go.mod controlplane/go.sum ./
 RUN go mod download
 COPY controlplane/ ./
-RUN CGO_ENABLED=0 go build -o /out/locusd ./cmd/locusd
+RUN CGO_ENABLED=0 go build -o /out/tracewaked ./cmd/tracewaked
 
 FROM alpine:3.22
-RUN addgroup -S -g 10001 locus && adduser -S -u 10001 -G locus locus \
-    && mkdir -p /run/locus /var/lib/locus \
-    && chown -R locus:locus /run/locus /var/lib/locus
-USER locus
-COPY --from=build /out/locusd /usr/local/bin/locusd
-COPY --from=dashboard /src/dashboard/dist /usr/share/locus/dashboard
-ENV LOCUS_DASHBOARD_DIR=/usr/share/locus/dashboard
-ENTRYPOINT ["locusd"]
+RUN addgroup -S -g 10001 tracewake && adduser -S -u 10001 -G tracewake tracewake \
+    && mkdir -p /run/tracewake /var/lib/tracewake \
+    && chown -R tracewake:tracewake /run/tracewake /var/lib/tracewake
+USER tracewake
+COPY --from=build /out/tracewaked /usr/local/bin/tracewaked
+COPY --from=dashboard /src/dashboard/dist /usr/share/tracewake/dashboard
+ENV TRACEWAKE_DASHBOARD_DIR=/usr/share/tracewake/dashboard
+ENTRYPOINT ["tracewaked"]

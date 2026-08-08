@@ -6,8 +6,8 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from contracttest.generate_fixtures import fixture_bytes
-from locus.bundle import validate_bundle
-from locus.contracts import (
+from tracewake.bundle import validate_bundle
+from tracewake.contracts import (
     Claim,
     ClaimRequest,
     Failure,
@@ -17,7 +17,7 @@ from locus.contracts import (
     ResultEnvelope,
     UploadDeclaration,
 )
-from locus.events import sha256_hex
+from tracewake.events import sha256_hex
 
 
 ROOT = Path(__file__).parents[1] / "contracttest" / "fixtures" / "v1"

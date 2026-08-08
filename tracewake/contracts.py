@@ -74,7 +74,7 @@ class RunProvenance(ContractModel):
 class ResultProvenance(ContractModel):
     inputs: list[RunProvenance] = Field(min_length=1, max_length=2)
     analysis_profile: Annotated[str, StringConstraints(min_length=1, max_length=64)]
-    locus_version: Annotated[str, StringConstraints(min_length=1, max_length=64)]
+    tracewake_version: Annotated[str, StringConstraints(min_length=1, max_length=64)]
     worker_build: Annotated[str, StringConstraints(min_length=1, max_length=128)]
     produced_at: AwareDatetime
 
@@ -409,7 +409,7 @@ def write_schema_documents(root: Path, *, check: bool = False) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate Locus contract JSON Schemas")
+    parser = argparse.ArgumentParser(description="Generate Tracewake contract JSON Schemas")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()

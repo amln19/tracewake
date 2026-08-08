@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 # context and the reads a tool performs are attributed to that tool rather than
 # to whichever call happened to finish first.
 tool_scope: ContextVar[tuple[str | None, str | None]] = ContextVar(
-    "locus_tool_scope", default=(None, None)
+    "tracewake_tool_scope", default=(None, None)
 )
 
 

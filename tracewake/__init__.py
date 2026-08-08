@@ -47,7 +47,7 @@ from .events import (
 from .matching import ReplayReport
 from .patches import (
     HashSeedError,
-    LocusError,
+    TracewakeError,
     NetworkBlocked,
     block_network,
     patch_environment,
@@ -89,7 +89,7 @@ __all__ = [
     "HashSeedError",
     "Intervention",
     "InterventionEvent",
-    "LocusError",
+    "TracewakeError",
     "Message",
     "ModelCallEvent",
     "ModelIdentity",
@@ -132,7 +132,7 @@ _ambient: Session | None = None
 
 
 def current() -> Session | None:
-    """The session opened by the `locus` CLI for this process, if any."""
+    """The session opened by the `tracewake` CLI for this process, if any."""
     return _ambient
 
 
@@ -159,7 +159,7 @@ def _read_source(
 def _open_session(
     run_or_name: str,
     *,
-    store: str | Path = ".locus",
+    store: str | Path = ".tracewake",
     mode: RecordMode = "once",
     config: Config | None = None,
     command: list[str] | None = None,
@@ -178,7 +178,7 @@ def _open_session(
     try:
         redactor = Redactor(cfg)
         # Scrub before the header hits the store. Every other sink goes through
-        # the redactor; the command is what `locus export` puts in a cassette
+        # the redactor; the command is what `tracewake export` puts in a cassette
         # that is meant to be committed. Secrets stay gone; home paths restore
         # on replay so the recorded argv is still runnable.
         scrubbed = (
@@ -285,7 +285,7 @@ def _entered(
 ) -> Iterator[Session]:
     ambient = current()
     if ambient is not None:
-        # Under `locus record -- ...` the wrapper owns the run, so a script that
+        # Under `tracewake record -- ...` the wrapper owns the run, so a script that
         # opens its own session joins that one instead of starting a second.
         yield ambient
         return
@@ -299,7 +299,7 @@ def _entered(
 def record(
     name: str,
     *,
-    store: str | Path = ".locus",
+    store: str | Path = ".tracewake",
     mode: RecordMode = "all",
     config: Config | None = None,
     task_id: str | None = None,
@@ -313,7 +313,7 @@ def record(
 def replay(
     run_or_name: str,
     *,
-    store: str | Path = ".locus",
+    store: str | Path = ".tracewake",
     mode: RecordMode = "none",
     config: Config | None = None,
     **overrides: Any,
@@ -327,7 +327,7 @@ def plan_intervention(
     *,
     drop_tags: Iterable[str],
     from_turn: int = 0,
-    store: str | Path = ".locus",
+    store: str | Path = ".tracewake",
 ) -> Intervention:
     """Resolve a run and check the intervention would change something."""
     db = Store(store)
@@ -345,7 +345,7 @@ def intervene(
     drop_tags: Iterable[str],
     from_turn: int = 0,
     name: str = "",
-    store: str | Path = ".locus",
+    store: str | Path = ".tracewake",
     source_store: str | Path | None = None,
     config: Config | None = None,
     **overrides: Any,
@@ -381,7 +381,7 @@ def intervene(
 def session(
     name: str,
     *,
-    store: str | Path = ".locus",
+    store: str | Path = ".tracewake",
     mode: RecordMode = "once",
     config: Config | None = None,
     task_id: str | None = None,

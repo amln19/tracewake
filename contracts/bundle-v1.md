@@ -1,6 +1,6 @@
 # Deterministic bundle v1
 
-A bundle transports one already-recorded Locus run. It is not an execution
+A bundle transports one already-recorded Tracewake run. It is not an execution
 environment and does not authorize the hosted system to run agent code.
 
 ## Archive
@@ -54,7 +54,7 @@ directly, and no insignificant whitespace or BOM is allowed. It declares:
 `events.jsonl` contains one canonical event object per line with a final LF.
 Each line includes its zero-based `seq`. Sequences must be exactly
 `0..event_count-1`. Event objects must validate under the declared event schema.
-The manifest logical digest must equal the digest produced by Locus over the
+The manifest logical digest must equal the digest produced by Tracewake over the
 canonical logical event stream. Event metadata remains outside that logical
 identity, while the final bundle digest covers its transported bytes.
 
@@ -79,9 +79,9 @@ the parser rather than expressing a permitted compression ratio.
 
 ## Production and validation
 
-`locus.bundle.build_bundle` consumes only a fully validated cassette directory,
+`tracewake.bundle.build_bundle` consumes only a fully validated cassette directory,
 writes to a temporary file beside the destination, flushes it, and atomically
-replaces the destination. `locus.bundle.validate_bundle` performs no writes.
+replaces the destination. `tracewake.bundle.validate_bundle` performs no writes.
 
 Validation checks the outer byte limit before parsing; validates archive type,
 names, entry count, metadata, and exact canonical bytes; validates the manifest

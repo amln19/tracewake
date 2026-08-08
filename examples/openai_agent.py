@@ -1,21 +1,21 @@
-"""A tool-calling agent wired through locus, using the shape most
+"""A tool-calling agent wired through Tracewake, using the shape most
 OpenAI-compatible clients speak: chat messages, an assistant turn carrying
 `tool_calls`, and tool results threaded back by `tool_call_id`.
 
 `bench/agent.py` is not a portability proof — it parses actions out of a
 fenced JSON block tuned for small local models. This example uses the
-structured shape `locus.ToolCallRequest` already models directly, so wiring
+structured shape `tracewake.ToolCallRequest` already models directly, so wiring
 in a real client is a one-line change: replace `fake_create` below with
 `openai.OpenAI().chat.completions.create` (adapted to return a
-`locus.ModelResponse`) and pass it to `session.model(create_fn=...)`.
+`tracewake.ModelResponse`) and pass it to `session.model(create_fn=...)`.
 
 Run standalone:
 
     python examples/openai_agent.py --scenario good
 
-or wrapped, so `locus` owns the recording:
+or wrapped, so `tracewake` owns the recording:
 
-    locus record -- python examples/openai_agent.py --scenario good
+    tracewake record -- python examples/openai_agent.py --scenario good
 
 See `examples/demo.py` for the end-to-end path: record both scenarios, replay
 one, and diff them.
@@ -26,13 +26,13 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
-import locus
-from locus import DecodeParams, Message, ModelResponse, ToolCallRequest, ToolOutcome, Usage
+import tracewake
+from tracewake import DecodeParams, Message, ModelResponse, ToolCallRequest, ToolOutcome, Usage
 
 CITY_WEATHER = {"lisbon": "68F and sunny"}
 
-# `locus diff` groups a step by tool name plus a "target" pulled from a
-# `query` or `path` argument (see `target_of` in `locus/align.py`) — the same
+# `tracewake diff` groups a step by tool name plus a "target" pulled from a
+# `query` or `path` argument (see `target_of` in `tracewake/align.py`) — the same
 # convention a file-editing tool would use for a path. `get_weather` and
 # `write_note` reuse it so a query that resolves to nothing, or a note filed
 # under a different path, actually registers as a divergence rather than
@@ -132,7 +132,7 @@ def dispatch(name: str, args: dict[str, Any]) -> ToolOutcome:
             )
 
 
-def run(session: locus.Session, scenario: str) -> None:
+def run(session: tracewake.Session, scenario: str) -> None:
     model = session.model(provider="fake", model_id="fake-1", create_fn=fake_create(scenario))
     tools = session.tools(dispatch)
     messages = [
@@ -165,7 +165,7 @@ def main() -> None:
     parser.add_argument("--name", default="")
     args = parser.parse_args()
 
-    with locus.record(args.name or f"openai-agent-{args.scenario}") as rec:
+    with tracewake.record(args.name or f"openai-agent-{args.scenario}") as rec:
         run(rec, args.scenario)
         rec.outcome(status="ok")
 

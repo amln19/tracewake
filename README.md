@@ -1,15 +1,19 @@
-# locus
+# Tracewake
 
-Record a coding-agent run once, replay it offline, and align a good run against
-a bad one to find the step where their trajectories stopped agreeing.
+**Record. Replay. Find the divergence.**
+
+Deterministic execution recording and replay, and differential debugging, for
+AI agents. Record a coding-agent run once, replay it offline, and align a good
+run against a bad one to find the step where their trajectories stopped
+agreeing.
 
 The installed package can record and replay a program without an API key:
 
 ```sh
 work="$(mktemp -d)"
-locus record --store "$work/store" --name smoke -- python -c \
-  'import locus; s = locus.current(); print(s.clock.time()); s.outcome(status="ok")'
-locus replay smoke --store "$work/store"
+tracewake record --store "$work/store" --name smoke -- python -c \
+  'import tracewake; s = tracewake.current(); print(s.clock.time()); s.outcome(status="ok")'
+tracewake replay smoke --store "$work/store"
 ```
 
 Both commands print the same recorded clock value. Replay-only sessions install
@@ -64,9 +68,9 @@ parameter to tune. Scout notes and packets:
 ## Library use
 
 ```python
-import locus
+import tracewake
 
-with locus.record("fix-off-by-one") as rec:
+with tracewake.record("fix-off-by-one") as rec:
     model = rec.model(
         provider="acme", model_id="acme-1",
         create_fn=client.create, stream_fn=client.stream,
@@ -75,7 +79,7 @@ with locus.record("fix-off-by-one") as rec:
     rec.outcome(status="ok")
     run_id = rec.run_id
 
-with locus.replay(run_id) as rep:
+with tracewake.replay(run_id) as rep:
     model = rep.model(provider="acme", model_id="acme-1")
     agent.run(task, model, rep.tools(), rep.clock, rep.fs)
 ```
@@ -85,12 +89,12 @@ and clock values from the log with the network off. Or wrap a program you do
 not want to edit:
 
 ```
-locus record -- python my_agent.py
-locus replay <run-id>
+tracewake record -- python my_agent.py
+tracewake replay <run-id>
 ```
 
-For CI, the pytest fixture `locus_cassette` defaults to replay-only (`none`).
-Replay needs `PYTHONHASHSEED=0` (the CLI sets it; elsewhere locus tells you).
+For CI, the pytest fixture `tracewake_cassette` defaults to replay-only (`none`).
+Replay needs `PYTHONHASHSEED=0` (the CLI sets it; elsewhere Tracewake tells you).
 
 A runnable version of this, wired through the tool-calling shape most
 OpenAI-compatible clients speak rather than this repo's own agent, is in
@@ -111,7 +115,7 @@ embeddings lexical@unpinned
 
 ## How it works
 
-- **Records** nondeterministic inputs consumed through Locus's supported
+- **Records** nondeterministic inputs consumed through Tracewake's supported
   adapters: model calls (including stream chunk boundaries), tool calls,
   `Session.fs` operations, and supported clock, random, UUID, and environment
   reads. This is not complete syscall, native-code, subprocess, or universal
@@ -131,26 +135,26 @@ embeddings lexical@unpinned
 - **Redaction** is default-on and targets configured secret values, known secret
   headers and environment names, and home paths. It cannot prove arbitrary
   source, binary content, private repository data, or unknown secrets safe to
-  distribute. `locus record --no-redact` turns it off; the cassette records that
+  distribute. `tracewake record --no-redact` turns it off; the cassette records that
   fact.
-- **Cassettes** export to JSONL + blobs (`locus export` / `import`). The header
+- **Cassettes** export to JSONL + blobs (`tracewake export` / `import`). The header
   carries model id and date so a stale cassette can warn rather than pass quietly.
   Its digest identifies canonical logical event content. Deterministic bundle
   v1 packages validated cassette content as uncompressed USTAR; its separate
   digest identifies every transport byte. Bundle production and pure validation
-  are available through `locus.bundle`.
+  are available through `tracewake.bundle`.
 
 ## Commands
 
 ```
-locus diff <good> <bad>              # align and print the divergence step
-locus view <good> <bad> -o out.html  # self-contained HTML, side-by-side + provenance
-locus verify <cassette-directory>    # validate without changing the local store
-locus export <run> -o cassette       # export JSONL and content-addressed blobs
-locus import cassette                # validate completely, then import atomically
-locus pprof <run> --view tokens      # token spend as standard pprof (needs provenance tags)
-locus intervene <run> --drop-tag file_read --from-step 4 -- <agent>
-locus otel <run> -o trace.json       # OTLP/JSON GenAI spans
+tracewake diff <good> <bad>              # align and print the divergence step
+tracewake view <good> <bad> -o out.html  # self-contained HTML, side-by-side + provenance
+tracewake verify <cassette-directory>    # validate without changing the local store
+tracewake export <run> -o cassette       # export JSONL and content-addressed blobs
+tracewake import cassette                # validate completely, then import atomically
+tracewake pprof <run> --view tokens      # token spend as standard pprof (needs provenance tags)
+tracewake intervene <run> --drop-tag file_read --from-step 4 -- <agent>
+tracewake otel <run> -o trace.json       # OTLP/JSON GenAI spans
 ```
 
 `diff` / `view` use a pinned local embedder (`uv sync --extra embeddings`); pass
@@ -184,19 +188,19 @@ alternative:
 
 ```sh
 docker compose up --build
-docker compose exec controlplane cat /run/locus/credentials.json
+docker compose exec controlplane cat /run/tracewake/credentials.json
 ```
 
 The first command starts PostgreSQL, one Go control-plane process, and the
 Python worker, with the dashboard served by the control plane. The credentials
 file is created once in a private Docker volume; use its `token` in the
-dashboard or copy it into `LOCUS_TOKEN`, then upload a deterministic bundle:
+dashboard or copy it into `TRACEWAKE_TOKEN`, then upload a deterministic bundle:
 
 ```sh
-export LOCUS_REMOTE_URL=http://127.0.0.1:8080
-export LOCUS_TOKEN=<token-from-credentials.json>
-locus remote upload run.bundle.tar
-locus remote runs
+export TRACEWAKE_REMOTE_URL=http://127.0.0.1:8080
+export TRACEWAKE_TOKEN=<token-from-credentials.json>
+tracewake remote upload run.bundle.tar
+tracewake remote runs
 ```
 
 A `ready` run can then be analyzed. `diff` compares two runs with `lexical-v1`
@@ -205,11 +209,11 @@ and produces structured JSON plus a self-contained HTML companion; `otlp` and
 profile the local commands export:
 
 ```sh
-locus remote analyze pprof <run-id> --idempotency-key spend-1
-locus remote job <job-id>
-locus remote artifacts <job-id>
-locus remote download <artifact-id> -o tokens.pb.gz
-locus remote delete <run-id>
+tracewake remote analyze pprof <run-id> --idempotency-key spend-1
+tracewake remote job <job-id>
+tracewake remote artifacts <job-id>
+tracewake remote download <artifact-id> -o tokens.pb.gz
+tracewake remote delete <run-id>
 ```
 
 Repeating a request with the same idempotency key returns the original job
@@ -218,7 +222,7 @@ attempt that produced it, and downloaded through a short-lived URL; `download`
 refuses bytes that disagree with the digest and size the control plane
 recorded. The authoritative result of each job is a canonical result envelope
 naming its inputs' logical and bundle digests, object versions, schema
-versions, analysis profile, Locus version, worker build, and the exact
+versions, analysis profile, Tracewake version, worker build, and the exact
 companion artifact it produced.
 
 Hosted analyses read the bundle, not a live session, so a run's name, task, and
@@ -226,7 +230,7 @@ session start are not part of them. Only `lexical-v1` is available; a request
 naming any other profile is rejected rather than silently substituted.
 
 Build a bundle from an exported cassette with
-`locus.bundle.build_bundle(cassette, destination)`. Remote commands are
+`tracewake.bundle.build_bundle(cassette, destination)`. Remote commands are
 additive: recording, replay, verification, import, export, and comparison keep
 using the local SQLite store and do not require the service. Remove the local
 stack and all its volumes with `docker compose down --volumes` when its retained
@@ -251,7 +255,7 @@ are documented in `deploy/aws/README.md`.
 
 The deployed system runs the same code as the local stack. Object storage
 replaces the local filesystem store and the queue replaces direct outbox
-polling; the lifecycle, semantics, and result schemas are unchanged. Locus
+polling; the lifecycle, semantics, and result schemas are unchanged. Tracewake
 itself remains local-first: none of this is required to record, replay,
 verify, import, export, or compare runs.
 
@@ -263,7 +267,7 @@ deployment gets alarmable metrics from container output alone. A job
 notification carries its W3C trace context, so one trace covers the request
 that created the job, the outbox publication, the claim, the worker's download,
 analysis and upload, and the artifact commit — across Go and Python. This
-telemetry describes the services and is unrelated to the OTLP artifacts Locus
+telemetry describes the services and is unrelated to the OTLP artifacts Tracewake
 produces for a run.
 
 Metric dimensions come from fixed sets and an unrecognised value collapses to
@@ -290,7 +294,7 @@ Failure semantics, restated as what the system does:
 * Losing the database stops repair rather than guessing: the reconciler reports
   the failure and resumes when the database returns.
 * Retention deadlines are enforced by the control plane, and
-  `locus remote delete <run-id>` expires a run and everything derived from it
+  `tracewake remote delete <run-id>` expires a run and everything derived from it
   immediately. `deploy/aws/README.md` documents retention, deletion, backup,
   and recovery.
 
@@ -378,22 +382,22 @@ One run of the harness performs the whole correctness story in order, and
 | Repeat the idempotent request | `idempotent_replay` |
 | Inspect result, HTML companion, artifact identity, provenance, and audit | `result_provenance` |
 | Show a second workspace cannot read anything | `tenant_isolation` |
-| Run local Locus with no hosted service | `local_independence` |
+| Run local Tracewake with no hosted service | `local_independence` |
 
 The same story is reachable by hand through the local control plane above:
-`locus remote upload`, `runs`, `analyze`, `job`, `artifacts`, `download`, and
+`tracewake remote upload`, `runs`, `analyze`, `job`, `artifacts`, `download`, and
 `delete`, with the worker stopped and started to interrupt an attempt.
 
 ## Persistent formats
 
 Event schema 3, SQLite store schema 3, cassette directory format 1, and bundle
 format 1 are independent contracts even when values coincide. Unsupported
-versions are rejected with instructions to use a matching Locus version; no old
+versions are rejected with instructions to use a matching Tracewake version; no old
 version is silently reinterpreted. `SCHEMA_VERSION` remains a compatibility
 alias for `EVENT_SCHEMA_VERSION`, and `CASSETTE_FORMAT` remains an alias for
 `CASSETTE_FORMAT_VERSION`.
 
-`locus verify` checks header shape and versions, event count and dense sequence,
+`tracewake verify` checks header shape and versions, event count and dense sequence,
 event schemas, the logical digest, canonical paths, and every referenced blob's
 presence, digest, and size. It rejects symlinks, duplicate or unexpected blob
 paths, and corruption without writing to a store. Export performs the same blob
@@ -423,7 +427,7 @@ python -m bench external score       # after filling corpus/labels/external/labe
 ```
 uv sync
 PYTHONHASHSEED=0 uv run --python 3.13 pytest
-python -m locus.contracts --output contracts/schemas/v1 --check
+python -m tracewake.contracts --output contracts/schemas/v1 --check
 python -m contracttest.generate_fixtures --output contracttest/fixtures/v1 --check
 (cd contracttest/go && go test ./...)
 (cd controlplane && go test ./...)
@@ -431,7 +435,7 @@ uv run python -m evidence --output evidence/results
 uv build
 ```
 
-`locus diff` / `view` need `uv sync --extra embeddings` unless you pass
+`tracewake diff` / `view` need `uv sync --extra embeddings` unless you pass
 `--lexical`. Corpus tests skip in a fresh clone because the runs are not
 committed. `tests/test_offline.py` is the load-bearing gate: a real socket is
 recorded through the CLI, then replayed with connection count at zero.

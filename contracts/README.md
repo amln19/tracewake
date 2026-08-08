@@ -1,4 +1,4 @@
-# Locus contract set
+# Tracewake contract set
 
 These files define the boundary between the local Python semantics and a hosted
 control plane. Python remains authoritative for bundles, event interpretation,
@@ -20,8 +20,8 @@ Version 1 contains:
 Regenerate or check schemas without an additional dependency:
 
 ```bash
-python -m locus.contracts --output contracts/schemas/v1
-python -m locus.contracts --output contracts/schemas/v1 --check
+python -m tracewake.contracts --output contracts/schemas/v1
+python -m tracewake.contracts --output contracts/schemas/v1 --check
 ```
 
 Contract fixtures live under `contracttest/fixtures/v1`. Python validates the

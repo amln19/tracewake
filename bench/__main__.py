@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from locus import LocusError
+from tracewake import TracewakeError
 
 from . import aligneval, backend, counterfactual, fidelity, label, repos, runner, tasks
 
@@ -252,6 +252,6 @@ if __name__ == "__main__":
     # still raises.
     try:
         sys.exit(main())
-    except (FileNotFoundError, ImportError, LocusError) as exc:
+    except (FileNotFoundError, ImportError, TracewakeError) as exc:
         print(f"bench: {exc}", file=sys.stderr)
         sys.exit(1)

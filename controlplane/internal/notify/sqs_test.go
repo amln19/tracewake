@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/amln19/locus/controlplane/internal/awstest"
-	"github.com/amln19/locus/controlplane/internal/notify"
+	"github.com/amln19/tracewake/controlplane/internal/awstest"
+	"github.com/amln19/tracewake/controlplane/internal/notify"
 )
 
 func TestPublishDeliversPayloadAndReportsFailure(t *testing.T) {

@@ -6,9 +6,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/amln19/locus/controlplane/internal/awstest"
-	"github.com/amln19/locus/controlplane/internal/controlplane"
-	"github.com/amln19/locus/controlplane/internal/notify"
+	"github.com/amln19/tracewake/controlplane/internal/awstest"
+	"github.com/amln19/tracewake/controlplane/internal/controlplane"
+	"github.com/amln19/tracewake/controlplane/internal/notify"
 )
 
 type failingNotifier struct{ published int }

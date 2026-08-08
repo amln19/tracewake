@@ -15,12 +15,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/amln19/locus/controlplane/internal/artifacts"
-	"github.com/amln19/locus/controlplane/internal/awstest"
-	"github.com/amln19/locus/controlplane/internal/controlplane"
-	"github.com/amln19/locus/controlplane/internal/httpapi"
-	"github.com/amln19/locus/controlplane/internal/store"
-	"github.com/amln19/locus/controlplane/internal/workerapi"
+	"github.com/amln19/tracewake/controlplane/internal/artifacts"
+	"github.com/amln19/tracewake/controlplane/internal/awstest"
+	"github.com/amln19/tracewake/controlplane/internal/controlplane"
+	"github.com/amln19/tracewake/controlplane/internal/httpapi"
+	"github.com/amln19/tracewake/controlplane/internal/store"
+	"github.com/amln19/tracewake/controlplane/internal/workerapi"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -50,9 +50,9 @@ func hexDigest(data []byte) string {
 // or object storage, so one lifecycle test proves both deployments.
 func newDeployment(t *testing.T, hosted bool) *deployment {
 	t.Helper()
-	databaseURL := os.Getenv("LOCUS_TEST_DATABASE_URL")
+	databaseURL := os.Getenv("TRACEWAKE_TEST_DATABASE_URL")
 	if databaseURL == "" {
-		t.Skip("LOCUS_TEST_DATABASE_URL is not set")
+		t.Skip("TRACEWAKE_TEST_DATABASE_URL is not set")
 	}
 	ctx := context.Background()
 	database, err := store.Open(ctx, databaseURL)
@@ -74,7 +74,7 @@ func newDeployment(t *testing.T, hosted bool) *deployment {
 	}
 	var artifactStore artifacts.Store = local
 	if hosted {
-		fake := awstest.NewS3("locus-artifacts")
+		fake := awstest.NewS3("tracewake-artifacts")
 		t.Cleanup(fake.Close)
 		artifactStore, err = artifacts.NewS3(awstest.Config(fake.Server.URL), fake.Bucket, func(options *s3.Options) {
 			options.UsePathStyle = true
@@ -202,7 +202,7 @@ func browserCall(t *testing.T, method, url string, credentials browserCredential
 		request.Header.Set("Content-Type", "application/json")
 	}
 	if csrf != "" {
-		request.Header.Set("X-Locus-CSRF", csrf)
+		request.Header.Set("X-Tracewake-CSRF", csrf)
 	}
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
@@ -218,7 +218,7 @@ func browserCall(t *testing.T, method, url string, credentials browserCredential
 func TestBrowserSessionIsShortLivedScopedAndCSRFProtected(t *testing.T) {
 	deployed := newDeployment(t, false)
 	credentials := deployed.browserSession(t, deployed.token)
-	if credentials.cookie.Name != "__Host-locus_session" || !credentials.cookie.HttpOnly || !credentials.cookie.Secure || credentials.cookie.SameSite != http.SameSiteStrictMode || credentials.cookie.Path != "/" {
+	if credentials.cookie.Name != "__Host-tracewake_session" || !credentials.cookie.HttpOnly || !credentials.cookie.Secure || credentials.cookie.SameSite != http.SameSiteStrictMode || credentials.cookie.Path != "/" {
 		t.Fatalf("unsafe browser cookie: %+v", credentials.cookie)
 	}
 	if credentials.cookie.MaxAge < 14*60 || credentials.cookie.MaxAge > 15*60 {
@@ -253,9 +253,9 @@ func TestBrowserSessionIsShortLivedScopedAndCSRFProtected(t *testing.T) {
 	}
 	request.AddCookie(credentials.cookie)
 	request.Header.Set("Content-Type", "application/x-tar")
-	request.Header.Set("X-Locus-CSRF", credentials.csrf)
-	request.Header.Set("X-Locus-Bundle-Digest", hexDigest(bundle))
-	request.Header.Set("X-Locus-Bundle-Format", "1")
+	request.Header.Set("X-Tracewake-CSRF", credentials.csrf)
+	request.Header.Set("X-Tracewake-Bundle-Digest", hexDigest(bundle))
+	request.Header.Set("X-Tracewake-Bundle-Format", "1")
 	response, err = http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatal(err)
@@ -275,7 +275,7 @@ func TestBrowserSessionIsShortLivedScopedAndCSRFProtected(t *testing.T) {
 	}
 	bearerRequest.Header.Set("Authorization", "Bearer "+deployed.token)
 	bearerRequest.Header.Set("Content-Type", "application/json")
-	bearerRequest.Header.Set("X-Locus-CSRF", credentials.csrf)
+	bearerRequest.Header.Set("X-Tracewake-CSRF", credentials.csrf)
 	response, err = http.DefaultClient.Do(bearerRequest)
 	if err != nil {
 		t.Fatal(err)
@@ -368,7 +368,7 @@ func objectVersion(t *testing.T, response *http.Response) string {
 	t.Helper()
 	version := response.Header.Get("x-amz-version-id")
 	if version == "" {
-		version = response.Header.Get("Locus-Object-Version")
+		version = response.Header.Get("Tracewake-Object-Version")
 	}
 	if version == "" {
 		t.Fatal("object store reported no immutable version")
@@ -423,7 +423,7 @@ func TestSingleRunAnalysisCommitsItsResultAndCompanion(t *testing.T) {
 	if status != http.StatusCreated {
 		t.Fatalf("claim status=%d body=%v", status, claim)
 	}
-	attemptToken := map[string]string{"Locus-Attempt-Token": claim["attempt_token"].(string)}
+	attemptToken := map[string]string{"Tracewake-Attempt-Token": claim["attempt_token"].(string)}
 
 	oversized, _ := deployed.call(t, "POST", deployed.private.URL+"/internal/v1/jobs/"+jobID+"/attempts/1/artifacts", deployed.workerToken,
 		map[string]any{"protocol_version": 1, "attempt_number": 1, "kind": "otlp_json", "media_type": "application/json", "digest": hexDigest([]byte("large")), "size": artifacts.MaxResultSize + 1}, attemptToken)
@@ -534,7 +534,7 @@ func TestHostedRoundTripCommitsExactArtifactIdentity(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			deployed := newDeployment(t, hosted)
 			ctx := context.Background()
-			bundle := []byte("locus deterministic bundle bytes")
+			bundle := []byte("tracewake deterministic bundle bytes")
 
 			status, grant := deployed.call(t, "POST", deployed.public.URL+"/v1/runs/uploads", deployed.token,
 				map[string]any{"bundle_format_version": 1, "bundle_digest": hexDigest(bundle), "bundle_size": len(bundle)}, nil)
@@ -571,7 +571,7 @@ func TestHostedRoundTripCommitsExactArtifactIdentity(t *testing.T) {
 				t.Fatalf("claim status=%d body=%v", status, claim)
 			}
 			jobID := claim["job_id"].(string)
-			attemptToken := map[string]string{"Locus-Attempt-Token": claim["attempt_token"].(string)}
+			attemptToken := map[string]string{"Tracewake-Attempt-Token": claim["attempt_token"].(string)}
 			inputs := claim["input_artifacts"].([]any)
 			input := inputs[0].(map[string]any)
 

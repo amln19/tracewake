@@ -51,7 +51,7 @@ func hmacDigest(key []byte, value string) []byte {
 
 func splitToken(token string) (string, error) {
 	prefix, secret, ok := strings.Cut(token, ".")
-	if !ok || len(prefix) == 0 || len(prefix) > 24 || len(secret) < 43 {
+	if !ok || len(prefix) == 0 || len(prefix) > 26 || len(secret) < 43 {
 		return "", ErrUnauthenticated
 	}
 	return prefix, nil

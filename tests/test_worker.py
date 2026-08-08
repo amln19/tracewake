@@ -7,8 +7,8 @@ from typing import Any
 
 import pytest
 
-from locus import worker
-from locus.worker import LeaseLost, WorkerClient, _BundleBlobs, _validate, run_once
+from tracewake import worker
+from tracewake.worker import LeaseLost, WorkerClient, _BundleBlobs, _validate, run_once
 
 BUNDLE = Path("contracttest/fixtures/v1/accepted/bundle-v1.tar")
 
@@ -230,7 +230,7 @@ class Validating(FakeClient):
 def run_traced(bundle: bytes, traceparent: str | None) -> tuple[Validating, list[dict[str, Any]]]:
     import io
 
-    from locus.telemetry import Telemetry
+    from tracewake.telemetry import Telemetry
 
     notification: dict[str, Any] = {"protocol_version": 1, "job_id": "j", "job_version": 1, "operation": "validate"}
     if traceparent is not None:

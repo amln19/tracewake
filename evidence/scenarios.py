@@ -12,7 +12,7 @@ from pathlib import Path
 from collections.abc import Iterator
 from typing import Any
 
-from locus.worker import WorkerClient
+from tracewake.worker import WorkerClient
 
 from .client import ApiError, Client, put_object
 from .stack import Stack, wait_for
@@ -340,7 +340,7 @@ def reconciler_failure(stack: Stack, seconds: float) -> dict[str, Any]:
 def tenant_isolation(stack: Stack, client: Client, other_token: str, run_id: str, job_id: str) -> dict[str, Any]:
     """A second workspace must not observe the first workspace's records."""
     other = Client(stack.public_url, other_token)
-    unknown = Client(stack.public_url, "locus_0000000000000000.notatoken")
+    unknown = Client(stack.public_url, "tracewake_0000000000000000.notatoken")
     observations = {
         "runs_visible": len(other.request("GET", "/v1/runs")["runs"]),
         "audit_visible": len(other.audit()),
@@ -361,7 +361,7 @@ def tenant_isolation(stack: Stack, client: Client, other_token: str, run_id: str
 
 def backup_and_restore(stack: Stack, client: Client, run_id: str, job_id: str) -> dict[str, Any]:
     """Prove authoritative state survives a dump and reload."""
-    dump = stack.dump(stack.root / "locus.dump")
+    dump = stack.dump(stack.root / "tracewake.dump")
     before = {
         "runs": int(stack.psql("SELECT count(*) FROM runs")),
         "jobs": int(stack.psql("SELECT count(*) FROM jobs")),
@@ -389,37 +389,37 @@ def backup_and_restore(stack: Stack, client: Client, run_id: str, job_id: str) -
 def migration(stack: Stack) -> dict[str, Any]:
     """Migrate an empty database, then confirm a second pass changes nothing."""
     subprocess.run(
-        ["createdb", "-h", str(stack.postgres_socket), "-p", str(stack.postgres_port), "-U", "locus", "locus_migration"],
+        ["createdb", "-h", str(stack.postgres_socket), "-p", str(stack.postgres_port), "-U", "tracewake", "tracewake_migration"],
         capture_output=True,
     )
     environment = stack._environment()
-    environment["LOCUS_DATABASE_URL"] = stack.database_url.replace("/locus?", "/locus_migration?")
-    environment["LOCUS_LISTEN_ADDR"] = "127.0.0.1:8098"
-    environment["LOCUS_WORKER_LISTEN_ADDR"] = "127.0.0.1:8099"
-    environment["LOCUS_BOOTSTRAP_FILE"] = str(stack.root / "migration-credentials.json")
+    environment["TRACEWAKE_DATABASE_URL"] = stack.database_url.replace("/tracewake?", "/tracewake_migration?")
+    environment["TRACEWAKE_LISTEN_ADDR"] = "127.0.0.1:8098"
+    environment["TRACEWAKE_WORKER_LISTEN_ADDR"] = "127.0.0.1:8099"
+    environment["TRACEWAKE_BOOTSTRAP_FILE"] = str(stack.root / "migration-credentials.json")
     versions = []
     for _ in range(2):
         process = subprocess.Popen(
-            [str(stack.root / "locusd")], env=environment,
+            [str(stack.root / "tracewaked")], env=environment,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
         try:
             wait_for(
                 lambda: stack.psql(
-                    "SELECT count(*) FROM schema_migrations", database="locus_migration", allow_failure=True
+                    "SELECT count(*) FROM schema_migrations", database="tracewake_migration", allow_failure=True
                 ).strip() not in ("", "0"),
                 60,
                 "the schema ledger",
             )
             versions.append(
-                [int(line) for line in stack.psql("SELECT version FROM schema_migrations ORDER BY version", database="locus_migration").split()]
+                [int(line) for line in stack.psql("SELECT version FROM schema_migrations ORDER BY version", database="tracewake_migration").split()]
             )
         finally:
             process.terminate()
             process.wait(timeout=15)
     applied = stack.psql(
         "SELECT count(*) FROM schema_migrations WHERE applied_at > transaction_timestamp() - interval '1 hour'",
-        database="locus_migration",
+        database="tracewake_migration",
     )
     return {
         "applied_versions": versions[0],
@@ -430,16 +430,16 @@ def migration(stack: Stack) -> dict[str, Any]:
 
 
 def local_independence(repository: Path, root: Path) -> dict[str, Any]:
-    """Local Locus must work with no hosted service reachable at all."""
+    """Local Tracewake must work with no hosted service reachable at all."""
     store = root / "independent-store"
     record = subprocess.run(
-        ["uv", "run", "--project", str(repository), "locus", "record", "--store", str(store), "--name", "offline",
+        ["uv", "run", "--project", str(repository), "tracewake", "record", "--store", str(store), "--name", "offline",
          "--", "python", "-c",
-         "import locus; s = locus.current(); print(s.clock.time()); s.outcome(status='ok')"],
+         "import tracewake; s = tracewake.current(); print(s.clock.time()); s.outcome(status='ok')"],
         capture_output=True, text=True, check=True,
     )
     replay = subprocess.run(
-        ["uv", "run", "--project", str(repository), "locus", "replay", "offline", "--store", str(store)],
+        ["uv", "run", "--project", str(repository), "tracewake", "replay", "offline", "--store", str(store)],
         capture_output=True, text=True, check=True,
     )
     return {
@@ -451,8 +451,8 @@ def local_independence(repository: Path, root: Path) -> dict[str, Any]:
 
 def hosted_matches_local(client: Client, job: dict[str, Any], bundle: bytes, root: Path) -> dict[str, Any]:
     """The hosted result has to agree with running the same analysis locally."""
-    from locus.bundle import bundle_header, validate_bundle
-    from locus.otel import encode_spans
+    from tracewake.bundle import bundle_header, validate_bundle
+    from tracewake.otel import encode_spans
 
     path = root / "agreement.tar"
     path.write_bytes(bundle)
@@ -488,7 +488,7 @@ def result_provenance(client: Client, job_id: str) -> dict[str, Any]:
         ),
         "html_is_self_contained": b"<html" in companion.lower() and b"http://" not in companion,
         "analysis_profile": provenance["analysis_profile"],
-        "locus_version": provenance["locus_version"],
+        "tracewake_version": provenance["tracewake_version"],
         "worker_build": provenance["worker_build"],
         "input_digests": [
             {

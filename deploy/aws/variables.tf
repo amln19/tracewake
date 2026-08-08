@@ -6,7 +6,7 @@ variable "region" {
 variable "name" {
   description = "Name prefix for every resource in the environment."
   type        = string
-  default     = "locus"
+  default     = "tracewake"
 }
 
 variable "environment" {

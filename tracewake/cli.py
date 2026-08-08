@@ -19,7 +19,7 @@ from .cassette import _validate_cassette, export_cassette, import_cassette, read
 from .config import RECORD_MODES, Config, RecordMode
 from .events import RunHeader, StoredEvent
 from .matching import ReplayReport
-from .patches import LocusError
+from .patches import TracewakeError
 from .redaction import Redactor
 from .remote import app as remote_app
 from .report import PAYLOAD_BUDGET, write_report
@@ -36,8 +36,8 @@ app.add_typer(remote_app, name="remote")
 BOOTSTRAP = """\
 import os
 
-if os.environ.get("LOCUS_BOOTSTRAP") == "1":
-    from locus.cli import bootstrap_from_env
+if os.environ.get("TRACEWAKE_BOOTSTRAP") == "1":
+    from tracewake.cli import bootstrap_from_env
 
     bootstrap_from_env()
 """
@@ -52,34 +52,34 @@ def bootstrap_from_env() -> None:
     program imports anything. A script that opens its own session joins this one
     rather than starting a second.
     """
-    import locus
+    import tracewake
 
-    spec = os.environ.get("LOCUS_INTERVENTION")
+    spec = os.environ.get("TRACEWAKE_INTERVENTION")
     intervention = None
     if spec:
         fields = json.loads(spec)
-        intervention = locus.Intervention(
+        intervention = tracewake.Intervention(
             source_run_id=fields["source_run_id"],
             drop_tags=frozenset(fields["drop_tags"]),
             from_turn=fields["from_turn"],
         )
     stack = ExitStack()
     session = stack.enter_context(
-        locus._open_session(
-            os.environ["LOCUS_TARGET"],
-            store=os.environ["LOCUS_STORE"],
-            mode=os.environ["LOCUS_MODE"],  # type: ignore[arg-type]
-            command=json.loads(os.environ["LOCUS_COMMAND"]),
-            redact=os.environ["LOCUS_REDACT"] == "1",
+        tracewake._open_session(
+            os.environ["TRACEWAKE_TARGET"],
+            store=os.environ["TRACEWAKE_STORE"],
+            mode=os.environ["TRACEWAKE_MODE"],  # type: ignore[arg-type]
+            command=json.loads(os.environ["TRACEWAKE_COMMAND"]),
+            redact=os.environ["TRACEWAKE_REDACT"] == "1",
             intervention=intervention,
-            source_store=os.environ.get("LOCUS_SOURCE_STORE"),
+            source_store=os.environ.get("TRACEWAKE_SOURCE_STORE"),
         )
     )
-    locus._adopt(session)
-    Path(os.environ["LOCUS_RUN_ID_FILE"]).write_text(session.run_id, encoding="utf-8")
+    tracewake._adopt(session)
+    Path(os.environ["TRACEWAKE_RUN_ID_FILE"]).write_text(session.run_id, encoding="utf-8")
     # Read now, not at exit: the recorded program owns os.environ in between and
     # is free to clear it.
-    report_path = Path(os.environ["LOCUS_REPORT_FILE"])
+    report_path = Path(os.environ["TRACEWAKE_REPORT_FILE"])
 
     def finish() -> None:
         # The counts only settle once the session closes, and the parent cannot
@@ -112,7 +112,7 @@ def _run_child(
     intervention: Intervention | None = None,
     source_store: Path | None = None,
 ) -> tuple[int, str, ReplayReport | None]:
-    with tempfile.TemporaryDirectory(prefix="locus-bootstrap-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="tracewake-bootstrap-") as tmp:
         Path(tmp, "sitecustomize.py").write_text(BOOTSTRAP, encoding="utf-8")
         id_file = Path(tmp, "run-id")
         report_file = Path(tmp, "replay-report")
@@ -122,17 +122,17 @@ def _run_child(
         # randomization at startup and the child has not started yet.
         env["PYTHONHASHSEED"] = "0"
         env.update(
-            LOCUS_BOOTSTRAP="1",
-            LOCUS_TARGET=target,
-            LOCUS_STORE=str(store),
-            LOCUS_MODE=mode,
-            LOCUS_COMMAND=json.dumps(command),
-            LOCUS_RUN_ID_FILE=str(id_file),
-            LOCUS_REPORT_FILE=str(report_file),
-            LOCUS_REDACT="1" if redact else "0",
+            TRACEWAKE_BOOTSTRAP="1",
+            TRACEWAKE_TARGET=target,
+            TRACEWAKE_STORE=str(store),
+            TRACEWAKE_MODE=mode,
+            TRACEWAKE_COMMAND=json.dumps(command),
+            TRACEWAKE_RUN_ID_FILE=str(id_file),
+            TRACEWAKE_REPORT_FILE=str(report_file),
+            TRACEWAKE_REDACT="1" if redact else "0",
         )
         if intervention is not None:
-            env["LOCUS_INTERVENTION"] = json.dumps(
+            env["TRACEWAKE_INTERVENTION"] = json.dumps(
                 {
                     "source_run_id": intervention.source_run_id,
                     "drop_tags": sorted(intervention.drop_tags),
@@ -140,7 +140,7 @@ def _run_child(
                 }
             )
             if source_store is not None:
-                env["LOCUS_SOURCE_STORE"] = str(source_store)
+                env["TRACEWAKE_SOURCE_STORE"] = str(source_store)
         completed = subprocess.run(command, env=env, check=False)
         run_id = id_file.read_text(encoding="utf-8").strip() if id_file.exists() else ""
         # Absent when the child died before its atexit hooks ran. The counts are
@@ -152,7 +152,7 @@ def _run_child(
         )
     if not run_id:
         raise typer.BadParameter(
-            f"{command[0]!r} exited without opening a locus session. The wrapper injects "
+            f"{command[0]!r} exited without opening a Tracewake session. The wrapper injects "
             f"itself through sitecustomize, which only applies to Python programs."
         )
     return completed.returncode, run_id, report
@@ -197,10 +197,10 @@ def _diff_hint(
     source_store: Path | None,
 ) -> str:
     """Name the stores so `diff` finds both runs after a cross-store fork."""
-    cmd = f"locus diff {source} {forked}"
+    cmd = f"tracewake diff {source} {forked}"
     if source_store is not None and source_store.resolve() != store.resolve():
         return f"{cmd} --store {source_store} --store-b {store}"
-    if store.resolve() != Path(".locus").resolve():
+    if store.resolve() != Path(".tracewake").resolve():
         return f"{cmd} --store {store}"
     return cmd
 
@@ -209,7 +209,7 @@ def _diff_hint(
 def record(
     command: Annotated[list[str], typer.Argument(help="Program to run, after `--`.")],
     name: Annotated[str, typer.Option("--name", help="Cassette name.")] = "",
-    store: StoreOption = Path(".locus"),
+    store: StoreOption = Path(".tracewake"),
     mode: Annotated[str, typer.Option("--mode", help=f"One of {', '.join(RECORD_MODES)}.")] = "all",
     no_redact: Annotated[
         bool,
@@ -247,7 +247,7 @@ def record(
 @app.command()
 def replay(
     run: Annotated[str, typer.Argument(help="Run id or cassette name.")],
-    store: StoreOption = Path(".locus"),
+    store: StoreOption = Path(".tracewake"),
     command: Annotated[list[str] | None, typer.Argument(help="Override the command.")] = None,
 ) -> None:
     """Re-run a recorded program against its log, with the network disabled."""
@@ -261,7 +261,7 @@ def replay(
     )
     if not target:
         raise typer.BadParameter(
-            f"run {header.run_id} was not recorded through `locus record`, so it has no "
+            f"run {header.run_id} was not recorded through `tracewake record`, so it has no "
             f"command to re-run. Pass the program after the run id."
         )
     code, _, replay = _run_child(header.run_id, target, store, "none")
@@ -285,7 +285,7 @@ def intervene_(
         ),
     ] = 0,
     name: Annotated[str, typer.Option("--name", help="Cassette name for the forked run.")] = "",
-    store: StoreOption = Path(".locus"),
+    store: StoreOption = Path(".tracewake"),
     source_store: Annotated[
         Path | None,
         typer.Option("--source-store", help="Read the run from here and write the fork to --store."),
@@ -298,7 +298,7 @@ def intervene_(
     the request no longer matches, so the run continues against the live model.
     The original run is never written to.
     """
-    import locus
+    import tracewake
 
     if not drop_tag:
         raise typer.BadParameter("pass --drop-tag TAG to say what to neutralize")
@@ -308,7 +308,7 @@ def intervene_(
     header = db.resolve(run)
     db.close()
     # Fails here rather than after the inference it would have taken to find out.
-    plan = locus.plan_intervention(run, drop_tags=drop_tag, from_turn=from_step, store=origin)
+    plan = tracewake.plan_intervention(run, drop_tags=drop_tag, from_turn=from_step, store=origin)
 
     target = command or (
         _restore_command(header.command, redacted=header.redacted)
@@ -317,7 +317,7 @@ def intervene_(
     )
     if not target:
         raise typer.BadParameter(
-            f"run {header.run_id[:12]} was not recorded through `locus record`, so it has no "
+            f"run {header.run_id[:12]} was not recorded through `tracewake record`, so it has no "
             f"command to re-run. Pass the program after the run id."
         )
     typer.echo(f"forking {header.run_id[:12]} — {plan.describe()}")
@@ -347,7 +347,7 @@ def intervene_(
 def export_(
     run: Annotated[str, typer.Argument(help="Run id or cassette name.")],
     out: Annotated[Path, typer.Option("--out", "-o", help="Destination directory.")],
-    store: StoreOption = Path(".locus"),
+    store: StoreOption = Path(".tracewake"),
 ) -> None:
     """Write a run to a git-committable JSONL cassette."""
     db = Store(store)
@@ -360,7 +360,7 @@ def export_(
 @app.command("import")
 def import_(
     source: Annotated[Path, typer.Argument(help="Cassette directory.")],
-    store: StoreOption = Path(".locus"),
+    store: StoreOption = Path(".tracewake"),
 ) -> None:
     """Read a JSONL cassette into the working store."""
     db = Store(store)
@@ -382,7 +382,7 @@ def verify(
 
 
 @app.command("ls")
-def ls(store: StoreOption = Path(".locus")) -> None:
+def ls(store: StoreOption = Path(".tracewake")) -> None:
     """List recorded runs, newest first."""
     db = Store(store)
     runs = db.runs()
@@ -437,7 +437,7 @@ def _align_pair(
 def diff_(
     good: Annotated[str, typer.Argument(help="Passing run id or cassette name.")],
     bad: Annotated[str, typer.Argument(help="Failing run id or cassette name.")],
-    store: StoreOption = Path(".locus"),
+    store: StoreOption = Path(".tracewake"),
     store_b: StoreBOption = None,
     lexical: LexicalOption = False,
 ) -> None:
@@ -466,8 +466,8 @@ def view(
     bad: Annotated[str, typer.Argument(help="Failing run id or cassette name.")],
     out: Annotated[
         Path, typer.Option("--out", "-o", help="Destination HTML file.")
-    ] = Path("locus-report.html"),
-    store: StoreOption = Path(".locus"),
+    ] = Path("tracewake-report.html"),
+    store: StoreOption = Path(".tracewake"),
     store_b: StoreBOption = None,
     lexical: LexicalOption = False,
     max_bytes: Annotated[
@@ -530,7 +530,7 @@ def pprof_(
         int | None,
         typer.Option("--top", help="Print the N heaviest leaves instead of writing a file."),
     ] = None,
-    store: StoreOption = Path(".locus"),
+    store: StoreOption = Path(".tracewake"),
 ) -> None:
     """Export a standard pprof profile of token spend for a run."""
     from .pprof import format_top, write_token_profile
@@ -538,7 +538,7 @@ def pprof_(
     if view != "tokens":
         raise typer.BadParameter(
             f"unknown view {view!r}; only 'tokens' is supported. "
-            f"Example: locus pprof <run> --view tokens -o run.pb.gz"
+            f"Example: tracewake pprof <run> --view tokens -o run.pb.gz"
         )
     if out is None and top is None:
         raise typer.BadParameter("pass -o path.pb.gz to write a profile, or --top N for a summary")
@@ -564,7 +564,7 @@ def pprof_(
 def otel_(
     run: Annotated[str, typer.Argument(help="Run id or cassette name.")],
     out: Annotated[Path, typer.Option("--out", "-o", help="OTLP/JSON trace file.")],
-    store: StoreOption = Path(".locus"),
+    store: StoreOption = Path(".tracewake"),
 ) -> None:
     """Export a run as OTLP/JSON spans under the GenAI semantic conventions."""
     from .otel import write_spans
@@ -579,13 +579,13 @@ def otel_(
 
 
 def main() -> None:
-    # A traceback is not a user interface. Locus raises these to say what failed
+    # A traceback is not a user interface. Tracewake raises these to say what failed
     # and what to do about it, so the CLI prints the message and nothing else.
     try:
         app()
-    except (KeyError, ValueError, LocusError) as exc:
+    except (KeyError, ValueError, TracewakeError) as exc:
         message = exc.args[0] if exc.args else str(exc)
         if not isinstance(message, str) or len(message) < 12:
             message = f"{type(exc).__name__}: {message!r}"
-        typer.echo(f"locus: {message}", err=True)
+        typer.echo(f"tracewake: {message}", err=True)
         sys.exit(1)

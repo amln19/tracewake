@@ -5,10 +5,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-import locus
-from locus import DecodeParams, Message, ModelResponse, Store, Usage
-from locus.config import Config
-from locus.redaction import Redactor
+import tracewake
+from tracewake import DecodeParams, Message, ModelResponse, Store, Usage
+from tracewake.config import Config
+from tracewake.redaction import Redactor
 
 
 def _scrubbed(parts: list[str]) -> list[str]:
@@ -16,24 +16,24 @@ def _scrubbed(parts: list[str]) -> list[str]:
     return [redactor.text(part) for part in parts]
 
 SCRIPT = """\
-import locus
-from locus import Message, ModelResponse, Usage
+import tracewake
+from tracewake import Message, ModelResponse, Usage
 
 
 def create(model_id, messages, params):
     return ModelResponse(text="from the script", finish_reason="end_turn", usage=Usage())
 
 
-with locus.record("ignored-under-the-wrapper") as rec:
+with tracewake.record("ignored-under-the-wrapper") as rec:
     model = rec.model(provider="p", model_id="m", create_fn=create)
     print(model.create(messages=[Message(role="user", content="hi")]).response.text)
     rec.outcome(status="ok")
 """
 
 
-def _locus(*args: str) -> subprocess.CompletedProcess[str]:
+def _tracewake(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "locus", *args], capture_output=True,
+        [sys.executable, "-m", "tracewake", *args], capture_output=True,
         text=True,
         check=False,
     )
@@ -44,7 +44,7 @@ def _create(model_id: str, messages: list[Message], params: DecodeParams) -> Mod
 
 
 def _record(store: Path, name: str = "demo") -> str:
-    with locus.record(name, store=store) as rec:
+    with tracewake.record(name, store=store) as rec:
         model = rec.model(provider="acme", model_id="acme-1", create_fn=_create)
         model.create(messages=[Message(role="user", content="hi")])
         rec.outcome(status="ok")
@@ -55,14 +55,14 @@ def _record_wrapped(tmp_path: Path, store: Path, source: str = SCRIPT) -> str:
     """Record a script under the wrapper and hand back the run id it opened."""
     script = tmp_path / "agent.py"
     script.write_text(source)
-    _locus("record", "--store", str(store), "--name", "wrapped", "--", sys.executable, str(script))
+    _tracewake("record", "--store", str(store), "--name", "wrapped", "--", sys.executable, str(script))
     return Store(store).latest_named("wrapped").run_id
 
 
 def test_ls_lists_runs_newest_first(tmp_path: Path) -> None:
     _record(tmp_path, "older")
     _record(tmp_path, "newer")
-    result = _locus("ls", "--store", str(tmp_path))
+    result = _tracewake("ls", "--store", str(tmp_path))
     assert result.returncode == 0, result.stderr
     lines = result.stdout.strip().split("\n")
     assert lines[0].endswith("newer") and lines[1].endswith("older")
@@ -70,18 +70,18 @@ def test_ls_lists_runs_newest_first(tmp_path: Path) -> None:
 
 
 def test_ls_says_so_when_there_is_nothing(tmp_path: Path) -> None:
-    assert "no runs in" in _locus("ls", "--store", str(tmp_path)).stdout
+    assert "no runs in" in _tracewake("ls", "--store", str(tmp_path)).stdout
 
 
 def test_export_and_import_move_a_run_between_stores(tmp_path: Path) -> None:
     source, target = tmp_path / "a", tmp_path / "b"
     run_id = _record(source)
 
-    exported = _locus("export", run_id, "-o", str(tmp_path / "cassette"), "--store", str(source))
+    exported = _tracewake("export", run_id, "-o", str(tmp_path / "cassette"), "--store", str(source))
     assert exported.returncode == 0, exported.stderr
     assert "exported" in exported.stdout
 
-    imported = _locus("import", str(tmp_path / "cassette"), "--store", str(target))
+    imported = _tracewake("import", str(tmp_path / "cassette"), "--store", str(target))
     assert imported.returncode == 0, imported.stderr
     assert run_id in imported.stdout
 
@@ -94,21 +94,21 @@ def test_verify_accepts_a_valid_cassette_without_opening_a_store(tmp_path: Path)
     source = tmp_path / "source"
     run_id = _record(source)
     cassette = tmp_path / "cassette"
-    assert _locus("export", run_id, "-o", str(cassette), "--store", str(source)).returncode == 0
+    assert _tracewake("export", run_id, "-o", str(cassette), "--store", str(source)).returncode == 0
 
-    result = _locus("verify", str(cassette))
+    result = _tracewake("verify", str(cassette))
 
     assert result.returncode == 0, result.stderr
     assert "verified" in result.stdout
     assert "events" in result.stdout and "blobs" in result.stdout
-    assert not (cassette / ".locus").exists()
+    assert not (cassette / ".tracewake").exists()
 
 
 def test_verify_returns_nonzero_for_corruption(tmp_path: Path) -> None:
     source = tmp_path / "source"
     run_id = _record(source)
     cassette = tmp_path / "cassette"
-    _locus("export", run_id, "-o", str(cassette), "--store", str(source))
+    _tracewake("export", run_id, "-o", str(cassette), "--store", str(source))
     path = cassette / "cassette.jsonl"
     lines = path.read_text(encoding="utf-8").splitlines()
     header = json.loads(lines[0])
@@ -116,7 +116,7 @@ def test_verify_returns_nonzero_for_corruption(tmp_path: Path) -> None:
     lines[0] = json.dumps(header)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    result = _locus("verify", str(cassette))
+    result = _tracewake("verify", str(cassette))
 
     assert result.returncode != 0
     assert "wrong event count" in result.stderr
@@ -125,7 +125,7 @@ def test_verify_returns_nonzero_for_corruption(tmp_path: Path) -> None:
 
 def test_export_accepts_a_cassette_name(tmp_path: Path) -> None:
     _record(tmp_path / "a", "by-name")
-    result = _locus(
+    result = _tracewake(
         "export", "by-name", "-o", str(tmp_path / "cassette"), "--store", str(tmp_path / "a")
     )
     assert result.returncode == 0, result.stderr
@@ -133,15 +133,15 @@ def test_export_accepts_a_cassette_name(tmp_path: Path) -> None:
 
 def test_an_unknown_run_lists_what_exists(tmp_path: Path) -> None:
     _record(tmp_path, "demo")
-    result = _locus("export", "nope", "-o", str(tmp_path / "c"), "--store", str(tmp_path))
+    result = _tracewake("export", "nope", "-o", str(tmp_path / "c"), "--store", str(tmp_path))
     assert result.returncode != 0
     assert "demo" in result.stderr + result.stdout
 
 
 def test_an_error_is_a_message_not_a_traceback(tmp_path: Path) -> None:
     _record(tmp_path, "demo")
-    result = _locus("export", "nope", "-o", str(tmp_path / "c"), "--store", str(tmp_path))
-    assert result.stderr.startswith("locus: no run or cassette named 'nope'")
+    result = _tracewake("export", "nope", "-o", str(tmp_path / "c"), "--store", str(tmp_path))
+    assert result.stderr.startswith("tracewake: no run or cassette named 'nope'")
     assert "Traceback" not in result.stderr
     assert "KeyError" not in result.stderr
 
@@ -150,8 +150,8 @@ def test_the_id_that_ls_prints_is_accepted_back(tmp_path: Path) -> None:
     store = tmp_path / "store"
     _record_wrapped(tmp_path, store)
 
-    listed = _locus("ls", "--store", str(store)).stdout.split()[0]
-    result = _locus("replay", listed, "--store", str(store))
+    listed = _tracewake("ls", "--store", str(store)).stdout.split()[0]
+    result = _tracewake("replay", listed, "--store", str(store))
     assert result.returncode == 0, result.stderr
     assert "from the script" in result.stdout
 
@@ -160,12 +160,12 @@ def test_an_ambiguous_run_id_prefix_says_so(tmp_path: Path) -> None:
     db = Store(tmp_path)
     for suffix in ("aa", "bb"):
         db.create_run(
-            locus.RunHeader(
+            tracewake.RunHeader(
                 run_id=f"beef{suffix}", name=f"run-{suffix}", started_at=1.0, status="ok"
             )
         )
     db.close()
-    result = _locus("export", "beef", "-o", str(tmp_path / "c"), "--store", str(tmp_path))
+    result = _tracewake("export", "beef", "-o", str(tmp_path / "c"), "--store", str(tmp_path))
     assert result.returncode != 0
     assert "matches more than one run" in result.stderr
 
@@ -175,7 +175,7 @@ def test_the_wrapper_records_a_script_that_opens_its_own_session(tmp_path: Path)
     script.write_text(SCRIPT)
     store = tmp_path / "store"
 
-    result = _locus(
+    result = _tracewake(
         "record", "--store", str(store), "--name", "wrapped", "--", sys.executable, str(script)
     )
     assert result.returncode == 0, result.stderr
@@ -195,16 +195,16 @@ def test_once_replay_does_not_rewrite_the_recording(tmp_path: Path) -> None:
     marker = tmp_path / "second"
     script = tmp_path / "agent.py"
     script.write_text(
-        "import os, locus\n"
+        "import os, tracewake\n"
         f"marker = {str(marker)!r}\n"
-        "s = locus.current()\n"
+        "s = tracewake.current()\n"
         "s.clock.time()\n"
         "if os.path.exists(marker):\n"
         "    s.clock.time()\n"
         "s.outcome(status='ok')\n"
     )
 
-    first = _locus(
+    first = _tracewake(
         "record",
         "--store",
         str(store),
@@ -224,7 +224,7 @@ def test_once_replay_does_not_rewrite_the_recording(tmp_path: Path) -> None:
     db.close()
 
     marker.write_text("x")
-    second = _locus(
+    second = _tracewake(
         "record",
         "--store",
         str(store),
@@ -249,7 +249,7 @@ def test_replay_reruns_the_recorded_command_without_being_told_it(tmp_path: Path
     store = tmp_path / "store"
     run_id = _record_wrapped(tmp_path, store)
 
-    result = _locus("replay", run_id, "--store", str(store))
+    result = _tracewake("replay", run_id, "--store", str(store))
     assert result.returncode == 0, result.stderr
     assert "from the script" in result.stdout
 
@@ -258,7 +258,7 @@ def test_replay_says_how_many_calls_it_answered_from_the_log(tmp_path: Path) -> 
     store = tmp_path / "store"
     run_id = _record_wrapped(tmp_path, store)
 
-    result = _locus("replay", run_id, "--store", str(store))
+    result = _tracewake("replay", run_id, "--store", str(store))
     assert result.returncode == 0, result.stderr
     assert "1 matched, 0 degraded, 0 missed" in result.stdout
 
@@ -267,7 +267,7 @@ def test_recording_afresh_reports_no_replay_counts(tmp_path: Path) -> None:
     script = tmp_path / "agent.py"
     script.write_text(SCRIPT)
     store = tmp_path / "store"
-    result = _locus(
+    result = _tracewake(
         "record", "--store", str(store), "--name", "wrapped", "--", sys.executable, str(script)
     )
     assert result.returncode == 0, result.stderr
@@ -283,7 +283,7 @@ def test_a_replay_the_agent_walked_away_from_reports_the_miss(tmp_path: Path) ->
     # child that exits non-zero.
     drifted = tmp_path / "drifted.py"
     drifted.write_text(SCRIPT.replace('content="hi"', 'content="different"'))
-    result = _locus("replay", run_id, "--store", str(store), "--", sys.executable, str(drifted))
+    result = _tracewake("replay", run_id, "--store", str(store), "--", sys.executable, str(drifted))
     assert result.returncode != 0
     assert "0 matched, 0 degraded, 1 missed, 1 recorded call unused" in result.stdout
 
@@ -292,7 +292,7 @@ def test_replay_needs_a_command_when_the_run_was_recorded_from_the_library(
     tmp_path: Path,
 ) -> None:
     run_id = _record(tmp_path)
-    result = _locus("replay", run_id, "--store", str(tmp_path))
+    result = _tracewake("replay", run_id, "--store", str(tmp_path))
     assert result.returncode != 0
     assert "no command to re-run" in result.stderr + result.stdout
 
@@ -302,7 +302,7 @@ def test_a_failing_program_is_recorded_as_a_failed_run(tmp_path: Path) -> None:
     script.write_text(SCRIPT + "\nraise SystemExit(3)\n")
     store = tmp_path / "store"
 
-    result = _locus(
+    result = _tracewake(
         "record", "--store", str(store), "--name", "boom", "--", sys.executable, str(script)
     )
     assert result.returncode == 3
@@ -316,8 +316,8 @@ def test_redaction_is_on_unless_the_escape_hatch_is_used(tmp_path: Path) -> None
     script.write_text(SCRIPT)
 
     default_store, open_store = tmp_path / "default", tmp_path / "open"
-    _locus("record", "--store", str(default_store), "--", sys.executable, str(script))
-    _locus(
+    _tracewake("record", "--store", str(default_store), "--", sys.executable, str(script))
+    _tracewake(
         "record", "--no-redact", "--store", str(open_store), "--", sys.executable, str(script)
     )
 
@@ -326,7 +326,7 @@ def test_redaction_is_on_unless_the_escape_hatch_is_used(tmp_path: Path) -> None
 
 
 def test_an_unknown_mode_is_rejected_before_anything_runs(tmp_path: Path) -> None:
-    result = _locus(
+    result = _tracewake(
         "record", "--store", str(tmp_path), "--mode", "sometimes", "--", sys.executable, "-c", ""
     )
     assert result.returncode != 0

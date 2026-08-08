@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-import locus
+import tracewake
 from bench.fidelity import (
     Step,
     assert_fresh,
@@ -18,7 +18,7 @@ from bench.fidelity import (
     steps,
     target_key,
 )
-from locus import (
+from tracewake import (
     BlobRef,
     DecodeParams,
     EventMeta,
@@ -221,7 +221,7 @@ def test_chance_agreement_reflects_the_marginal_distribution():
 
 
 def recorded_run(store, name, task_id, actions):
-    with locus.record(name, store=store, task_id=task_id, block_network=False) as session:
+    with tracewake.record(name, store=store, task_id=task_id, block_network=False) as session:
         model = session.model(
             provider="p",
             model_id="m",

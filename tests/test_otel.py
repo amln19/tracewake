@@ -7,16 +7,16 @@ import subprocess
 import sys
 from pathlib import Path
 
-import locus
-from locus import Store
-from locus.otel import build_spans
+import tracewake
+from tracewake import Store
+from tracewake.otel import build_spans
 
 from mock_agent import MockBackend, Transcript, run_agent
 
 
 def _record(tmp_path: Path) -> tuple[str, MockBackend]:
     backend = MockBackend()
-    with locus.record("agent", store=tmp_path, mode="all") as s:
+    with tracewake.record("agent", store=tmp_path, mode="all") as s:
         model = s.model(
             provider="mock", model_id="mock-1", create_fn=backend.create, stream_fn=backend.stream
         )
@@ -108,12 +108,12 @@ def test_the_cli_writes_a_parseable_otlp_file(tmp_path: Path):
     run_id, _ = _record(tmp_path)
     out = tmp_path / "trace.json"
     done = subprocess.run(
-        [sys.executable, "-m", "locus", "otel", run_id, "-o", str(out), "--store", str(tmp_path)],
+        [sys.executable, "-m", "tracewake", "otel", run_id, "-o", str(out), "--store", str(tmp_path)],
         capture_output=True,
         text=True,
         check=False,
     )
     assert done.returncode == 0, done.stderr
     payload = json.loads(out.read_text(encoding="utf-8"))
-    assert payload["resourceSpans"][0]["scopeSpans"][0]["scope"]["name"] == "locus"
+    assert payload["resourceSpans"][0]["scopeSpans"][0]["scope"]["name"] == "tracewake"
     assert "spans" in done.stdout

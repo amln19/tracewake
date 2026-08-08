@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from locus import DecodeParams, Message, ModelResponse, Usage
+from tracewake import DecodeParams, Message, ModelResponse, Usage
 
 pytest_plugins = ["pytester"]
 
@@ -20,14 +20,14 @@ class Backend:
         return ModelResponse(text="recorded answer", finish_reason="end_turn", usage=Usage())
 
 
-def test_the_fixture_replays_a_cassette_at_no_cost(locus_cassette, tmp_path: Path) -> None:
+def test_the_fixture_replays_a_cassette_at_no_cost(tracewake_cassette, tmp_path: Path) -> None:
     backend = Backend()
-    with locus_cassette("regression", store=str(tmp_path), mode="all") as rec:
+    with tracewake_cassette("regression", store=str(tmp_path), mode="all") as rec:
         model = rec.model(provider="p", model_id="m", create_fn=backend.create)
         model.create(messages=[Message(role="user", content="hi")])
         rec.outcome(status="ok")
 
-    with locus_cassette("regression", store=str(tmp_path), mode="none") as rep:
+    with tracewake_cassette("regression", store=str(tmp_path), mode="none") as rep:
         model = rep.model(provider="p", model_id="m")
         assert model.create(messages=[Message(role="user", content="hi")]).response.text == (
             "recorded answer"
@@ -37,15 +37,15 @@ def test_the_fixture_replays_a_cassette_at_no_cost(locus_cassette, tmp_path: Pat
     assert backend.calls == 1, "the replay went back to the model"
 
 
-def test_the_cassette_name_defaults_to_the_test(locus_cassette, tmp_path: Path) -> None:
-    with locus_cassette(store=str(tmp_path), mode="all") as rec:
+def test_the_cassette_name_defaults_to_the_test(tracewake_cassette, tmp_path: Path) -> None:
+    with tracewake_cassette(store=str(tmp_path), mode="all") as rec:
         rec.outcome(status="ok")
         assert rec.name == "test_the_cassette_name_defaults_to_the_test"
 
 
-@pytest.mark.locus("named-by-marker")
-def test_a_marker_names_the_cassette(locus_cassette, tmp_path: Path) -> None:
-    with locus_cassette(store=str(tmp_path), mode="all") as rec:
+@pytest.mark.tracewake("named-by-marker")
+def test_a_marker_names_the_cassette(tracewake_cassette, tmp_path: Path) -> None:
+    with tracewake_cassette(store=str(tmp_path), mode="all") as rec:
         rec.outcome(status="ok")
         assert rec.name == "named-by-marker"
 
@@ -54,8 +54,8 @@ def test_the_plugin_defaults_to_replay_only(pytester: pytest.Pytester) -> None:
     """A recorded run becomes a regression test that costs nothing to re-run."""
     pytester.makepyfile(
         test_replayed="""
-        import locus
-        from locus import Message, ModelResponse, Usage
+        import tracewake
+        from tracewake import Message, ModelResponse, Usage
 
         CALLS = []
 
@@ -63,14 +63,14 @@ def test_the_plugin_defaults_to_replay_only(pytester: pytest.Pytester) -> None:
             CALLS.append(1)
             return ModelResponse(text="answer", finish_reason="end_turn", usage=Usage())
 
-        def test_record_then_replay(locus_cassette):
-            with locus_cassette("cassette", mode="all") as rec:
+        def test_record_then_replay(tracewake_cassette):
+            with tracewake_cassette("cassette", mode="all") as rec:
                 rec.model(provider="p", model_id="m", create_fn=create).create(
                     messages=[Message(role="user", content="hi")]
                 )
                 rec.outcome(status="ok")
 
-            with locus_cassette("cassette") as rep:
+            with tracewake_cassette("cassette") as rep:
                 text = rep.model(provider="p", model_id="m").create(
                     messages=[Message(role="user", content="hi")]
                 ).response.text
@@ -88,21 +88,21 @@ def test_a_test_that_diverges_from_its_cassette_fails(pytester: pytest.Pytester)
     pytester.makepyfile(
         test_diverged="""
         import pytest
-        import locus
-        from locus import Message, ModelResponse, Usage
+        import tracewake
+        from tracewake import Message, ModelResponse, Usage
 
         def create(model_id, messages, params):
             return ModelResponse(text="answer", finish_reason="end_turn", usage=Usage())
 
-        def test_diverges(locus_cassette):
-            with locus_cassette("cassette", mode="all") as rec:
+        def test_diverges(tracewake_cassette):
+            with tracewake_cassette("cassette", mode="all") as rec:
                 rec.model(provider="p", model_id="m", create_fn=create).create(
                     messages=[Message(role="user", content="hi")]
                 )
                 rec.outcome(status="ok")
 
-            with pytest.raises(locus.ReplayMiss):
-                with locus_cassette("cassette") as rep:
+            with pytest.raises(tracewake.ReplayMiss):
+                with tracewake_cassette("cassette") as rep:
                     rep.model(provider="p", model_id="m").create(
                         messages=[Message(role="user", content="something else")]
                     )
@@ -115,13 +115,13 @@ def test_a_test_that_diverges_from_its_cassette_fails(pytester: pytest.Pytester)
 def test_unused_recorded_calls_fail_the_test(pytester: pytest.Pytester) -> None:
     pytester.makepyfile(
         test_unused="""
-        from locus import Message, ModelResponse, Usage
+        from tracewake import Message, ModelResponse, Usage
 
         def create(model_id, messages, params):
             return ModelResponse(text="answer", finish_reason="end_turn", usage=Usage())
 
-        def test_stops_early(locus_cassette):
-            with locus_cassette("cassette", mode="all") as rec:
+        def test_stops_early(tracewake_cassette):
+            with tracewake_cassette("cassette", mode="all") as rec:
                 rec.model(provider="p", model_id="m", create_fn=create).create(
                     messages=[Message(role="user", content="hi")]
                 )
@@ -130,7 +130,7 @@ def test_unused_recorded_calls_fail_the_test(pytester: pytest.Pytester) -> None:
                 )
                 rec.outcome(status="ok")
 
-            with locus_cassette("cassette") as rep:
+            with tracewake_cassette("cassette") as rep:
                 rep.model(provider="p", model_id="m").create(
                     messages=[Message(role="user", content="hi")]
                 )
@@ -145,4 +145,4 @@ def test_unused_recorded_calls_fail_the_test(pytester: pytest.Pytester) -> None:
 
 def test_the_plugin_registers_its_options(pytester: pytest.Pytester) -> None:
     result = pytester.runpytest_subprocess("--help")
-    result.stdout.fnmatch_lines(["*--locus-record*"])
+    result.stdout.fnmatch_lines(["*--tracewake-record*"])

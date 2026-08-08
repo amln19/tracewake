@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-import locus
-from locus import (
+import tracewake
+from tracewake import (
     DecodeParams,
     Message,
     ModelResponse,
@@ -19,7 +19,7 @@ from locus import (
     ToolOutcome,
     Usage,
 )
-from locus.pprof import (
+from tracewake.pprof import (
     RESPONSE_LEAF,
     attribute_tokens,
     build_token_profile,
@@ -88,7 +88,7 @@ def _record(store: Path, *, big: str = "file contents " * 50) -> str:
                 return ToolOutcome(content=content)
         raise AssertionError(f"unexpected tool {name} {args}")
 
-    with locus.record("spend", store=store, task_id="win-off_by_one-1") as rec:
+    with tracewake.record("spend", store=store, task_id="win-off_by_one-1") as rec:
         model = rec.model(provider="acme", model_id="acme-1", create_fn=create)
         tools = rec.tools(dispatch_fn=dispatch)
         messages = [
@@ -222,7 +222,7 @@ def test_pprof_cli_writes_gzipped_profile(tmp_path: Path):
     out = tmp_path / "tokens.pb.gz"
     done = subprocess.run(
         [
-            sys.executable, "-m", "locus", "pprof", run_id,
+            sys.executable, "-m", "tracewake", "pprof", run_id,
             "--view", "tokens", "-o", str(out), "--store", str(tmp_path),
         ],
         capture_output=True,
@@ -239,7 +239,7 @@ def test_pprof_cli_rejects_unknown_view(tmp_path: Path):
     run_id = _record(tmp_path)
     done = subprocess.run(
         [
-            sys.executable, "-m", "locus", "pprof", run_id,
+            sys.executable, "-m", "tracewake", "pprof", run_id,
             "--view", "cpu", "-o", str(tmp_path / "x.pb.gz"), "--store", str(tmp_path),
         ],
         capture_output=True,
@@ -256,7 +256,7 @@ def test_empty_messages_still_account_for_usage(tmp_path: Path):
             text="", finish_reason="end_turn", usage=Usage(input_tokens=9, output_tokens=1)
         )
 
-    with locus.record("empty", store=tmp_path) as rec:
+    with tracewake.record("empty", store=tmp_path) as rec:
         model = rec.model(provider="p", model_id="m", create_fn=create)
         model.create(messages=[])
         rec.outcome(status="ok")

@@ -36,7 +36,7 @@ def telemetry() -> str:
 
 
 FORBIDDEN = {
-    "a tenant token": "locus_",
+    "a tenant token": "tracewake_",
     "a worker credential": "worker_",
     "an attempt token": "attempt_",
     "an authorization header": "Bearer",
@@ -109,7 +109,7 @@ def test_faults_left_the_service_working(measurements: dict[str, Any]) -> None:
     assert measurements["scenarios"]["service_resumes"]["state"] == "succeeded"
 
 
-def test_hosted_analysis_agreed_with_local_locus(measurements: dict[str, Any]) -> None:
+def test_hosted_analysis_agreed_with_local_tracewake(measurements: dict[str, Any]) -> None:
     agreement = measurements["scenarios"]["hosted_matches_local"]
     assert agreement["identical_bytes"]
     assert agreement["hosted_span_count"] == agreement["local_span_count"]
@@ -141,7 +141,7 @@ def test_migrations_are_ordered_and_idempotent(measurements: dict[str, Any]) -> 
     assert migration["ledger_rows"] == len(migration["applied_versions"])
 
 
-def test_local_locus_needed_no_hosted_service(measurements: dict[str, Any]) -> None:
+def test_local_tracewake_needed_no_hosted_service(measurements: dict[str, Any]) -> None:
     assert measurements["scenarios"]["local_independence"]["identical"]
 
 

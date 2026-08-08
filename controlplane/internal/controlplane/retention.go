@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/amln19/locus/controlplane/internal/telemetry"
+	"github.com/amln19/tracewake/controlplane/internal/telemetry"
 	"go.opentelemetry.io/otel/trace"
 )
 

@@ -26,7 +26,7 @@ async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  if (!["GET", "HEAD", "OPTIONS"].includes(method)) headers.set("X-Locus-CSRF", csrfToken);
+  if (!["GET", "HEAD", "OPTIONS"].includes(method)) headers.set("X-Tracewake-CSRF", csrfToken);
   const response = await fetch(url, { ...init, headers, credentials: "same-origin" });
   return decode<T>(response);
 }
@@ -78,8 +78,8 @@ export async function uploadBundle(file: File, onState: (state: string) => void)
     method: "PUT",
     headers: {
       "Content-Type": "application/x-tar",
-      "X-Locus-Bundle-Digest": digest,
-      "X-Locus-Bundle-Format": "1",
+      "X-Tracewake-Bundle-Digest": digest,
+      "X-Tracewake-Bundle-Format": "1",
     },
     body: bytes,
   });

@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from locus.telemetry import Telemetry
+from tracewake.telemetry import Telemetry
 
 TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
 
@@ -36,7 +36,7 @@ def records(stream: io.StringIO) -> list[dict[str, Any]]:
 @pytest.fixture
 def recorder() -> tuple[Telemetry, io.StringIO]:
     stream = io.StringIO()
-    return Telemetry(service="locus-worker", version="0.0.0", environment="test", stream=stream), stream
+    return Telemetry(service="tracewake-worker", version="0.0.0", environment="test", stream=stream), stream
 
 
 def test_span_record_carries_the_shared_fields(recorder: tuple[Telemetry, io.StringIO]) -> None:
@@ -88,7 +88,7 @@ def test_metrics_use_embedded_format_with_bounded_dimensions(recorder: tuple[Tel
     telemetry.stage_finished("a-client-invented-this", "an-invented-stage", 12.5)
     finished, staged = records(stream)
     directive = finished["_aws"]["CloudWatchMetrics"][0]
-    assert directive["Namespace"] == "Locus/Worker"
+    assert directive["Namespace"] == "Tracewake/Worker"
     assert directive["Dimensions"] == [["Operation", "Outcome"]]
     assert directive["Metrics"] == [{"Name": "WorkerJobs", "Unit": "Count"}]
     assert finished["Operation"] == "diff" and finished["Outcome"] == "succeeded"
@@ -106,9 +106,9 @@ def test_telemetry_can_be_turned_off(recorder: tuple[Telemetry, io.StringIO]) ->
     assert stream.getvalue() == ""
 
 
-def test_importing_locus_emits_no_telemetry() -> None:
+def test_importing_tracewake_emits_no_telemetry() -> None:
     result = subprocess.run(
-        [sys.executable, "-c", "import locus; print('ok')"],
+        [sys.executable, "-c", "import tracewake; print('ok')"],
         capture_output=True,
         text=True,
         check=True,

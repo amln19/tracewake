@@ -3,7 +3,7 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 const csrf = "csrf_browser.secret-value-that-is-long-enough";
 const expires = "2026-08-07T00:15:00Z";
 const session = { csrf_token: csrf, expires_at: expires, scopes: ["runs:read", "runs:write", "jobs:read", "jobs:write", "artifacts:read", "audit:read"] };
-const attack = `<img src=x onerror="window.__locus_xss=true">`;
+const attack = `<img src=x onerror="window.__tracewake_xss=true">`;
 
 async function fulfillJSON(route: Route, body: unknown, status = 200, headers: Record<string, string> = {}) {
   await route.fulfill({ status, contentType: "application/json", headers, body: JSON.stringify(body) });
@@ -24,9 +24,9 @@ async function commonRoutes(page: Page, authenticated = true) {
 test("exchanges a token without browser storage and runs under the production CSP", async ({ page, context }) => {
   await commonRoutes(page, false);
   await page.route("**/v1/browser/sessions", async (route) => {
-    expect(route.request().postDataJSON()).toEqual({ token: "locus_durable-secret" });
+    expect(route.request().postDataJSON()).toEqual({ token: "tracewake_durable-secret" });
     await fulfillJSON(route, session, 201, {
-      "Set-Cookie": "__Host-locus_session=session_secret; Path=/; Max-Age=900; Secure; HttpOnly; SameSite=Strict",
+      "Set-Cookie": "__Host-tracewake_session=session_secret; Path=/; Max-Age=900; Secure; HttpOnly; SameSite=Strict",
     });
   });
 
@@ -34,14 +34,14 @@ test("exchanges a token without browser storage and runs under the production CS
   const csp = response?.headers()["content-security-policy"] ?? "";
   expect(csp).toContain("script-src 'self'");
   expect(csp).toContain("object-src 'none'");
-  await page.getByRole("textbox", { name: "Workspace token" }).fill("locus_durable-secret");
+  await page.getByRole("textbox", { name: "Workspace token" }).fill("tracewake_durable-secret");
   await page.getByRole("button", { name: "Open control room" }).click();
   await expect(page.getByText("Run inventory")).toBeVisible();
   expect(await page.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length }))).toEqual({ local: 0, session: 0 });
   expect(await page.locator("img[onerror], script:not([type=module])").count()).toBe(0);
-  expect(await page.evaluate(() => (window as Window & { __locus_xss?: boolean }).__locus_xss)).not.toBe(true);
+  expect(await page.evaluate(() => (window as Window & { __tracewake_xss?: boolean }).__tracewake_xss)).not.toBe(true);
   const cookies = await context.cookies();
-  const cookie = cookies.find((item) => item.name === "__Host-locus_session");
+  const cookie = cookies.find((item) => item.name === "__Host-tracewake_session");
   expect(cookie).toMatchObject({ httpOnly: true, secure: true, sameSite: "Strict" });
 });
 
@@ -62,7 +62,7 @@ test("refresh reconstructs attempts and cancellation displays the database winne
   let reads = 0;
   await page.route(`**/v1/jobs/${jobID}`, async (route) => { reads += 1; await fulfillJSON(route, cancelled ? succeeded : running); });
   await page.route(`**/v1/jobs/${jobID}/cancel`, async (route) => {
-    expect(route.request().headers()["x-locus-csrf"]).toBe(csrf);
+    expect(route.request().headers()["x-tracewake-csrf"]).toBe(csrf);
     cancelled = true;
     await fulfillJSON(route, succeeded);
   });
@@ -86,15 +86,15 @@ test("uploads through the same-origin control plane without a storage capability
   const seen: string[] = [];
   await page.route("**/v1/browser/runs/uploads", async (route) => {
     seen.push(route.request().url());
-    expect(route.request().headers()["x-locus-csrf"]).toBe(csrf);
+    expect(route.request().headers()["x-tracewake-csrf"]).toBe(csrf);
     expect(route.request().postDataJSON()).toMatchObject({ bundle_format_version: 1, bundle_size: 13 });
     await fulfillJSON(route, { run_id: runID, state: "pending" }, 201);
   });
   await page.route(`**/v1/browser/runs/uploads/${runID}`, async (route) => {
     seen.push(route.request().url());
     expect(route.request().method()).toBe("PUT");
-    expect(route.request().headers()["x-locus-csrf"]).toBe(csrf);
-    expect(route.request().headers()["x-locus-bundle-format"]).toBe("1");
+    expect(route.request().headers()["x-tracewake-csrf"]).toBe(csrf);
+    expect(route.request().headers()["x-tracewake-bundle-format"]).toBe("1");
     expect(route.request().postData()).toBe("bundle bytes\n");
     await fulfillJSON(route, { run_id: runID, state: "validating" });
   });

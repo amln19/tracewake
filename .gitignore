@@ -1,4 +1,4 @@
-.locus/
+.tracewake/
 __pycache__/
 *.pyc
 .pytest_cache/

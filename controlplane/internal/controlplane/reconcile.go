@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/amln19/locus/controlplane/internal/telemetry"
+	"github.com/amln19/tracewake/controlplane/internal/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -130,7 +130,7 @@ func (s *Service) Reconcile(ctx context.Context, limit int) (repaired int, err e
 		s.metrics.OutboxPendingAge(ctx, time.Duration(age*float64(time.Second)))
 	}
 	defer func() {
-		span.SetAttributes(attribute.Int("locus.repairs", repaired), attribute.Bool(telemetry.IdleAttribute, repaired == 0))
+		span.SetAttributes(attribute.Int("tracewake.repairs", repaired), attribute.Bool(telemetry.IdleAttribute, repaired == 0))
 		if err != nil {
 			s.metrics.ReconcileFailed(ctx)
 		}

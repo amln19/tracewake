@@ -16,9 +16,9 @@ from pathlib import Path
 AGENT = Path(__file__).parent / "openai_agent.py"
 
 
-def _locus(*args: str) -> subprocess.CompletedProcess[str]:
+def _tracewake(*args: str) -> subprocess.CompletedProcess[str]:
     completed = subprocess.run(
-        [sys.executable, "-m", "locus", *args],
+        [sys.executable, "-m", "tracewake", *args],
         capture_output=True,
         text=True,
         check=False,
@@ -31,10 +31,10 @@ def _locus(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def main() -> None:
-    with tempfile.TemporaryDirectory(prefix="locus-demo-") as store:
+    with tempfile.TemporaryDirectory(prefix="tracewake-demo-") as store:
         print(f"recording into {store}\n")
         for scenario in ("good", "bad"):
-            _locus(
+            _tracewake(
                 "record",
                 "--store",
                 store,
@@ -48,10 +48,10 @@ def main() -> None:
             )
 
         print("\nreplaying the good run (answers from the log, no new model calls):\n")
-        _locus("replay", "good", "--store", store)
+        _tracewake("replay", "good", "--store", store)
 
         print("\naligning the two runs:\n")
-        _locus("diff", "good", "bad", "--store", store, "--lexical")
+        _tracewake("diff", "good", "bad", "--store", store, "--lexical")
 
 
 if __name__ == "__main__":

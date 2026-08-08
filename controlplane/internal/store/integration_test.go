@@ -9,14 +9,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/amln19/locus/controlplane/internal/store"
+	"github.com/amln19/tracewake/controlplane/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestMigrateFromSchemaOne(t *testing.T) {
-	databaseURL := os.Getenv("LOCUS_TEST_DATABASE_URL")
+	databaseURL := os.Getenv("TRACEWAKE_TEST_DATABASE_URL")
 	if databaseURL == "" {
-		t.Skip("LOCUS_TEST_DATABASE_URL is not set")
+		t.Skip("TRACEWAKE_TEST_DATABASE_URL is not set")
 	}
 	ctx := context.Background()
 	admin, err := pgxpool.New(ctx, databaseURL)
@@ -61,8 +61,20 @@ func TestMigrateFromSchemaOne(t *testing.T) {
 	if err := legacy.Pool().QueryRow(ctx, "SELECT array_agg(version ORDER BY version) FROM schema_migrations").Scan(&versions); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(versions, []int{1, 2, 3, 4, 5}) {
+	if !slices.Equal(versions, []int{1, 2, 3, 4, 5, 6}) {
 		t.Fatalf("versions=%v", versions)
+	}
+	// A database created before the widening holds varchar(24) prefixes, which
+	// cannot store a tenant token. The forward migration has to reach it.
+	var prefixWidths []int
+	if err := legacy.Pool().QueryRow(ctx, `SELECT array_agg(character_maximum_length ORDER BY table_name)
+		FROM information_schema.columns
+		WHERE table_schema=current_schema() AND column_name='prefix'
+		AND table_name IN ('api_tokens','browser_sessions','worker_credentials')`).Scan(&prefixWidths); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(prefixWidths, []int{26, 26, 26}) {
+		t.Fatalf("token prefix widths=%v", prefixWidths)
 	}
 	var sessionColumns int
 	if err := legacy.Pool().QueryRow(ctx, `SELECT count(*) FROM information_schema.columns

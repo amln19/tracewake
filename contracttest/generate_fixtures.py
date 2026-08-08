@@ -7,9 +7,9 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from locus.bundle import build_bundle
-from locus.cassette import CassetteHeader, _line
-from locus.contracts import (
+from tracewake.bundle import build_bundle
+from tracewake.cassette import CassetteHeader, _line
+from tracewake.contracts import (
     AlignmentColumn,
     ArtifactRef,
     Claim,
@@ -28,7 +28,7 @@ from locus.contracts import (
     UploadDeclaration,
     ValidationResult,
 )
-from locus.events import BlobRef, EventMeta, OutcomeEvent, StoredEvent, run_digest, sha256_hex
+from tracewake.events import BlobRef, EventMeta, OutcomeEvent, StoredEvent, run_digest, sha256_hex
 
 RUN_ID = "018f7f28-df62-7bc4-9f45-6e6c32a19484"
 JOB_ID = "018f7f28-df62-7bc4-9f45-6e6c32a19485"
@@ -68,7 +68,7 @@ def _provenance(
     return ResultProvenance(
         inputs=[_run_provenance(run, bundle_digest, logical_digest) for run in identities],
         analysis_profile=profile,
-        locus_version="0.2.0",
+        tracewake_version="0.2.0",
         worker_build="fixture-build",
         produced_at=NOW,
     )
@@ -89,7 +89,7 @@ def _fixed_bundle(root: Path) -> tuple[bytes, str, str]:
     )
     logical = run_digest([event])
     header = CassetteHeader(
-        locus_version="0.2.0",
+        tracewake_version="0.2.0",
         schema_version=3,
         run_id=RUN_ID,
         name="contract-fixture",
@@ -487,7 +487,7 @@ def write_fixtures(root: Path, *, check: bool) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate shared Locus contract fixtures")
+    parser = argparse.ArgumentParser(description="Generate shared Tracewake contract fixtures")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()

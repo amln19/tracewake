@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from locus.align import Step
+from tracewake.align import Step
 
 from .repos import CORPUS_ROOT
 
@@ -274,7 +274,7 @@ def _require_datasets():
     except ImportError as exc:
         raise RuntimeError(
             "reading OpenHands trajectories needs the `datasets` package "
-            "(pip install datasets). It is kept out of the locus wheel — only "
+            "(pip install datasets). It is kept out of the tracewake wheel — only "
             "this scout/eval path uses it."
         ) from exc
     return load_dataset
@@ -368,7 +368,7 @@ def _measure(pairs: Sequence[ExternalPair]) -> dict[str, Any]:
     import statistics
     from dataclasses import replace as _replace
 
-    from locus.align import (
+    from tracewake.align import (
         DEFAULT_CONFIG,
         LexicalEmbedder,
         align,
@@ -714,7 +714,7 @@ def score_openhands_labels(
     rows: Sequence[dict[str, Any]] | None = None,
 ) -> str:
     """Score frozen aligner against filled external labels. Separate sheet of record."""
-    from locus.align import (
+    from tracewake.align import (
         LexicalEmbedder,
         align,
         divergence_step,

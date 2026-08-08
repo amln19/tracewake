@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 
-import locus
-from locus import Config, DecodeParams, Message, ModelResponse, Usage
+import tracewake
+from tracewake import Config, DecodeParams, Message, ModelResponse, Usage
 
 SYSTEM = Message(role="system", content="You are a coding agent.")
 
@@ -21,7 +21,7 @@ def _backend(texts: list[str]) -> Any:
 
 
 def _record(store: Path, tools: list[str] | None = None) -> str:
-    with locus.record("match", store=store) as rec:
+    with tracewake.record("match", store=store) as rec:
         model = rec.model(
             provider="p", model_id="m", create_fn=_backend(["first", "second"])
         )
@@ -33,7 +33,7 @@ def _record(store: Path, tools: list[str] | None = None) -> str:
 
 def _replay(store: Path, run_id: str, contents: list[str], **overrides: Any) -> list[str]:
     out: list[str] = []
-    with locus.replay(run_id, store=store, **overrides) as rep:
+    with tracewake.replay(run_id, store=store, **overrides) as rep:
         model = rep.model(provider="p", model_id="m")
         for content in contents:
             out.append(
@@ -53,7 +53,7 @@ def test_the_default_matches_strictly_on_model_and_messages(tmp_path: Path) -> N
 
 def test_a_divergent_request_misses_under_the_default(tmp_path: Path) -> None:
     run_id = _record(tmp_path)
-    with pytest.raises(locus.ReplayMiss, match="never made"):
+    with pytest.raises(tracewake.ReplayMiss, match="never made"):
         _replay(tmp_path, run_id, ["something else"])
 
 
@@ -71,7 +71,7 @@ def test_ordinal_replays_by_position_and_reports_the_match_as_degraded(
 def test_ordinal_is_never_reached_without_asking_for_it(tmp_path: Path) -> None:
     """The miss must not fall back to position; a fallback would hide divergence."""
     run_id = _record(tmp_path)
-    with pytest.raises(locus.ReplayMiss):
+    with pytest.raises(tracewake.ReplayMiss):
         _replay(tmp_path, run_id, ["nothing like it"])
 
 
@@ -87,8 +87,8 @@ def test_system_prompt_matching_ignores_the_rest_of_the_conversation(
 
 def test_a_different_system_prompt_still_misses(tmp_path: Path) -> None:
     run_id = _record(tmp_path)
-    with pytest.raises(locus.ReplayMiss):
-        with locus.replay(run_id, store=tmp_path, match_on=("system_prompt",)) as rep:
+    with pytest.raises(tracewake.ReplayMiss):
+        with tracewake.replay(run_id, store=tmp_path, match_on=("system_prompt",)) as rep:
             rep.model(provider="p", model_id="m").create(
                 messages=[Message(role="system", content="a different system prompt")]
             )
@@ -96,11 +96,11 @@ def test_a_different_system_prompt_still_misses(tmp_path: Path) -> None:
 
 def test_tool_names_take_part_in_the_match(tmp_path: Path) -> None:
     run_id = _record(tmp_path, tools=["read_file", "grep"])
-    with locus.replay(run_id, store=tmp_path, match_on=("model", "tool_names", "ordinal")) as rep:
+    with tracewake.replay(run_id, store=tmp_path, match_on=("model", "tool_names", "ordinal")) as rep:
         model = rep.model(provider="p", model_id="m")
         assert model.create(messages=[SYSTEM], tools=["read_file", "grep"]).response.text == "first"
-    with pytest.raises(locus.ReplayMiss):
-        with locus.replay(
+    with pytest.raises(tracewake.ReplayMiss):
+        with tracewake.replay(
             run_id, store=tmp_path, match_on=("model", "tool_names", "ordinal")
         ) as rep:
             rep.model(provider="p", model_id="m").create(messages=[SYSTEM], tools=["grep"])
@@ -108,14 +108,14 @@ def test_tool_names_take_part_in_the_match(tmp_path: Path) -> None:
 
 def test_a_different_model_id_misses(tmp_path: Path) -> None:
     run_id = _record(tmp_path)
-    with pytest.raises(locus.ReplayMiss, match="model="):
-        with locus.replay(run_id, store=tmp_path, match_on=("model", "ordinal")) as rep:
+    with pytest.raises(tracewake.ReplayMiss, match="model="):
+        with tracewake.replay(run_id, store=tmp_path, match_on=("model", "ordinal")) as rep:
             rep.model(provider="p", model_id="other").create(messages=[SYSTEM])
 
 
 def test_the_report_counts_what_the_replay_left_unused(tmp_path: Path) -> None:
     run_id = _record(tmp_path)
-    with locus.replay(run_id, store=tmp_path) as rep:
+    with tracewake.replay(run_id, store=tmp_path) as rep:
         rep.model(provider="p", model_id="m").create(
             messages=[SYSTEM, Message(role="user", content="one")]
         )

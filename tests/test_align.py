@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from locus import (
+from tracewake import (
     BlobRef,
     EventMeta,
     FsWriteEvent,
@@ -15,7 +15,7 @@ from locus import (
     Usage,
     hash_args,
 )
-from locus.align import (
+from tracewake.align import (
     GAP_EXTEND,
     GAP_OPEN,
     WEIGHT_ARGS,
@@ -452,11 +452,11 @@ def test_lexical_embedder_scores_empty_reasoning_as_identity():
 
 
 def test_align_refuses_reasoning_without_an_embedder():
-    from locus.patches import LocusError
+    from tracewake.patches import TracewakeError
 
     a = Step("read_file", {"path": "a.py"}, target="a.py", reasoning="why")
     b = Step("read_file", {"path": "a.py"}, target="a.py", reasoning="why")
-    with pytest.raises(LocusError, match="needs an embedder"):
+    with pytest.raises(TracewakeError, match="needs an embedder"):
         align([a], [b])
 
 

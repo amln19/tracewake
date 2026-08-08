@@ -1,4 +1,4 @@
-"""A disposable Locus deployment: PostgreSQL, the control plane, the worker.
+"""A disposable Tracewake deployment: PostgreSQL, the control plane, the worker.
 
 The measurements this package publishes have to come from processes that can
 be killed, restarted, and starved, so the stack is driven directly rather than
@@ -23,7 +23,7 @@ from typing import Any
 REQUIRED = ("go", "initdb", "pg_ctl", "pg_isready", "createdb", "psql", "pg_dump")
 # PostgreSQL refuses a socket directory longer than 103 bytes, which a
 # scratch directory easily exceeds.
-SOCKET_ROOT = Path("/tmp/locus-evidence")
+SOCKET_ROOT = Path("/tmp/tracewake-evidence")
 
 
 class StackError(RuntimeError):
@@ -71,7 +71,7 @@ class Stack:
 
     @property
     def database_url(self) -> str:
-        return f"postgres://locus@localhost/locus?host={self.postgres_socket}&port={self.postgres_port}&sslmode=disable"
+        return f"postgres://tracewake@localhost/tracewake?host={self.postgres_socket}&port={self.postgres_port}&sslmode=disable"
 
     @property
     def public_url(self) -> str:
@@ -84,7 +84,7 @@ class Stack:
     def start_postgres(self) -> None:
         if not (self.data_dir / "PG_VERSION").exists():
             subprocess.run(
-                ["initdb", "-D", str(self.data_dir), "-A", "trust", "-U", "locus", "--no-locale"],
+                ["initdb", "-D", str(self.data_dir), "-A", "trust", "-U", "tracewake", "--no-locale"],
                 check=True,
                 capture_output=True,
             )
@@ -97,27 +97,27 @@ class Stack:
             capture_output=True,
         )
         _wait(self.postgres_ready, 30, "PostgreSQL")
-        if not self.psql("SELECT 1 FROM pg_database WHERE datname='locus'", database="postgres").strip():
+        if not self.psql("SELECT 1 FROM pg_database WHERE datname='tracewake'", database="postgres").strip():
             subprocess.run(
-                ["createdb", "-h", str(self.postgres_socket), "-p", str(self.postgres_port), "-U", "locus", "locus"],
+                ["createdb", "-h", str(self.postgres_socket), "-p", str(self.postgres_port), "-U", "tracewake", "tracewake"],
                 check=True,
                 capture_output=True,
             )
 
     def postgres_ready(self) -> bool:
         return subprocess.run(
-            ["pg_isready", "-h", str(self.postgres_socket), "-p", str(self.postgres_port), "-U", "locus"],
+            ["pg_isready", "-h", str(self.postgres_socket), "-p", str(self.postgres_port), "-U", "tracewake"],
             capture_output=True,
         ).returncode == 0
 
     def stop_postgres(self, mode: str = "fast") -> None:
         subprocess.run(["pg_ctl", "-D", str(self.data_dir), "-m", mode, "stop"], capture_output=True)
 
-    def psql(self, statement: str, database: str = "locus", allow_failure: bool = False) -> str:
+    def psql(self, statement: str, database: str = "tracewake", allow_failure: bool = False) -> str:
         result = subprocess.run(
             [
                 "psql", "-h", str(self.postgres_socket), "-p", str(self.postgres_port),
-                "-U", "locus", "-d", database, "-tAc", statement,
+                "-U", "tracewake", "-d", database, "-tAc", statement,
             ],
             capture_output=True,
             text=True,
@@ -126,9 +126,9 @@ class Stack:
         return result.stdout
 
     def build(self) -> Path:
-        binary = self.root / "locusd"
+        binary = self.root / "tracewaked"
         subprocess.run(
-            ["go", "build", "-o", str(binary), "./cmd/locusd"],
+            ["go", "build", "-o", str(binary), "./cmd/tracewaked"],
             cwd=self.repository / "controlplane",
             check=True,
             capture_output=True,
@@ -139,16 +139,16 @@ class Stack:
         environment = dict(os.environ)
         environment.update(
             {
-                "LOCUS_DATABASE_URL": self.database_url,
-                "LOCUS_ARTIFACT_ROOT": str(self.root / "artifacts"),
-                "LOCUS_LISTEN_ADDR": f"127.0.0.1:{self.public_port}",
-                "LOCUS_WORKER_LISTEN_ADDR": f"127.0.0.1:{self.worker_port}",
-                "LOCUS_BOOTSTRAP_FILE": str(self.root / "credentials.json"),
-                "LOCUS_TOKEN_PEPPER": self._secret("tenant"),
-                "LOCUS_WORKER_PEPPER": self._secret("worker"),
-                "LOCUS_ENVIRONMENT": "evidence",
-                "LOCUS_SERVICE_VERSION": "evidence",
-                "LOCUS_TELEMETRY_INTERVAL": self.metric_interval,
+                "TRACEWAKE_DATABASE_URL": self.database_url,
+                "TRACEWAKE_ARTIFACT_ROOT": str(self.root / "artifacts"),
+                "TRACEWAKE_LISTEN_ADDR": f"127.0.0.1:{self.public_port}",
+                "TRACEWAKE_WORKER_LISTEN_ADDR": f"127.0.0.1:{self.worker_port}",
+                "TRACEWAKE_BOOTSTRAP_FILE": str(self.root / "credentials.json"),
+                "TRACEWAKE_TOKEN_PEPPER": self._secret("tenant"),
+                "TRACEWAKE_WORKER_PEPPER": self._secret("worker"),
+                "TRACEWAKE_ENVIRONMENT": "evidence",
+                "TRACEWAKE_SERVICE_VERSION": "evidence",
+                "TRACEWAKE_TELEMETRY_INTERVAL": self.metric_interval,
             }
         )
         return environment
@@ -161,7 +161,7 @@ class Stack:
         return path.read_text(encoding="utf-8")
 
     def start_control_plane(self) -> None:
-        binary = self.root / "locusd"
+        binary = self.root / "tracewaked"
         if not binary.exists():
             self.build()
         stream = open(self.telemetry_dir / "control-plane.jsonl", "ab")
@@ -186,11 +186,11 @@ class Stack:
         environment = dict(os.environ)
         environment.update(
             {
-                "LOCUS_WORKER_URL": self.worker_url,
-                "LOCUS_WORKER_CREDENTIALS_FILE": str(self.root / "credentials.json"),
-                "LOCUS_WORKER_BUILD": build,
-                "LOCUS_ENVIRONMENT": "evidence",
-                "LOCUS_SERVICE_VERSION": "evidence",
+                "TRACEWAKE_WORKER_URL": self.worker_url,
+                "TRACEWAKE_WORKER_CREDENTIALS_FILE": str(self.root / "credentials.json"),
+                "TRACEWAKE_WORKER_BUILD": build,
+                "TRACEWAKE_ENVIRONMENT": "evidence",
+                "TRACEWAKE_SERVICE_VERSION": "evidence",
                 "PYTHONUNBUFFERED": "1",
             }
         )
@@ -200,7 +200,7 @@ class Stack:
         # process group has to go: killing the wrapper alone would leave a
         # worker that keeps heartbeating and never loses its lease.
         self.worker = subprocess.Popen(
-            ["uv", "run", "--project", str(self.repository), "locus-worker"],
+            ["uv", "run", "--project", str(self.repository), "tracewake-worker"],
             env=environment,
             stdout=stream,
             stderr=errors,
@@ -219,7 +219,7 @@ class Stack:
         subprocess.run(
             [
                 "pg_dump", "-h", str(self.postgres_socket), "-p", str(self.postgres_port),
-                "-U", "locus", "-d", "locus", "-Fc", "-f", str(destination),
+                "-U", "tracewake", "-d", "tracewake", "-Fc", "-f", str(destination),
             ],
             check=True,
             capture_output=True,
@@ -230,20 +230,20 @@ class Stack:
         subprocess.run(
             [
                 "psql", "-h", str(self.postgres_socket), "-p", str(self.postgres_port),
-                "-U", "locus", "-d", "postgres", "-c", "DROP DATABASE locus WITH (FORCE)",
+                "-U", "tracewake", "-d", "postgres", "-c", "DROP DATABASE tracewake WITH (FORCE)",
             ],
             check=True,
             capture_output=True,
         )
         subprocess.run(
-            ["createdb", "-h", str(self.postgres_socket), "-p", str(self.postgres_port), "-U", "locus", "locus"],
+            ["createdb", "-h", str(self.postgres_socket), "-p", str(self.postgres_port), "-U", "tracewake", "tracewake"],
             check=True,
             capture_output=True,
         )
         subprocess.run(
             [
                 "pg_restore", "-h", str(self.postgres_socket), "-p", str(self.postgres_port),
-                "-U", "locus", "-d", "locus", str(source),
+                "-U", "tracewake", "-d", "tracewake", str(source),
             ],
             check=True,
             capture_output=True,

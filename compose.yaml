@@ -2,11 +2,11 @@ services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: locus
-      POSTGRES_USER: locus
-      POSTGRES_PASSWORD: locus-local-only
+      POSTGRES_DB: tracewake
+      POSTGRES_USER: tracewake
+      POSTGRES_PASSWORD: tracewake-local-only
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U locus"]
+      test: ["CMD-SHELL", "pg_isready -U tracewake"]
       interval: 1s
       timeout: 3s
       retries: 30
@@ -21,23 +21,23 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      LOCUS_DATABASE_URL: postgres://locus:locus-local-only@postgres/locus?sslmode=disable
-      LOCUS_TOKEN_PEPPER: local-tenant-pepper-change-me-000000
-      LOCUS_WORKER_PEPPER: local-worker-pepper-change-me-000000
-      LOCUS_ARTIFACT_ROOT: /var/lib/locus/artifacts
-      LOCUS_LISTEN_ADDR: 0.0.0.0:8080
-      LOCUS_WORKER_LISTEN_ADDR: 0.0.0.0:8081
+      TRACEWAKE_DATABASE_URL: postgres://tracewake:tracewake-local-only@postgres/tracewake?sslmode=disable
+      TRACEWAKE_TOKEN_PEPPER: local-tenant-pepper-change-me-000000
+      TRACEWAKE_WORKER_PEPPER: local-worker-pepper-change-me-000000
+      TRACEWAKE_ARTIFACT_ROOT: /var/lib/tracewake/artifacts
+      TRACEWAKE_LISTEN_ADDR: 0.0.0.0:8080
+      TRACEWAKE_WORKER_LISTEN_ADDR: 0.0.0.0:8081
       # Object grants are handed to clients, so they must name the address the
       # client uses: the published port for tenants, the service name for the
       # worker container.
-      LOCUS_PUBLIC_BASE_URL: http://127.0.0.1:8080
-      LOCUS_WORKER_BASE_URL: http://controlplane:8081
-      LOCUS_BOOTSTRAP_FILE: /run/locus/credentials.json
+      TRACEWAKE_PUBLIC_BASE_URL: http://127.0.0.1:8080
+      TRACEWAKE_WORKER_BASE_URL: http://controlplane:8081
+      TRACEWAKE_BOOTSTRAP_FILE: /run/tracewake/credentials.json
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
-      - artifacts:/var/lib/locus/artifacts
-      - credentials:/run/locus
+      - artifacts:/var/lib/tracewake/artifacts
+      - credentials:/run/tracewake
 
   worker:
     build:
@@ -46,11 +46,11 @@ services:
     depends_on:
       - controlplane
     environment:
-      LOCUS_WORKER_URL: http://controlplane:8081
-      LOCUS_WORKER_CREDENTIALS_FILE: /run/locus/credentials.json
-      LOCUS_WORKER_BUILD: local-compose
+      TRACEWAKE_WORKER_URL: http://controlplane:8081
+      TRACEWAKE_WORKER_CREDENTIALS_FILE: /run/tracewake/credentials.json
+      TRACEWAKE_WORKER_BUILD: local-compose
     volumes:
-      - credentials:/run/locus:ro
+      - credentials:/run/tracewake:ro
 
 volumes:
   artifacts:

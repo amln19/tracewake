@@ -15,8 +15,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-import locus
-from locus import (
+import tracewake
+from tracewake import (
     DecodeParams,
     Message,
     ModelResponse,
@@ -25,11 +25,11 @@ from locus import (
     ToolOutcome,
     Usage,
 )
-from locus.cassette import _blob_digests, export_cassette, import_cassette
-from locus.cli import _restore_command
-from locus.config import Config
-from locus.events import BlobRef, EVENT_ADAPTER
-from locus.redaction import HOME_PLACEHOLDER, Redactor
+from tracewake.cassette import _blob_digests, export_cassette, import_cassette
+from tracewake.cli import _restore_command
+from tracewake.config import Config
+from tracewake.events import BlobRef, EVENT_ADAPTER
+from tracewake.redaction import HOME_PLACEHOLDER, Redactor
 
 
 def _create(model_id: str, messages: list[Message], params: DecodeParams) -> ModelResponse:
@@ -45,7 +45,7 @@ def test_export_ships_every_blob_an_event_references(tmp_path: Path) -> None:
     """No cassette may drop a BlobRef: tool results, fs content, and outcome patches."""
     patch = "--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n"
     note = tmp_path / "note.txt"
-    with locus.record("full", store=tmp_path / "src") as rec:
+    with tracewake.record("full", store=tmp_path / "src") as rec:
         call = rec.model(provider="p", model_id="m", create_fn=_create).create(
             messages=[Message(role="user", content="go")]
         )
@@ -79,7 +79,7 @@ def test_export_fails_when_a_referenced_blob_is_missing_from_the_store(
     tmp_path: Path,
 ) -> None:
     """A future event type with a BlobRef must not export as success with an empty blobs/."""
-    with locus.record("gap", store=tmp_path / "src") as rec:
+    with tracewake.record("gap", store=tmp_path / "src") as rec:
         rec.outcome(
             status="ok",
             resolve=True,
@@ -104,9 +104,9 @@ def test_export_fails_when_a_referenced_blob_is_missing_from_the_store(
 
 def test_finish_if_running_leaves_a_finished_cassette_alone(tmp_path: Path) -> None:
     """A missing child report must not rewrite an already-finished once/none cassette."""
-    from locus.cli import _finish_if_running
+    from tracewake.cli import _finish_if_running
 
-    with locus.session("demo", store=tmp_path, mode="once") as rec:
+    with tracewake.session("demo", store=tmp_path, mode="once") as rec:
         rec.clock.time()
         rec.outcome(status="ok")
         run_id = rec.run_id
@@ -126,9 +126,9 @@ def test_a_pure_once_replay_does_not_rewrite_the_recording(tmp_path: Path) -> No
     marker = tmp_path / "diverge"
     script = tmp_path / "agent.py"
     script.write_text(
-        "import os, locus\n"
+        "import os, tracewake\n"
         f"marker = {str(marker)!r}\n"
-        "s = locus.current()\n"
+        "s = tracewake.current()\n"
         "s.clock.time()\n"
         "if os.path.exists(marker):\n"
         "    s.clock.time()\n"
@@ -140,7 +140,7 @@ def test_a_pure_once_replay_does_not_rewrite_the_recording(tmp_path: Path) -> No
         [
             sys.executable,
             "-m",
-            "locus",
+            "tracewake",
             "record",
             "--store",
             str(store),
@@ -170,7 +170,7 @@ def test_a_pure_once_replay_does_not_rewrite_the_recording(tmp_path: Path) -> No
         [
             sys.executable,
             "-m",
-            "locus",
+            "tracewake",
             "record",
             "--store",
             str(store),
@@ -198,7 +198,7 @@ def test_a_pure_once_replay_does_not_rewrite_the_recording(tmp_path: Path) -> No
 def test_library_once_replay_reports_can_record_false_and_leaves_the_run(
     tmp_path: Path,
 ) -> None:
-    with locus.session("greet", store=tmp_path, mode="once") as first:
+    with tracewake.session("greet", store=tmp_path, mode="once") as first:
         first.clock.time()
         first.outcome(status="ok")
         run_id = first.run_id
@@ -209,7 +209,7 @@ def test_library_once_replay_reports_can_record_false_and_leaves_the_run(
     before = db.run(run_id)
     db.close()
 
-    with locus.session("greet", store=tmp_path, mode="once") as second:
+    with tracewake.session("greet", store=tmp_path, mode="once") as second:
         assert second.run_id == run_id
         assert second.can_record is False
         assert second.report.can_record is False
@@ -252,7 +252,7 @@ def test_import_refuses_a_cassette_with_a_path_shaped_digest(tmp_path: Path) -> 
     victim = tmp_path / "id_rsa"
     victim.write_text("HARVESTED\n", encoding="utf-8")
 
-    with locus.record("seed", store=tmp_path / "src") as rec:
+    with tracewake.record("seed", store=tmp_path / "src") as rec:
         call = rec.model(provider="p", model_id="m", create_fn=_create).create(
             messages=[Message(role="user", content="go")]
         )
@@ -279,7 +279,7 @@ def test_import_refuses_a_cassette_with_a_path_shaped_digest(tmp_path: Path) -> 
     )
 
     into = Store(tmp_path / "dst")
-    with pytest.raises(ValueError, match="not a valid locus event|String should match"):
+    with pytest.raises(ValueError, match="not a valid Tracewake event|String should match"):
         import_cassette(tmp_path / "cassette", into)
     assert into.runs() == []
     into.close()
@@ -293,7 +293,7 @@ def test_header_command_is_scrubbed_in_the_store_and_the_exported_cassette(
     secret = "sk-live-9d2f4a7b1c8e0356"
     command = ["python", f"{home}/work/agent.py", "--api-key", secret]
 
-    with locus._open_session(
+    with tracewake._open_session(
         "demo",
         store=tmp_path / "src",
         mode="all",
@@ -308,7 +308,7 @@ def test_header_command_is_scrubbed_in_the_store_and_the_exported_cassette(
     assert home not in "".join(header.command or [])
     assert secret not in "".join(header.command or [])
     assert HOME_PLACEHOLDER in "".join(header.command or [])
-    assert locus.REDACTED in (header.command or [])
+    assert tracewake.REDACTED in (header.command or [])
 
     cass = tmp_path / "cassette"
     export_cassette(db, run_id, cass)
@@ -319,8 +319,8 @@ def test_header_command_is_scrubbed_in_the_store_and_the_exported_cassette(
 
 
 def test_open_session_is_not_part_of_the_public_python_surface() -> None:
-    assert "open_session" not in locus.__dict__
-    assert "open_session" not in locus.__all__
+    assert "open_session" not in tracewake.__dict__
+    assert "open_session" not in tracewake.__all__
 
 
 def test_replay_restores_home_paths_in_the_recorded_command() -> None:
@@ -329,11 +329,11 @@ def test_replay_restores_home_paths_in_the_recorded_command() -> None:
         "python",
         f"{HOME_PLACEHOLDER}/work/agent.py",
         "--api-key",
-        locus.REDACTED,
+        tracewake.REDACTED,
     ]
     restored = _restore_command(scrubbed, redacted=True)
     assert restored[1] == f"{home}/work/agent.py"
-    assert restored[3] == locus.REDACTED
+    assert restored[3] == tracewake.REDACTED
 
     redactor = Redactor(Config(redact=True))
     assert redactor.restore_path(f"{HOME_PLACEHOLDER}/x") == f"{home}/x"

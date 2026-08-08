@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-import locus
-from locus import EnvironmentEvent, EventMeta, RunHeader, Store
-from locus.events import EVENT_SCHEMA_VERSION, SCHEMA_VERSION
-from locus.store import STORE_SCHEMA_VERSION
+import tracewake
+from tracewake import EnvironmentEvent, EventMeta, RunHeader, Store
+from tracewake.events import EVENT_SCHEMA_VERSION, SCHEMA_VERSION
+from tracewake.store import STORE_SCHEMA_VERSION
 
 
 def _run(store: Store, run_id: str = "r1") -> str:
@@ -75,7 +75,7 @@ def test_a_path_shaped_digest_is_refused(tmp_path: Path) -> None:
 def test_blob_ref_rejects_a_non_digest_string() -> None:
     from pydantic import ValidationError
 
-    from locus.events import BlobRef
+    from tracewake.events import BlobRef
 
     with pytest.raises(ValidationError):
         BlobRef(digest="../../../etc/passwd", size=1)
@@ -138,7 +138,7 @@ def test_runs_group_by_task_in_start_order(tmp_path: Path) -> None:
 
 
 def test_outcome_labels_survive_the_store_round_trip(tmp_path: Path) -> None:
-    with locus.record("labelled", store=tmp_path, task_id="slugify-op-swap-1") as rec:
+    with tracewake.record("labelled", store=tmp_path, task_id="slugify-op-swap-1") as rec:
         rec.outcome(
             status="ok",
             coverage=True,

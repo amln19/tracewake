@@ -2,7 +2,7 @@
 
 The worker protocol is JSON over private HTTPS under `/internal/v1`. It is not
 reachable through the public listener. Messages reject unknown fields and use
-the generated version 1 schemas. Workers call Locus through Python APIs and do
+the generated version 1 schemas. Workers call Tracewake through Python APIs and do
 not parse CLI output or connect to PostgreSQL.
 
 ## Authentication
@@ -16,7 +16,7 @@ HTTPS. A worker cannot name a workspace or choose arbitrary input objects.
 
 Claim returns an additional random attempt token. Its verifier is stored on the
 attempt row. Every attempt endpoint requires both worker authentication and
-`Locus-Attempt-Token`. Attempt tokens are never returned again, logged, audited,
+`Tracewake-Attempt-Token`. Attempt tokens are never returned again, logged, audited,
 placed in queue payloads, or used for another attempt.
 
 ## Notification and claim

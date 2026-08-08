@@ -2,16 +2,16 @@
 set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-state_root=${LOCUS_LOCAL_STATE:-"$project_root/.locus/hosted"}
-postgres_port=${LOCUS_POSTGRES_PORT:-55432}
-public_port=${LOCUS_PUBLIC_PORT:-8080}
-worker_port=${LOCUS_PRIVATE_PORT:-8081}
+state_root=${TRACEWAKE_LOCAL_STATE:-"$project_root/.tracewake/hosted"}
+postgres_port=${TRACEWAKE_POSTGRES_PORT:-55432}
+public_port=${TRACEWAKE_PUBLIC_PORT:-8080}
+worker_port=${TRACEWAKE_PRIVATE_PORT:-8081}
 postgres_data="$state_root/postgres"
 postgres_socket="$state_root/socket"
 artifact_root="$state_root/artifacts"
 credential_file="$state_root/credentials.json"
 secret_file="$state_root/secrets"
-binary="$state_root/locusd"
+binary="$state_root/tracewaked"
 
 for command in go initdb pg_ctl pg_isready createdb psql uv node npm openssl curl; do
     command -v "$command" >/dev/null || {
@@ -28,13 +28,13 @@ if [ ! -f "$secret_file" ]; then
     umask 077
     tenant_pepper=$(openssl rand -hex 32)
     worker_pepper=$(openssl rand -hex 32)
-    printf "LOCUS_TOKEN_PEPPER='%s'\nLOCUS_WORKER_PEPPER='%s'\n" "$tenant_pepper" "$worker_pepper" >"$secret_file"
+    printf "TRACEWAKE_TOKEN_PEPPER='%s'\nTRACEWAKE_WORKER_PEPPER='%s'\n" "$tenant_pepper" "$worker_pepper" >"$secret_file"
 fi
 . "$secret_file"
-export LOCUS_TOKEN_PEPPER LOCUS_WORKER_PEPPER
+export TRACEWAKE_TOKEN_PEPPER TRACEWAKE_WORKER_PEPPER
 
 if [ ! -f "$postgres_data/PG_VERSION" ]; then
-    initdb -D "$postgres_data" -A trust -U locus --no-locale
+    initdb -D "$postgres_data" -A trust -U tracewake --no-locale
 fi
 pg_ctl -D "$postgres_data" -l "$state_root/postgres.log" -o "-p $postgres_port -k $postgres_socket" start
 
@@ -48,7 +48,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 tries=0
-until pg_isready -h "$postgres_socket" -p "$postgres_port" -U locus >/dev/null; do
+until pg_isready -h "$postgres_socket" -p "$postgres_port" -U tracewake >/dev/null; do
     tries=$((tries + 1))
     if [ "$tries" -ge 30 ]; then
         printf '%s\n' "PostgreSQL did not become ready" >&2
@@ -56,19 +56,19 @@ until pg_isready -h "$postgres_socket" -p "$postgres_port" -U locus >/dev/null; 
     fi
     sleep 1
 done
-if ! psql -h "$postgres_socket" -p "$postgres_port" -U locus -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='locus'" | grep -q 1; then
-    createdb -h "$postgres_socket" -p "$postgres_port" -U locus locus
+if ! psql -h "$postgres_socket" -p "$postgres_port" -U tracewake -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='tracewake'" | grep -q 1; then
+    createdb -h "$postgres_socket" -p "$postgres_port" -U tracewake tracewake
 fi
 
-(cd "$project_root/controlplane" && go build -o "$binary" ./cmd/locusd)
-database_url="postgres://locus@localhost/locus?host=$postgres_socket&port=$postgres_port&sslmode=disable"
-LOCUS_DATABASE_URL="$database_url" \
-LOCUS_ARTIFACT_ROOT="$artifact_root" \
-LOCUS_LISTEN_ADDR="127.0.0.1:$public_port" \
-LOCUS_WORKER_LISTEN_ADDR="127.0.0.1:$worker_port" \
-LOCUS_BOOTSTRAP_FILE="$credential_file" \
-LOCUS_DASHBOARD_DIR="$project_root/dashboard/dist" \
-LOCUS_SERVICE_VERSION="$(git -C "$project_root" describe --tags --always --dirty 2>/dev/null || echo unknown)" \
+(cd "$project_root/controlplane" && go build -o "$binary" ./cmd/tracewaked)
+database_url="postgres://tracewake@localhost/tracewake?host=$postgres_socket&port=$postgres_port&sslmode=disable"
+TRACEWAKE_DATABASE_URL="$database_url" \
+TRACEWAKE_ARTIFACT_ROOT="$artifact_root" \
+TRACEWAKE_LISTEN_ADDR="127.0.0.1:$public_port" \
+TRACEWAKE_WORKER_LISTEN_ADDR="127.0.0.1:$worker_port" \
+TRACEWAKE_BOOTSTRAP_FILE="$credential_file" \
+TRACEWAKE_DASHBOARD_DIR="$project_root/dashboard/dist" \
+TRACEWAKE_SERVICE_VERSION="$(git -C "$project_root" describe --tags --always --dirty 2>/dev/null || echo unknown)" \
 "$binary" &
 api_pid=$!
 
@@ -90,13 +90,13 @@ until curl --fail --silent --output /dev/null "http://127.0.0.1:$public_port/hea
     fi
     sleep 1
 done
-LOCUS_WORKER_URL="http://127.0.0.1:$worker_port" \
-LOCUS_WORKER_CREDENTIALS_FILE="$credential_file" \
-LOCUS_WORKER_BUILD=local-command \
-uv run --project "$project_root" locus-worker &
+TRACEWAKE_WORKER_URL="http://127.0.0.1:$worker_port" \
+TRACEWAKE_WORKER_CREDENTIALS_FILE="$credential_file" \
+TRACEWAKE_WORKER_BUILD=local-command \
+uv run --project "$project_root" tracewake-worker &
 worker_pid=$!
 
-printf '%s\n' "Locus control plane: http://127.0.0.1:$public_port"
+printf '%s\n' "Tracewake control plane: http://127.0.0.1:$public_port"
 printf '%s\n' "Credentials: $credential_file"
 while kill -0 "$api_pid" 2>/dev/null && kill -0 "$worker_pid" 2>/dev/null; do sleep 1; done
 printf '%s\n' "control plane or worker exited unexpectedly" >&2

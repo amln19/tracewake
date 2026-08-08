@@ -1,5 +1,5 @@
 output "public_base_url" {
-  description = "Base URL for LOCUS_REMOTE_URL."
+  description = "Base URL for TRACEWAKE_REMOTE_URL."
   value       = local.public_base_url
 }
 

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
-from locus import DecodeParams, Message, ModelResponse, StreamChunk, Usage
+from tracewake import DecodeParams, Message, ModelResponse, StreamChunk, Usage
 
 PROVIDER = "mlx"
 DEFAULT_MODEL = "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit"
@@ -51,7 +51,7 @@ def _load(model_id: str) -> tuple[Any, Any]:
 
 @dataclass
 class LocalModel:
-    """Wraps mlx-lm as the streaming backend a locus session records.
+    """Wraps mlx-lm as the streaming backend a Tracewake session records.
 
     Sampling is seeded per call so a batch is reproducible as a batch, while
     still varying across the repeats of one task — which is the point of running

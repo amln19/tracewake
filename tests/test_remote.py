@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from locus.remote import app
+from tracewake.remote import app
 
 RESULT = b'{"protocol_version":1,"status":"succeeded"}\n'
 

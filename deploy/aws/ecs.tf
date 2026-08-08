@@ -72,25 +72,25 @@ resource "aws_ecs_task_definition" "control_plane" {
     ]
 
     environment = [
-      { name = "LOCUS_LISTEN_ADDR", value = "0.0.0.0:8080" },
-      { name = "LOCUS_WORKER_LISTEN_ADDR", value = "0.0.0.0:8081" },
-      { name = "LOCUS_ARTIFACT_BUCKET", value = aws_s3_bucket.artifacts.bucket },
-      { name = "LOCUS_JOB_QUEUE_URL", value = aws_sqs_queue.jobs.url },
-      { name = "LOCUS_PUBLIC_BASE_URL", value = local.public_base_url },
-      { name = "LOCUS_WORKER_BASE_URL", value = local.worker_base_url },
-      { name = "LOCUS_BOOTSTRAP_WORKSPACE", value = var.environment },
-      { name = "LOCUS_ENVIRONMENT", value = var.environment },
-      { name = "LOCUS_SERVICE_VERSION", value = var.image_tag },
-      { name = "LOCUS_METRIC_NAMESPACE", value = local.control_plane_metric_namespace },
+      { name = "TRACEWAKE_LISTEN_ADDR", value = "0.0.0.0:8080" },
+      { name = "TRACEWAKE_WORKER_LISTEN_ADDR", value = "0.0.0.0:8081" },
+      { name = "TRACEWAKE_ARTIFACT_BUCKET", value = aws_s3_bucket.artifacts.bucket },
+      { name = "TRACEWAKE_JOB_QUEUE_URL", value = aws_sqs_queue.jobs.url },
+      { name = "TRACEWAKE_PUBLIC_BASE_URL", value = local.public_base_url },
+      { name = "TRACEWAKE_WORKER_BASE_URL", value = local.worker_base_url },
+      { name = "TRACEWAKE_BOOTSTRAP_WORKSPACE", value = var.environment },
+      { name = "TRACEWAKE_ENVIRONMENT", value = var.environment },
+      { name = "TRACEWAKE_SERVICE_VERSION", value = var.image_tag },
+      { name = "TRACEWAKE_METRIC_NAMESPACE", value = local.control_plane_metric_namespace },
       { name = "AWS_REGION", value = var.region },
     ]
 
     secrets = [
-      { name = "LOCUS_DATABASE_URL", valueFrom = local.secret_arns["database_url"] },
-      { name = "LOCUS_TOKEN_PEPPER", valueFrom = local.secret_arns["token_pepper"] },
-      { name = "LOCUS_WORKER_PEPPER", valueFrom = local.secret_arns["worker_pepper"] },
-      { name = "LOCUS_BOOTSTRAP_TOKEN", valueFrom = local.secret_arns["tenant_token"] },
-      { name = "LOCUS_WORKER_BOOTSTRAP_TOKEN", valueFrom = local.secret_arns["worker_token"] },
+      { name = "TRACEWAKE_DATABASE_URL", valueFrom = local.secret_arns["database_url"] },
+      { name = "TRACEWAKE_TOKEN_PEPPER", valueFrom = local.secret_arns["token_pepper"] },
+      { name = "TRACEWAKE_WORKER_PEPPER", valueFrom = local.secret_arns["worker_pepper"] },
+      { name = "TRACEWAKE_BOOTSTRAP_TOKEN", valueFrom = local.secret_arns["tenant_token"] },
+      { name = "TRACEWAKE_WORKER_BOOTSTRAP_TOKEN", valueFrom = local.secret_arns["worker_token"] },
     ]
 
     logConfiguration = {
@@ -124,18 +124,18 @@ resource "aws_ecs_task_definition" "worker" {
     essential = true
 
     environment = [
-      { name = "LOCUS_WORKER_URL", value = local.worker_base_url },
-      { name = "LOCUS_JOB_QUEUE_URL", value = aws_sqs_queue.jobs.url },
-      { name = "LOCUS_WORKER_BUILD", value = "${var.name}-${var.image_tag}" },
-      { name = "LOCUS_ENVIRONMENT", value = var.environment },
-      { name = "LOCUS_SERVICE_VERSION", value = var.image_tag },
-      { name = "LOCUS_WORKER_METRIC_NAMESPACE", value = local.worker_metric_namespace },
+      { name = "TRACEWAKE_WORKER_URL", value = local.worker_base_url },
+      { name = "TRACEWAKE_JOB_QUEUE_URL", value = aws_sqs_queue.jobs.url },
+      { name = "TRACEWAKE_WORKER_BUILD", value = "${var.name}-${var.image_tag}" },
+      { name = "TRACEWAKE_ENVIRONMENT", value = var.environment },
+      { name = "TRACEWAKE_SERVICE_VERSION", value = var.image_tag },
+      { name = "TRACEWAKE_WORKER_METRIC_NAMESPACE", value = local.worker_metric_namespace },
       { name = "AWS_REGION", value = var.region },
       { name = "AWS_DEFAULT_REGION", value = var.region },
     ]
 
     secrets = [
-      { name = "LOCUS_WORKER_TOKEN", valueFrom = local.secret_arns["worker_token"] },
+      { name = "TRACEWAKE_WORKER_TOKEN", valueFrom = local.secret_arns["worker_token"] },
     ]
 
     logConfiguration = {

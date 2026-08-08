@@ -1,6 +1,6 @@
 """A minimal ReAct coding agent, instrumented end to end.
 
-Every nondeterministic input it consumes goes through a locus session: the model
+Every nondeterministic input it consumes goes through a Tracewake session: the model
 through `session.model`, its tools through `session.tools`, file access through
 `session.fs`, and elapsed time through `session.clock`. Nothing reaches the disk
 or the clock around the side, because a corpus recorded through a partial surface
@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from locus import Message, Session, ToolCallRequest, ToolOutcome, Usage
+from tracewake import Message, Session, ToolCallRequest, ToolOutcome, Usage
 
 from .tasks import relative_source_files
 

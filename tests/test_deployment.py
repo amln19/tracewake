@@ -104,7 +104,7 @@ def test_workers_hold_no_artifact_or_publication_permission(action: str, role: s
 
 
 def test_queue_visibility_matches_the_attempt_lease() -> None:
-    from locus.worker import LEASE_SECONDS
+    from tracewake.worker import LEASE_SECONDS
 
     queue = read("queue.tf")
     assert f"visibility_timeout_seconds = {LEASE_SECONDS}" in queue
@@ -155,7 +155,7 @@ def test_every_alarm_is_provisioned_from_its_definition() -> None:
 
 
 def test_worker_alarms_watch_metrics_the_worker_emits() -> None:
-    from locus.telemetry import OPERATIONS, OUTCOMES, STAGES
+    from tracewake.telemetry import OPERATIONS, OUTCOMES, STAGES
 
     allowed = {
         "WorkerJobs": {"Operation": OPERATIONS, "Outcome": OUTCOMES},
@@ -176,9 +176,9 @@ def test_worker_alarms_watch_metrics_the_worker_emits() -> None:
 def test_services_report_the_environment_they_run_in() -> None:
     ecs = read("ecs.tf")
     for setting in (
-        'name = "LOCUS_ENVIRONMENT", value = var.environment',
-        'name = "LOCUS_METRIC_NAMESPACE", value = local.control_plane_metric_namespace',
-        'name = "LOCUS_WORKER_METRIC_NAMESPACE", value = local.worker_metric_namespace',
+        'name = "TRACEWAKE_ENVIRONMENT", value = var.environment',
+        'name = "TRACEWAKE_METRIC_NAMESPACE", value = local.control_plane_metric_namespace',
+        'name = "TRACEWAKE_WORKER_METRIC_NAMESPACE", value = local.worker_metric_namespace',
     ):
         assert setting in ecs, setting
 

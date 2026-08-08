@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>locus — __LOCUS_TITLE__</title>
+<title>Tracewake — __TRACEWAKE_TITLE__</title>
 <style>
 :root {
   --bg: #12141a;
@@ -165,7 +165,7 @@ footer code { color: var(--text); }
 </head>
 <body>
 <header>
-  <h1>__LOCUS_TITLE__ <span class="sub">— locus</span></h1>
+  <h1>__TRACEWAKE_TITLE__ <span class="sub">— Tracewake</span></h1>
   <div id="banner"></div>
   <div id="warnings"></div>
   <div class="facts" id="facts"></div>
@@ -192,10 +192,10 @@ footer code { color: var(--text); }
 
 <footer id="footer"></footer>
 
-<script type="application/json" id="locus-data">__LOCUS_PAYLOAD__</script>
+<script type="application/json" id="tracewake-data">__TRACEWAKE_PAYLOAD__</script>
 <script>
 "use strict";
-const D = JSON.parse(document.getElementById("locus-data").textContent);
+const D = JSON.parse(document.getElementById("tracewake-data").textContent);
 
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -317,7 +317,7 @@ function renderHead() {
   foot.appendChild(document.createTextNode("Steps agree when the tool name and the file or pattern it aimed at match. " +
     "Divergence is the last position after which the runs never agree again. "));
   if (D.store) {
-    const code = el("code", null, "locus diff " + D.good.run_id.slice(0, 8) + " " + D.bad.run_id.slice(0, 8) +
+    const code = el("code", null, "tracewake diff " + D.good.run_id.slice(0, 8) + " " + D.bad.run_id.slice(0, 8) +
       " --store " + D.store + (D.store_b && D.store_b !== D.store ? " --store-b " + D.store_b : ""));
     foot.appendChild(document.createTextNode("Full detail is in the store: "));
     foot.appendChild(code);
@@ -368,7 +368,7 @@ function neutralizeCommand(side, turn, provenance) {
   // 12 chars matches the CLI's short ids; the cassette restores the agent
   // command when has_command is set, so the placeholder is only for library
   // recordings that never stored one.
-  let cmd = "locus intervene " + r.run_id.slice(0, 12) +
+  let cmd = "tracewake intervene " + r.run_id.slice(0, 12) +
     " --drop-tag " + provenance + " --from-step " + turn;
   if (r.store) cmd += " --store " + r.store;
   if (!r.has_command) cmd += " -- <the command that runs your agent>";

@@ -11,9 +11,9 @@ import typer
 
 from .bundle import validate_bundle
 
-app = typer.Typer(no_args_is_help=True, help="Use a local or hosted Locus control plane.")
-URL = Annotated[str, typer.Option("--url", envvar="LOCUS_REMOTE_URL")]
-Token = Annotated[str, typer.Option("--token", envvar="LOCUS_TOKEN", hide_input=True)]
+app = typer.Typer(no_args_is_help=True, help="Use a local or hosted Tracewake control plane.")
+URL = Annotated[str, typer.Option("--url", envvar="TRACEWAKE_REMOTE_URL")]
+Token = Annotated[str, typer.Option("--token", envvar="TRACEWAKE_TOKEN", hide_input=True)]
 
 
 def _request(method: str, url: str, token: str, path: str, value: Any = None) -> Any:
@@ -40,7 +40,7 @@ def _request(method: str, url: str, token: str, path: str, value: Any = None) ->
 def upload(bundle: Path, url: URL = "http://127.0.0.1:8080", token: Token = "") -> None:
     """Upload and queue mandatory validation for a deterministic bundle."""
     if not token:
-        raise typer.BadParameter("pass --token or set LOCUS_TOKEN")
+        raise typer.BadParameter("pass --token or set TRACEWAKE_TOKEN")
     validated = validate_bundle(bundle)
     raw = bundle.read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
@@ -65,7 +65,7 @@ def _put_object(upload_url: str, headers: dict[str, str], data: bytes) -> str:
     request = urllib.request.Request(upload_url, data=data, headers=headers, method="PUT")
     try:
         with urllib.request.urlopen(request, timeout=300) as response:
-            version = response.headers.get("x-amz-version-id") or response.headers.get("Locus-Object-Version")
+            version = response.headers.get("x-amz-version-id") or response.headers.get("Tracewake-Object-Version")
     except urllib.error.HTTPError as exc:
         raise typer.BadParameter(f"bundle upload failed with HTTP {exc.code}") from exc
     if not version:

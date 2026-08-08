@@ -10,7 +10,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/amln19/locus/controlplane/internal/telemetry"
+	"github.com/amln19/tracewake/controlplane/internal/telemetry"
 	"github.com/jackc/pgx/v5"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -321,7 +321,7 @@ func (s *Service) ClaimNotification(ctx context.Context, workerID, jobID string,
 func (s *Service) claim(ctx context.Context, workerID, jobID string, expectedVersion int64, parent string) (Claim, error) {
 	ctx, span := telemetry.Span(telemetry.Continue(ctx, parent), "job.claim", trace.SpanKindConsumer)
 	defer span.End()
-	span.SetAttributes(attribute.String("locus.job_id", jobID))
+	span.SetAttributes(attribute.String("tracewake.job_id", jobID))
 	transaction, err := s.pool.Begin(ctx)
 	if err != nil {
 		return Claim{}, fmt.Errorf("begin claim: %w", err)
@@ -389,7 +389,7 @@ func (s *Service) claim(ctx context.Context, workerID, jobID string, expectedVer
 	if err := transaction.Commit(ctx); err != nil {
 		return Claim{}, fmt.Errorf("commit claim: %w", err)
 	}
-	span.SetAttributes(attribute.Int("locus.attempt", next), attribute.String("locus.operation", operation))
+	span.SetAttributes(attribute.Int("tracewake.attempt", next), attribute.String("tracewake.operation", operation))
 	var recovered time.Duration
 	if fencedSeconds != nil {
 		recovered = time.Duration(*fencedSeconds * float64(time.Second))

@@ -17,7 +17,7 @@ from bench.external import (
     strip_terminal,
     to_steps,
 )
-from locus.align import Step
+from tracewake.align import Step
 
 
 def _assistant(tool_name: str, args: dict, content: str = "thinking") -> dict:

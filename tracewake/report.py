@@ -25,8 +25,8 @@ from .store import BlobStore
 PAYLOAD_BUDGET = 5_000_000
 
 _TEMPLATE = Path(__file__).with_name("report.html")
-_PAYLOAD_MARK = "__LOCUS_PAYLOAD__"
-_TITLE_MARK = "__LOCUS_TITLE__"
+_PAYLOAD_MARK = "__TRACEWAKE_PAYLOAD__"
+_TITLE_MARK = "__TRACEWAKE_TITLE__"
 
 # A preview, not the artifact. Tool results are already in the blob store and
 # the page points at it.

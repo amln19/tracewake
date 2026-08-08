@@ -11,8 +11,8 @@ from typing import Any
 
 import pytest
 
-import locus
-from locus import (
+import tracewake
+from tracewake import (
     DecodeParams,
     Message,
     ModelResponse,
@@ -21,8 +21,8 @@ from locus import (
     ToolOutcome,
     Usage,
 )
-from locus.align import LexicalEmbedder, Step, diff_runs
-from locus.report import build_payload, render, write_report
+from tracewake.align import LexicalEmbedder, Step, diff_runs
+from tracewake.report import build_payload, render, write_report
 
 SYSTEM = "You are a coding agent. Read before you edit." * 12
 
@@ -61,7 +61,7 @@ def _record(store: Path, name: str, script: Script, *, resolve: bool) -> str:
     def dispatch(tool: str, args: dict[str, Any]) -> ToolOutcome:
         return ToolOutcome(content=next(out for _, n, a, out in script if n == tool and a == args))
 
-    with locus.record(name, store=store, task_id="win-off_by_one-1") as rec:
+    with tracewake.record(name, store=store, task_id="win-off_by_one-1") as rec:
         model = rec.model(provider="acme", model_id="acme-1", create_fn=create)
         tools = rec.tools(dispatch_fn=dispatch)
         messages = [
@@ -118,7 +118,7 @@ def _built(db: Store, good: str, bad: str, budget: int = 5_000_000) -> dict[str,
 
 
 def _island(html: str) -> dict[str, Any]:
-    match = re.search(r'id="locus-data">(.*?)</script>', html, re.S)
+    match = re.search(r'id="tracewake-data">(.*?)</script>', html, re.S)
     assert match is not None, "the report has no embedded data island"
     return json.loads(match.group(1))
 
@@ -132,7 +132,7 @@ def test_the_page_carries_its_data_and_references_nothing_external(
     # A report that fetches anything is not self-contained: it would break from a
     # file:// page, offline, or behind a README link. Recorded content may name a
     # URL of its own, so only the page around the data island is checked.
-    page = re.sub(r'id="locus-data">.*?</script>', "", html, flags=re.S)
+    page = re.sub(r'id="tracewake-data">.*?</script>', "", html, flags=re.S)
     assert not re.search(r'(?:src|href)\s*=\s*"(?!#)', page)
     assert "http://" not in page and "https://" not in page
     assert "@import" not in page and "url(" not in page
@@ -158,7 +158,7 @@ def test_the_page_never_builds_markup_out_of_recorded_text() -> None:
     live. Assembling nodes and assigning `textContent` is what actually makes
     the value inert; this asserts the template keeps doing that.
     """
-    template = (Path(__file__).parent.parent / "locus" / "report.html").read_text(
+    template = (Path(__file__).parent.parent / "tracewake" / "report.html").read_text(
         encoding="utf-8"
     )
     script = template.split('<script type="application/json"', 1)[1]
@@ -322,7 +322,7 @@ def test_view_writes_one_file_and_names_the_divergence(tmp_path: Path) -> None:
     out = tmp_path / "report.html"
     done = subprocess.run(
         [
-            sys.executable, "-m", "locus", "view", good, bad,
+            sys.executable, "-m", "tracewake", "view", good, bad,
             "--store", str(store), "--lexical", "-o", str(out),
         ],
         capture_output=True,

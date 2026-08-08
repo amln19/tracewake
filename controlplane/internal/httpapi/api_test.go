@@ -11,7 +11,7 @@ import (
 
 func TestDashboardFallbackHasRestrictiveBrowserHeaders(t *testing.T) {
 	directory := t.TempDir()
-	index := `<!doctype html><title>Locus</title><main id="root"></main>`
+	index := `<!doctype html><title>Tracewake</title><main id="root"></main>`
 	if err := os.WriteFile(filepath.Join(directory, "index.html"), []byte(index), 0o600); err != nil {
 		t.Fatal(err)
 	}

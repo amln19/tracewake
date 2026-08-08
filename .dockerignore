@@ -1,7 +1,7 @@
 .git
 .project-notes
 .venv
-.locus
+.tracewake
 __pycache__
 .pytest_cache
 *.pyc

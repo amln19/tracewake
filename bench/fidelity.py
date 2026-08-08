@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from itertools import combinations
 from pathlib import Path
 
-from locus import Store, StoredEvent, ToolCallEvent
+from tracewake import Store, StoredEvent, ToolCallEvent
 
 from .repos import CORPUS_ROOT
 
@@ -641,7 +641,7 @@ def report(store: Path = STORE, ledger: Path = LEDGER, out: Path = PAIRS) -> str
 
 
 # --- Replay fidelity ----------------------------------------------------------
-# A claim about the tool: a cassette replayed through `locus.replay` with the
+# A claim about the tool: a cassette replayed through `tracewake.replay` with the
 # network blocked reproduces its run. Fresh recordings, not the closed corpus —
 # those predate the current agent, and this arm only needs *a* recording.
 
@@ -705,8 +705,8 @@ def replay_one(task_id: str, run_id: str, store: Path = REPLAY_STORE) -> dict:
     import tempfile
     import time
 
-    import locus
-    from locus import ReplayMiss
+    import tracewake
+    from tracewake import ReplayMiss
 
     from . import agent
     from .repos import BY_NAME
@@ -732,7 +732,7 @@ def replay_one(task_id: str, run_id: str, store: Path = REPLAY_STORE) -> dict:
         "seconds": 0.0,
     }
     try:
-        with locus.replay(run_id, store=store, block_network=True) as session:
+        with tracewake.replay(run_id, store=store, block_network=True) as session:
             tools = agent.Tools(
                 session,
                 root,
@@ -819,7 +819,7 @@ def replay_report(results: Path = REPLAY_RESULTS) -> str:
     tools = sum(r["tool_calls_replayed"] for r in rows)
     lo, hi = wilson(ok, len(rows))
     lines = [
-        "replay fidelity: cassette replayed through locus.replay, network blocked",
+        "replay fidelity: cassette replayed through tracewake.replay, network blocked",
         "",
         f"recordings reproduced  {ok}/{len(rows)} ({ok / len(rows):.1%})  [{lo:.0%}, {hi:.0%}]",
         f"model calls matched    {matched}  missed {missed}  degraded "

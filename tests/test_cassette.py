@@ -10,8 +10,8 @@ from typing import Any, Callable
 
 import pytest
 
-import locus
-from locus import (
+import tracewake
+from tracewake import (
     DecodeParams,
     Message,
     ModelResponse,
@@ -21,7 +21,7 @@ from locus import (
     Usage,
     run_digest,
 )
-from locus.cassette import (
+from tracewake.cassette import (
     CASSETTE_FORMAT,
     CASSETTE_FORMAT_VERSION,
     _validate_cassette,
@@ -29,7 +29,7 @@ from locus.cassette import (
     import_cassette,
     read_header,
 )
-from locus.events import EVENT_ADAPTER, EVENT_SCHEMA_VERSION, StoredEvent, sha256_hex
+from tracewake.events import EVENT_ADAPTER, EVENT_SCHEMA_VERSION, StoredEvent, sha256_hex
 
 
 def _create(model_id: str, messages: list[Message], params: DecodeParams) -> ModelResponse:
@@ -37,7 +37,7 @@ def _create(model_id: str, messages: list[Message], params: DecodeParams) -> Mod
 
 
 def _record(store: Path, name: str = "trip") -> str:
-    with locus.record(name, store=store) as rec:
+    with tracewake.record(name, store=store) as rec:
         model = rec.model(
             provider="acme", model_id="acme-1", model_version="2026-05-01", create_fn=_create
         )
@@ -96,7 +96,7 @@ def test_a_cassette_round_trips_without_changing_the_run(tmp_path: Path) -> None
 
 def test_a_cassette_carries_the_task_it_belongs_to(tmp_path: Path) -> None:
     source, target = tmp_path / "a", tmp_path / "b"
-    with locus.record("trip", store=source, task_id="toolz-guard-2") as rec:
+    with tracewake.record("trip", store=source, task_id="toolz-guard-2") as rec:
         rec.outcome(status="ok", coverage=True, resolve=False)
         run_id = rec.run_id
 
@@ -123,7 +123,7 @@ def test_an_imported_cassette_replays(tmp_path: Path) -> None:
     import_cassette(tmp_path / "cassette", into)
     into.close()
 
-    with locus.replay(run_id, store=target) as rep:
+    with tracewake.replay(run_id, store=target) as rep:
         model = rep.model(provider="acme", model_id="acme-1")
         assert model.create(messages=[Message(role="user", content="hi")]).response.text == "hello"
         rep.outcome(status="ok")
@@ -230,7 +230,7 @@ def test_blobs_travel_with_the_cassette(tmp_path: Path) -> None:
 def test_an_outcome_patch_blob_travels_with_the_cassette(tmp_path: Path) -> None:
     patch = "--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n"
     source, target = tmp_path / "a", tmp_path / "b"
-    with locus.record("patched", store=source) as rec:
+    with tracewake.record("patched", store=source) as rec:
         rec.outcome(status="ok", resolve=True, coverage=True, patch=patch)
         run_id = rec.run_id
 
@@ -307,7 +307,7 @@ def test_validation_rejects_a_negative_blob_size(tmp_path: Path) -> None:
                 event["result"]["size"] = -1
 
     _rewrite(cassette, change)
-    with pytest.raises(ValueError, match=r"cassette.jsonl line.*valid locus event"):
+    with pytest.raises(ValueError, match=r"cassette.jsonl line.*valid Tracewake event"):
         _validate_cassette(cassette)
 
 
@@ -435,7 +435,7 @@ def test_successful_export_atomically_replaces_an_existing_directory(
 
     assert not marker.exists()
     assert _validate_cassette(destination).header.run_id == run_id
-    assert not list(tmp_path.glob(".cassette.locus-export-*"))
+    assert not list(tmp_path.glob(".cassette.tracewake-export-*"))
     db.close()
 
 
@@ -494,8 +494,8 @@ def test_an_old_cassette_warns_before_it_replays(tmp_path: Path) -> None:
     db._db.commit()
     db.close()
 
-    with pytest.warns(locus.CassetteStale, match="200 days ago"):
-        with locus.replay(run_id, store=tmp_path / "a") as rep:
+    with pytest.warns(tracewake.CassetteStale, match="200 days ago"):
+        with tracewake.replay(run_id, store=tmp_path / "a") as rep:
             rep.model(provider="acme", model_id="acme-1")
 
 
@@ -509,14 +509,14 @@ def test_the_staleness_warning_names_the_model_that_may_have_moved(tmp_path: Pat
     db._db.commit()
     db.close()
 
-    with pytest.warns(locus.CassetteStale, match="acme/acme-1"):
-        with locus.replay(run_id, store=tmp_path / "a"):
+    with pytest.warns(tracewake.CassetteStale, match="acme/acme-1"):
+        with tracewake.replay(run_id, store=tmp_path / "a"):
             pass
 
 
 def test_a_fresh_cassette_does_not_warn(tmp_path: Path) -> None:
     run_id = _record(tmp_path / "a")
     with warnings.catch_warnings():
-        warnings.simplefilter("error", locus.CassetteStale)
-        with locus.replay(run_id, store=tmp_path / "a"):
+        warnings.simplefilter("error", tracewake.CassetteStale)
+        with tracewake.replay(run_id, store=tmp_path / "a"):
             pass

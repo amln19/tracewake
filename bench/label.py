@@ -14,7 +14,7 @@ import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 
-from locus import ModelCallEvent, Store, ToolCallEvent
+from tracewake import ModelCallEvent, Store, ToolCallEvent
 
 from .fidelity import GRANULARITIES, extract, pair_up, target_of
 from .repos import CORPUS_ROOT
