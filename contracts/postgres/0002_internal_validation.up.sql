@@ -1,6 +1,6 @@
 ALTER TYPE job_operation ADD VALUE IF NOT EXISTS 'validate';
 
--- tracewake-statement-break
+-- locus-statement-break
 
 BEGIN;
 

@@ -1,6 +1,6 @@
 # Tracewake
 
-**Record an AI-agent run once. Replay it offline. Compare two runs to see where their trajectories diverged.**
+**Record. Replay. Find the divergence.**
 
 Tracewake is a local-first Python tool for making agent behavior inspectable and repeatable. It records the nondeterministic inputs an agent consumes through its supported adapters—model responses, tool results, files, time, randomness, UUIDs, and environment reads—then replays those inputs from a cassette with network access blocked. Given a successful and failing run, it aligns their tool-use trajectories and reports the first meaningful divergence.
 
@@ -13,7 +13,16 @@ uv sync
 uv run python examples/demo.py
 ```
 
-The demo is offline and needs neither an API key nor a model server. It records two short tool-calling runs, replays one, then prints a real divergence report. For `pip`, install from a checkout with `python -m pip install .`; Tracewake requires Python 3.13 or newer.
+The demo is offline and needs neither an API key nor a model server. It records two short tool-calling runs, replays one, then prints a real divergence report. To install Tracewake from a checkout with `pip`, run `python -m pip install .`; it requires Python 3.13 or newer.
+
+Common CLI commands:
+
+```sh
+tracewake record -- python agent.py
+tracewake replay <run>
+tracewake diff <good-run> <bad-run>
+tracewake view <good-run> <bad-run>
+```
 
 ## Why use it?
 

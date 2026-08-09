@@ -15,6 +15,15 @@ import (
 //go:embed migrations/*.up.sql
 var migrationFiles embed.FS
 
+const migrationStatementBreak = "-- tracewake-statement-break"
+
+func migrationStatements(contents string) []string {
+	// Deployed migration bytes retain the pre-rename delimiter. Normalizing it
+	// here preserves those bytes without making it the name for new migrations.
+	contents = strings.ReplaceAll(contents, "-- locus-statement-break", migrationStatementBreak)
+	return strings.Split(contents, migrationStatementBreak)
+}
+
 type Store struct {
 	pool *pgxpool.Pool
 }
@@ -84,7 +93,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 		if applied {
 			continue
 		}
-		for _, statement := range strings.Split(byVersion[version], "-- tracewake-statement-break") {
+		for _, statement := range migrationStatements(byVersion[version]) {
 			if _, err := s.pool.Exec(ctx, statement); err != nil {
 				return fmt.Errorf("apply hosted schema migration %d: %w", version, err)
 			}
