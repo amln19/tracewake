@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/amln19/tracewake/controlplane/internal/controlplane"
@@ -313,6 +314,104 @@ func TestRepeatedRequestsProduceOneJobPerOperation(t *testing.T) {
 	}
 }
 
+func TestDistinctIdempotencyKeysCreateDistinctJobsForTheSameInput(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	profile := "lexical-v1"
+	request := controlplane.JobRequest{
+		Operation: "diff",
+		RunIDs:    []string{f.readyRun(t), f.readyRun(t)},
+		Profile:   &profile,
+	}
+	first, reused, err := f.service.CreateJob(ctx, f.principal, "first-key", request)
+	if err != nil || reused {
+		t.Fatalf("first job=%#v reused=%v err=%v", first, reused, err)
+	}
+	second, reused, err := f.service.CreateJob(ctx, f.principal, "second-key", request)
+	if err != nil || reused {
+		t.Fatalf("second job=%#v reused=%v err=%v", second, reused, err)
+	}
+	if second.ID == first.ID {
+		t.Fatal("a distinct idempotency key reused the first job")
+	}
+	var jobs, inputs, notifications, audits, idempotencyRecords int
+	if err := f.pool.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM jobs WHERE id IN($1,$2)),
+		(SELECT count(DISTINCT input_id) FROM jobs WHERE id IN($1,$2)),
+		(SELECT count(*) FROM outbox WHERE aggregate_id IN($1,$2) AND topic='job.created'),
+		(SELECT count(*) FROM audit_records WHERE aggregate_id IN($1,$2) AND event_type='job.created'),
+		(SELECT count(*) FROM idempotency_records WHERE response_id IN($1,$2))`,
+		first.ID, second.ID).Scan(&jobs, &inputs, &notifications, &audits, &idempotencyRecords); err != nil {
+		t.Fatal(err)
+	}
+	if jobs != 2 || inputs != 1 || notifications != 2 || audits != 2 || idempotencyRecords != 2 {
+		t.Fatalf("jobs=%d inputs=%d notifications=%d audits=%d idempotency=%d", jobs, inputs, notifications, audits, idempotencyRecords)
+	}
+}
+
+func TestConcurrentDistinctKeysShareOneNormalizedInput(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	request := controlplane.JobRequest{Operation: "otlp", RunIDs: []string{f.readyRun(t)}}
+	start := make(chan struct{})
+	jobs := make([]controlplane.Job, 2)
+	reused := make([]bool, 2)
+	errors := make([]error, 2)
+	var wait sync.WaitGroup
+	for index, key := range []string{"concurrent-first", "concurrent-second"} {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			jobs[index], reused[index], errors[index] = f.service.CreateJob(ctx, f.principal, key, request)
+		}()
+	}
+	close(start)
+	wait.Wait()
+	for index := range jobs {
+		if errors[index] != nil || reused[index] {
+			t.Fatalf("job %d=%#v reused=%v err=%v", index, jobs[index], reused[index], errors[index])
+		}
+	}
+	if jobs[0].ID == jobs[1].ID {
+		t.Fatal("different keys created the same job")
+	}
+	var inputs int
+	if err := f.pool.QueryRow(ctx, `SELECT count(DISTINCT input_id) FROM jobs WHERE id IN($1,$2)`, jobs[0].ID, jobs[1].ID).Scan(&inputs); err != nil {
+		t.Fatal(err)
+	}
+	if inputs != 1 {
+		t.Fatalf("normalized inputs=%d", inputs)
+	}
+}
+
+func TestPendingUploadIsRetryableAndDeletedDigestCanBeUploadedAgain(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	bundleDigest := digest("retryable-upload")
+	first, err := f.service.CreateUpload(ctx, f.principal, bundleDigest, 123)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retried, err := f.service.CreateUpload(ctx, f.principal, bundleDigest, 123)
+	if err != nil || retried.RunID != first.RunID || retried.Key != first.Key {
+		t.Fatalf("pending retry=%#v err=%v", retried, err)
+	}
+	if _, err := f.service.CreateUpload(ctx, f.principal, bundleDigest, 124); !errors.Is(err, controlplane.ErrConflict) {
+		t.Fatalf("changed declaration reused: %v", err)
+	}
+	if err := f.service.DeleteRun(ctx, f.principal, first.RunID); err != nil {
+		t.Fatal(err)
+	}
+	replacement, err := f.service.CreateUpload(ctx, f.principal, bundleDigest, 123)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replacement.RunID == first.RunID || replacement.Key == first.Key {
+		t.Fatalf("deleted upload was resurrected: %#v", replacement)
+	}
+}
+
 func TestEveryOperationResolvesCancellationAtTheDatabase(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
@@ -329,10 +428,8 @@ func TestEveryOperationResolvesCancellationAtTheDatabase(t *testing.T) {
 			if err := f.service.RequestCancellation(ctx, f.principal, jobID); err != nil {
 				t.Fatal(err)
 			}
-			// Cancellation resolves in one transition, so the attempt it fenced
-			// learns through lease loss rather than a later poll.
-			if _, err := f.service.Cancellation(ctx, jobID, 1, claim.AttemptToken); !errors.Is(err, controlplane.ErrLeaseLost) {
-				t.Fatalf("cancelled attempt: %v", err)
+			if cancelled, err := f.service.Cancellation(ctx, jobID, 1, claim.AttemptToken); err != nil || !cancelled {
+				t.Fatalf("cancelled attempt observed=%v err=%v", cancelled, err)
 			}
 			if err := f.service.CompleteAttempt(ctx, jobID, 1, claim.AttemptToken, f.completion(t, jobID, 1, operation, bundleDigest)); !errors.Is(err, controlplane.ErrLeaseLost) {
 				t.Fatalf("completion after cancellation: %v", err)
@@ -355,5 +452,88 @@ func TestEveryOperationResolvesCancellationAtTheDatabase(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRunAndAuditListsReturnStableCursorPages(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	for range 4 {
+		f.readyRun(t)
+	}
+	profile := "lexical-v1"
+	request := controlplane.JobRequest{
+		Operation: "diff",
+		RunIDs:    []string{f.readyRun(t), f.readyRun(t)},
+		Profile:   &profile,
+	}
+	if _, _, err := f.service.CreateJob(ctx, f.principal, "pagination", request); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		if err := f.service.DeleteRun(ctx, f.principal, f.readyRun(t)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	allRuns, err := f.service.ListRuns(ctx, f.principal, 100)
+	if err != nil || len(allRuns) < 4 {
+		t.Fatalf("all runs=%d err=%v", len(allRuns), err)
+	}
+	var pagedRuns []controlplane.RunView
+	cursor := ""
+	for {
+		page, err := f.service.ListRunPage(ctx, f.principal, cursor, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pagedRuns = append(pagedRuns, page.Items...)
+		cursor = page.NextCursor
+		if cursor == "" {
+			break
+		}
+	}
+	if len(pagedRuns) != len(allRuns) {
+		t.Fatalf("paged runs=%d all=%d", len(pagedRuns), len(allRuns))
+	}
+	for index := range allRuns {
+		if pagedRuns[index].ID != allRuns[index].ID {
+			t.Fatalf("run order differs at %d: %s != %s", index, pagedRuns[index].ID, allRuns[index].ID)
+		}
+	}
+	firstRuns, err := f.service.ListRunPage(ctx, f.principal, "", 2)
+	if err != nil || firstRuns.NextCursor == "" {
+		t.Fatalf("first run page=%#v err=%v", firstRuns, err)
+	}
+	foreign := f.principal
+	foreign.WorkspaceID = "00000000-0000-4000-8000-000000000099"
+	if _, err := f.service.ListRunPage(ctx, foreign, firstRuns.NextCursor, 2); !errors.Is(err, controlplane.ErrInvalidRequest) {
+		t.Fatalf("foreign cursor error=%v", err)
+	}
+
+	allAudit, err := f.service.ListAudit(ctx, f.principal, 100)
+	if err != nil || len(allAudit) < 4 {
+		t.Fatalf("all audit=%d err=%v", len(allAudit), err)
+	}
+	var pagedAudit []controlplane.AuditView
+	cursor = ""
+	for {
+		page, err := f.service.ListAuditPage(ctx, f.principal, cursor, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pagedAudit = append(pagedAudit, page.Items...)
+		cursor = page.NextCursor
+		if cursor == "" {
+			break
+		}
+	}
+	if len(pagedAudit) != len(allAudit) {
+		t.Fatalf("paged audit=%d all=%d", len(pagedAudit), len(allAudit))
+	}
+	for index := range allAudit {
+		if pagedAudit[index].ID != allAudit[index].ID {
+			t.Fatalf("audit order differs at %d: %d != %d", index, pagedAudit[index].ID, allAudit[index].ID)
+		}
 	}
 }

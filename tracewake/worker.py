@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import _thread
 import contextvars
 import hashlib
 import json
 import logging
 import os
+import signal
+import ssl
 import tempfile
 import threading
 import time
@@ -29,6 +32,7 @@ from .telemetry import Span, Telemetry
 
 LEASE_SECONDS = 60
 HEARTBEAT_SECONDS = 20
+CANCELLATION_SECONDS = 1
 # One attempt output. Analyses summarise a bundle instead of copying it, so a
 # larger output means a defect rather than a large run.
 MAX_ARTIFACT_BYTES = 64 * 1024 * 1024
@@ -150,10 +154,11 @@ class _BundleBlobs:
 
 
 class WorkerClient:
-    def __init__(self, base_url: str, worker_id: str, token: str) -> None:
+    def __init__(self, base_url: str, worker_id: str, token: str, ca_pem: str = "") -> None:
         self.base_url = base_url.rstrip("/")
         self.worker_id = worker_id
         self.token = token
+        self._ssl_context = ssl.create_default_context(cadata=ca_pem) if ca_pem else None
         # Sending the attempt's trace context makes the control plane's own
         # spans part of the trace that started with the job request.
         self.traceparent: str | None = None
@@ -179,7 +184,10 @@ class WorkerClient:
             self.base_url + path, data=body, headers=request_headers, method=method
         )
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            options: dict[str, Any] = {"timeout": 30}
+            if self._ssl_context is not None:
+                options["context"] = self._ssl_context
+            with urllib.request.urlopen(request, **options) as response:
                 return response.status, response.read()
         except urllib.error.HTTPError as exc:
             if exc.code == 409:
@@ -216,7 +224,15 @@ def _store_object(grant: dict[str, Any], data: bytes) -> str:
     return version
 
 
-def _heartbeat(client: WorkerClient, job: str, attempt: int, token: str, stop: threading.Event, delivery: Delivery | None = None) -> None:
+def _heartbeat(
+    client: WorkerClient,
+    job: str,
+    attempt: int,
+    token: str,
+    stop: threading.Event,
+    delivery: Delivery | None = None,
+    interrupt: Callable[[str], None] | None = None,
+) -> None:
     path = f"/internal/v1/jobs/{job}/attempts/{attempt}/heartbeat"
     while not stop.wait(HEARTBEAT_SECONDS):
         try:
@@ -229,8 +245,38 @@ def _heartbeat(client: WorkerClient, job: str, attempt: int, token: str, stop: t
             # Losing the heartbeat abandons the attempt, so the reason has to
             # reach the operator instead of stopping the thread silently.
             log.warning("job %s attempt %d stopped heartbeating: %s: %s", job, attempt, type(exc).__name__, str(exc)[:200])
-            stop.set()
+            if interrupt is None:
+                stop.set()
+            else:
+                interrupt("lease_lost")
             return
+
+
+def _watch_cancellation(
+    client: WorkerClient,
+    job: str,
+    attempt: int,
+    token: str,
+    stop: threading.Event,
+    interrupt: Callable[[str], None],
+) -> None:
+    path = f"/internal/v1/jobs/{job}/attempts/{attempt}/cancellation"
+    while not stop.wait(CANCELLATION_SECONDS):
+        try:
+            response = client.json("GET", path, None, attempt_token=token)
+            if response["cancel_requested"]:
+                interrupt("cancelled")
+                return
+        except LeaseLost:
+            interrupt("lease_lost")
+            return
+        except Exception as exc:
+            log.warning(
+                "job %s attempt %d could not check cancellation: %s",
+                job,
+                attempt,
+                type(exc).__name__,
+            )
 
 
 def _download_input(client: WorkerClient, claim: dict[str, Any], artifact: dict[str, Any], destination: Path) -> ValidatedBundle:
@@ -414,9 +460,30 @@ def _attempt(client: WorkerClient, delivery: Delivery, recorder: Telemetry, span
     execution = _Execution(recorder, claim["operation"], [span])
     scope = _execution.set(execution)
     stop = threading.Event()
-    thread = threading.Thread(target=_heartbeat, args=(client, job, attempt, attempt_token, stop, delivery), daemon=True)
-    thread.start()
+    stop_reason: list[str] = []
+    interrupt_lock = threading.Lock()
+
+    def interrupt(reason: str) -> None:
+        with interrupt_lock:
+            if stop.is_set():
+                return
+            stop_reason.append(reason)
+            stop.set()
+        _thread.interrupt_main()
+
+    heartbeat = threading.Thread(
+        target=_heartbeat,
+        args=(client, job, attempt, attempt_token, stop, delivery, interrupt),
+        daemon=True,
+    )
+    cancellation = threading.Thread(
+        target=_watch_cancellation,
+        args=(client, job, attempt, attempt_token, stop, interrupt),
+        daemon=True,
+    )
     try:
+        heartbeat.start()
+        cancellation.start()
         progress_path=f"/internal/v1/jobs/{job}/attempts/{attempt}/progress"
         client.json("PUT",progress_path,{"protocol_version":1,"attempt_number":attempt,"sequence":1,"stage":"downloading","message":"downloading immutable inputs"},attempt_token=attempt_token)
         handler = _operation(claim)
@@ -457,6 +524,36 @@ def _attempt(client: WorkerClient, delivery: Delivery, recorder: Telemetry, span
         delivery.acknowledge()
         _report(execution, "succeeded")
         return True
+    except KeyboardInterrupt:
+        if stop_reason:
+            reason = stop_reason[0]
+            log.warning("job %s attempt %d interrupted: %s", job, attempt, reason)
+            _report(execution, "fenced")
+            if reason == "cancelled":
+                delivery.acknowledge()
+            return True
+        _report(execution, "failed")
+        try:
+            client.json(
+                "POST",
+                f"/internal/v1/jobs/{job}/attempts/{attempt}/fail",
+                {
+                    "schema_version": 1,
+                    "code": "internal",
+                    "message": "worker is shutting down",
+                    "retryable": True,
+                },
+                attempt_token=attempt_token,
+            )
+            delivery.acknowledge()
+        except Exception as exc:
+            log.warning(
+                "job %s attempt %d could not report shutdown: %s",
+                job,
+                attempt,
+                type(exc).__name__,
+            )
+        raise
     except LeaseLost:
         # A superseded attempt leaves the notification for redelivery rather
         # than deleting work the current attempt may still need.
@@ -497,7 +594,8 @@ def _attempt(client: WorkerClient, delivery: Delivery, recorder: Telemetry, span
     finally:
         _execution.reset(scope)
         stop.set()
-        thread.join(timeout=1)
+        heartbeat.join(timeout=1)
+        cancellation.join(timeout=1)
 
 
 def _resolve_identity(client: WorkerClient, attempts: int = 30) -> str:
@@ -512,6 +610,16 @@ def _resolve_identity(client: WorkerClient, attempts: int = 30) -> str:
     raise RuntimeError("worker identity could not be resolved")
 
 
+def _supervise(client: WorkerClient, notifications: Any, telemetry: Telemetry) -> None:
+    while True:
+        try:
+            if not run_once(client, notifications, telemetry):
+                time.sleep(1)
+        except Exception as exc:
+            log.warning("worker loop recovered from %s", type(exc).__name__)
+            time.sleep(1)
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     credentials: dict[str, str] = {}
@@ -523,15 +631,17 @@ def main() -> None:
         os.environ.get("TRACEWAKE_WORKER_URL", "http://127.0.0.1:8081"),
         os.environ.get("TRACEWAKE_WORKER_ID", credentials.get("worker_id", "")),
         os.environ.get("TRACEWAKE_WORKER_TOKEN", credentials.get("worker_token", "")),
+        os.environ.get("TRACEWAKE_WORKER_CA_PEM", ""),
     )
     if not client.worker_id:
         client.worker_id = _resolve_identity(client)
     queue_url = os.environ.get("TRACEWAKE_JOB_QUEUE_URL", "")
     notifications: Any = QueueNotifications(queue_url) if queue_url else ControlPlaneNotifications(client)
     telemetry = Telemetry.from_environment()
+    previous_sigterm = signal.signal(signal.SIGTERM, lambda _signum, _frame: _thread.interrupt_main())
     try:
-        while True:
-            if not run_once(client, notifications, telemetry):
-                time.sleep(1)
+        _supervise(client, notifications, telemetry)
     except KeyboardInterrupt:
         return
+    finally:
+        signal.signal(signal.SIGTERM, previous_sigterm)

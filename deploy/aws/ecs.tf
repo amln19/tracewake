@@ -42,7 +42,7 @@ resource "aws_ecs_cluster" "main" {
 
 locals {
   public_base_url = var.public_base_url != "" ? var.public_base_url : "https://${aws_lb.public.dns_name}"
-  worker_base_url = "http://${aws_lb.internal.dns_name}:8081"
+  worker_base_url = var.worker_base_url != "" ? trimsuffix(var.worker_base_url, "/") : "https://${aws_lb.internal.dns_name}"
 
   secret_arns = { for key, secret in aws_secretsmanager_secret.service : key => secret.arn }
 }
@@ -125,6 +125,7 @@ resource "aws_ecs_task_definition" "worker" {
 
     environment = [
       { name = "TRACEWAKE_WORKER_URL", value = local.worker_base_url },
+      { name = "TRACEWAKE_WORKER_CA_PEM", value = var.worker_ca_pem },
       { name = "TRACEWAKE_JOB_QUEUE_URL", value = aws_sqs_queue.jobs.url },
       { name = "TRACEWAKE_WORKER_BUILD", value = "${var.name}-${var.image_tag}" },
       { name = "TRACEWAKE_ENVIRONMENT", value = var.environment },

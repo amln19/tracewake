@@ -43,7 +43,7 @@ func TestDeletionHidesARunImmediately(t *testing.T) {
 			t.Fatal("a deleted run is still listed")
 		}
 	}
-	keys, err := f.service.RetainedObjectKeys(ctx)
+	objects, err := f.service.RetainedObjects(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,8 +51,10 @@ func TestDeletionHidesARunImmediately(t *testing.T) {
 	if err := f.pool.QueryRow(ctx, "SELECT bundle_object_key FROM runs WHERE id=$1", run).Scan(&key); err != nil {
 		t.Fatal(err)
 	}
-	if keys[key] {
-		t.Fatal("a deleted run's bundle is still retained")
+	for identity := range objects {
+		if identity.Key == key {
+			t.Fatal("a deleted run's bundle is still retained")
+		}
 	}
 	if err := f.service.DeleteRun(ctx, f.principal, run); !errors.Is(err, controlplane.ErrNotFound) {
 		t.Fatalf("deleting twice did not report the run as gone: %v", err)
@@ -152,7 +154,7 @@ func TestRetentionKeepsWhatASuccessfulJobRecorded(t *testing.T) {
 	if job.State != "succeeded" || len(job.Artifacts) != 0 {
 		t.Fatalf("an expired job should stay successful with nothing to download: %s, %d artifacts", job.State, len(job.Artifacts))
 	}
-	keys, err := f.service.RetainedObjectKeys(ctx)
+	objects, err := f.service.RetainedObjects(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,8 +162,10 @@ func TestRetentionKeepsWhatASuccessfulJobRecorded(t *testing.T) {
 	if err := f.pool.QueryRow(ctx, "SELECT object_key FROM artifacts WHERE job_id=$1 AND authoritative", jobID).Scan(&key); err != nil {
 		t.Fatal(err)
 	}
-	if keys[key] {
-		t.Fatal("an expired artifact's object is still retained")
+	for identity := range objects {
+		if identity.Key == key {
+			t.Fatal("an expired artifact's object is still retained")
+		}
 	}
 }
 

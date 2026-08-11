@@ -2,8 +2,11 @@ package controlplane
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -79,6 +82,34 @@ type AuditView struct {
 	ActorType     string    `json:"actor_type"`
 	CreatedAt     time.Time `json:"created_at"`
 }
+type RunPage struct {
+	Items      []RunView
+	NextCursor string
+}
+type AuditPage struct {
+	Items      []AuditView
+	NextCursor string
+}
+type listCursor struct {
+	Kind      string    `json:"kind"`
+	Workspace string    `json:"workspace"`
+	CreatedAt time.Time `json:"created_at"`
+	ID        string    `json:"id"`
+}
+
+func encodeListCursor(kind, workspace string, createdAt time.Time, id string) string {
+	raw, _ := json.Marshal(listCursor{Kind: kind, Workspace: workspace, CreatedAt: createdAt, ID: id})
+	return base64.RawURLEncoding.EncodeToString(raw)
+}
+
+func decodeListCursor(raw, kind, workspace string) (listCursor, error) {
+	var cursor listCursor
+	decoded, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil || json.Unmarshal(decoded, &cursor) != nil || cursor.Kind != kind || cursor.Workspace != workspace || cursor.CreatedAt.IsZero() || cursor.ID == "" {
+		return listCursor{}, fmt.Errorf("%w: invalid list cursor", ErrInvalidRequest)
+	}
+	return cursor, nil
+}
 
 func (s *Service) GetRun(ctx context.Context, p Principal, id string) (RunView, error) {
 	var v RunView
@@ -91,12 +122,28 @@ func (s *Service) GetRun(ctx context.Context, p Principal, id string) (RunView, 
 	return v, err
 }
 func (s *Service) ListRuns(ctx context.Context, p Principal, limit int) ([]RunView, error) {
+	page, err := s.ListRunPage(ctx, p, "", limit)
+	return page.Items, err
+}
+func (s *Service) ListRunPage(ctx context.Context, p Principal, cursorValue string, limit int) (RunPage, error) {
 	if limit < 1 || limit > 100 {
 		limit = 100
 	}
-	rows, err := s.pool.Query(ctx, `SELECT id,state,declared_bundle_format,declared_bundle_digest,logical_run_digest,cassette_format_version,event_schema_version,event_count,failure_code,failure_message,created_at,ready_at,retention_expires_at FROM runs WHERE workspace_id=$1 AND state<>'deleted' ORDER BY created_at DESC,id DESC LIMIT $2`, p.WorkspaceID, limit)
+	query := `SELECT id,state,declared_bundle_format,declared_bundle_digest,logical_run_digest,cassette_format_version,event_schema_version,event_count,failure_code,failure_message,created_at,ready_at,retention_expires_at FROM runs WHERE workspace_id=$1 AND state<>'deleted'`
+	args := []any{p.WorkspaceID, limit + 1}
+	if cursorValue != "" {
+		cursor, err := decodeListCursor(cursorValue, "runs", p.WorkspaceID)
+		if err != nil {
+			return RunPage{}, err
+		}
+		query += ` AND (created_at,id)<($2,$3::uuid) ORDER BY created_at DESC,id DESC LIMIT $4`
+		args = []any{p.WorkspaceID, cursor.CreatedAt, cursor.ID, limit + 1}
+	} else {
+		query += ` ORDER BY created_at DESC,id DESC LIMIT $2`
+	}
+	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return RunPage{}, err
 	}
 	defer rows.Close()
 	result := []RunView{}
@@ -104,12 +151,21 @@ func (s *Service) ListRuns(ctx context.Context, p Principal, limit int) ([]RunVi
 		var v RunView
 		var failureCode, failureMessage *string
 		if err := rows.Scan(&v.ID, &v.State, &v.BundleFormat, &v.BundleDigest, &v.LogicalDigest, &v.CassetteFormat, &v.EventSchema, &v.EventCount, &failureCode, &failureMessage, &v.CreatedAt, &v.ReadyAt, &v.RetentionExpires); err != nil {
-			return nil, err
+			return RunPage{}, err
 		}
 		v.Failure = failureView(failureCode, failureMessage)
 		result = append(result, v)
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return RunPage{}, err
+	}
+	page := RunPage{Items: result}
+	if len(result) > limit {
+		page.Items = result[:limit]
+		last := page.Items[len(page.Items)-1]
+		page.NextCursor = encodeListCursor("runs", p.WorkspaceID, last.CreatedAt, last.ID)
+	}
+	return page, nil
 }
 func (s *Service) GetJob(ctx context.Context, p Principal, id string) (JobView, error) {
 	v := JobView{Attempts: []AttemptView{}, Artifacts: []PublicArtifact{}}
@@ -175,23 +231,52 @@ func (s *Service) GetArtifact(ctx context.Context, p Principal, id string) (Arti
 	return v, err
 }
 func (s *Service) ListAudit(ctx context.Context, p Principal, limit int) ([]AuditView, error) {
+	page, err := s.ListAuditPage(ctx, p, "", limit)
+	return page.Items, err
+}
+func (s *Service) ListAuditPage(ctx context.Context, p Principal, cursorValue string, limit int) (AuditPage, error) {
 	if limit < 1 || limit > 100 {
 		limit = 100
 	}
-	rows, err := s.pool.Query(ctx, `SELECT id,aggregate_type,aggregate_id,event_type,actor_type,created_at FROM audit_records WHERE workspace_id=$1 ORDER BY created_at DESC,id DESC LIMIT $2`, p.WorkspaceID, limit)
+	query := `SELECT id,aggregate_type,aggregate_id,event_type,actor_type,created_at FROM audit_records WHERE workspace_id=$1`
+	args := []any{p.WorkspaceID, limit + 1}
+	if cursorValue != "" {
+		cursor, err := decodeListCursor(cursorValue, "audit", p.WorkspaceID)
+		if err != nil {
+			return AuditPage{}, err
+		}
+		id, err := strconv.ParseInt(cursor.ID, 10, 64)
+		if err != nil {
+			return AuditPage{}, fmt.Errorf("%w: invalid list cursor", ErrInvalidRequest)
+		}
+		query += ` AND (created_at,id)<($2,$3) ORDER BY created_at DESC,id DESC LIMIT $4`
+		args = []any{p.WorkspaceID, cursor.CreatedAt, id, limit + 1}
+	} else {
+		query += ` ORDER BY created_at DESC,id DESC LIMIT $2`
+	}
+	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return AuditPage{}, err
 	}
 	defer rows.Close()
 	result := []AuditView{}
 	for rows.Next() {
 		var v AuditView
 		if err := rows.Scan(&v.ID, &v.AggregateType, &v.AggregateID, &v.EventType, &v.ActorType, &v.CreatedAt); err != nil {
-			return nil, err
+			return AuditPage{}, err
 		}
 		result = append(result, v)
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return AuditPage{}, err
+	}
+	page := AuditPage{Items: result}
+	if len(result) > limit {
+		page.Items = result[:limit]
+		last := page.Items[len(page.Items)-1]
+		page.NextCursor = encodeListCursor("audit", p.WorkspaceID, last.CreatedAt, strconv.FormatInt(last.ID, 10))
+	}
+	return page, nil
 }
 func (s *Service) CurrentProgress(ctx context.Context, p Principal, jobID string) (Progress, error) {
 	var value Progress

@@ -78,6 +78,10 @@ sniffed. Result object keys, versions, buckets, and signed storage URLs are
 absent from the browser surface. Bundle bytes also pass through a same-origin,
 CSRF-protected control-plane endpoint, so the browser never receives an object
 store capability or infrastructure credential.
+The report renderer runs with `allow-scripts` but without `allow-same-origin`;
+its origin is opaque and its response CSP permits no fetches, subresources,
+forms, base URL changes, or plugins. The frame sandbox also denies top-level
+navigation.
 
 ## Telemetry threats
 

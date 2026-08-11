@@ -112,3 +112,35 @@ test("uploads through the same-origin control plane without a storage capability
   expect(seen.every((url) => new URL(url).origin === new URL(page.url()).origin)).toBe(true);
   expect(seen.some((url) => url.includes("amazonaws") || url.includes("s3"))).toBe(false);
 });
+
+test("runs the self-contained report renderer without same-origin authority", async ({ page }) => {
+  await commonRoutes(page);
+  const jobID = "22222222-2222-4222-8222-222222222222";
+  const resultID = "33333333-3333-4333-8333-333333333333";
+  const reportID = "44444444-4444-4444-8444-444444444444";
+  await page.route(`**/v1/jobs/${jobID}`, (route) => fulfillJSON(route, {
+    job_id: jobID, operation: "diff", state: "succeeded", run_ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"], profile: "lexical-v1", current_attempt_number: 1,
+    attempts: [{ attempt_number: 1, state: "succeeded", started_at: "2026-08-06T23:00:00Z", finished_at: "2026-08-06T23:01:00Z", failure: null }],
+    progress: null, cancel_requested_at: null, failure: null, created_at: "2026-08-06T23:00:00Z", updated_at: "2026-08-06T23:01:00Z", terminal_at: "2026-08-06T23:01:00Z",
+    artifacts: [
+      { artifact_id: resultID, kind: "diff_json", digest: "a".repeat(64), size: 100, media_type: "application/json", schema_name: "result-envelope", schema_version: 1, retention_expires_at: "2026-11-06T23:00:00Z" },
+      { artifact_id: reportID, kind: "diff_html", digest: "b".repeat(64), size: 100, media_type: "text/html; charset=utf-8", schema_name: null, schema_version: null, retention_expires_at: "2026-11-06T23:00:00Z" },
+    ],
+  }));
+  await page.route(`**/v1/browser/artifacts/${resultID}`, (route) => fulfillJSON(route, {
+    protocol_version: 1, status: "succeeded", failure: null, result: { kind: "diff", provenance: {} },
+  }));
+  await page.route(`**/v1/jobs/${jobID}/events`, (route) => route.fulfill({ status: 200, contentType: "text/event-stream", body: "" }));
+  await page.route(`**/v1/browser/artifacts/${reportID}?disposition=inline`, (route) => route.fulfill({
+    status: 200,
+    contentType: "text/html; charset=utf-8",
+    headers: { "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'; sandbox allow-scripts; frame-ancestors 'self'" },
+    body: "<!doctype html><body>waiting<script>document.body.textContent='renderer ran'</script></body>",
+  }));
+
+  await page.goto(`/jobs/${jobID}`);
+  await page.getByRole("button", { name: "View safely" }).click();
+  const frame = page.locator('iframe[title="Tracewake diff report"]');
+  await expect(frame).toHaveAttribute("sandbox", "allow-scripts");
+  await expect(page.frameLocator('iframe[title="Tracewake diff report"]').getByText("renderer ran")).toBeVisible();
+});

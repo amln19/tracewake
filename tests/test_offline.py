@@ -145,6 +145,36 @@ def test_a_network_call_during_replay_fails_the_run(
 
 
 @pytest.mark.parametrize(
+    "send",
+    [
+        pytest.param(lambda sock: sock.send(b"blocked"), id="send"),
+        pytest.param(lambda sock: sock.sendall(b"blocked"), id="sendall"),
+        pytest.param(
+            lambda sock: sock.sendto(b"blocked", ("127.0.0.1", 9)), id="sendto"
+        ),
+        pytest.param(
+            lambda sock: sock.sendmsg([b"blocked"], [], 0, ("127.0.0.1", 9)),
+            id="sendmsg",
+            marks=pytest.mark.skipif(
+                not hasattr(socket.socket, "sendmsg"), reason="sendmsg is unavailable"
+            ),
+        ),
+    ],
+)
+def test_every_socket_send_surface_is_blocked_during_replay(
+    tmp_path: Path, send
+) -> None:
+    with tracewake.record("send-gate", store=tmp_path) as rec:
+        rec.outcome(status="ok")
+        run_id = rec.run_id
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        with tracewake.replay(run_id, store=tmp_path):
+            with pytest.raises(tracewake.NetworkBlocked):
+                send(sock)
+
+
+@pytest.mark.parametrize(
     "options",
     [
         {"block_network": False},

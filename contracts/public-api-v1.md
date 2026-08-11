@@ -55,6 +55,10 @@ Codes are `invalid_request`, `unauthenticated`, `forbidden`, `not_found`,
 `conflict`, `idempotency_conflict`, `unsupported_version`, `rate_limited`, and
 `internal`. Messages are at most 512 characters and exclude object keys,
 private paths, URLs, tokens, prompts, source, blobs, and stack traces.
+The deployed edge returns HTTP 429 with the same bounded `rate_limited` code
+but no `request_id`, because it rejects the request before the application can
+create one. Its per-source-IP count and evaluation window are explicit
+deployment inputs rather than part of API version 1.
 
 ## Runs and mandatory ingestion
 
@@ -64,6 +68,10 @@ The response supplies a server-generated upload identity, object key hidden
 behind a short-lived upload URL, required checksum, any headers that URL's
 signature covers, and expiry. Maximum size is the bundle v1 limit. Bytes go to
 the object store, never through the API.
+Repeating the same digest and size while that workspace's upload remains
+`pending` returns the same upload identity and a fresh grant. A changed
+declaration conflicts. Once a run is deleted, its digest no longer reserves an
+active run identity and the same bytes may be uploaded as a new run.
 
 `POST /v1/runs/uploads/{upload_id}/complete` records the immutable object
 version and queues mandatory validation transactionally. It is idempotent for
@@ -136,6 +144,9 @@ without exposing its object key, version, bucket, or signed storage URL. The
 default disposition is attachment with `nosniff`. Only a `diff_html` artifact
 with media type `text/html` accepts `?disposition=inline`; that response has a
 restrictive CSP and sandbox and is intended for a sandboxed dashboard frame.
+The report's self-contained renderer may execute scripts in an opaque origin;
+it receives no same-origin authority, fetch or subresource access, forms, or
+top-level navigation.
 
 `GET /v1/audit?cursor=...&limit=...` with `audit:read` returns at most 100
 workspace-scoped meaningful lifecycle records per page. It excludes heartbeat

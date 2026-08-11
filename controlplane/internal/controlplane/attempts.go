@@ -55,13 +55,19 @@ func (s *Service) Cancellation(ctx context.Context, jobID string, attempt int, t
 		return false, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err = s.checkAttempt(ctx, tx, jobID, attempt, token); err != nil {
-		return false, err
-	}
 	var requested bool
-	err = tx.QueryRow(ctx, "SELECT cancel_requested_at IS NOT NULL FROM jobs WHERE id=$1", jobID).Scan(&requested)
-	if err != nil {
-		return false, err
+	var current int
+	var jobState, attemptState string
+	var verifier []byte
+	var version int16
+	var leaseValid bool
+	err = tx.QueryRow(ctx, `SELECT j.cancel_requested_at IS NOT NULL,j.current_attempt_number,j.state,a.state,a.token_verifier,a.token_pepper_version,a.lease_expires_at>transaction_timestamp()
+		FROM jobs j JOIN job_attempts a ON a.job_id=j.id AND a.attempt_number=$2 WHERE j.id=$1`, jobID, attempt).Scan(&requested, &current, &jobState, &attemptState, &verifier, &version, &leaseValid)
+	if err != nil || current != attempt || !s.workers.Verify(version, token, verifier) {
+		return false, ErrLeaseLost
+	}
+	if !requested && (jobState != "running" || attemptState != "running" || !leaseValid) {
+		return false, ErrLeaseLost
 	}
 	return requested, tx.Commit(ctx)
 }

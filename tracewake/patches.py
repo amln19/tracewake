@@ -72,7 +72,12 @@ _RANDOM_FORWARDERS = _frame_files(
     random.randint, random.choice, random.shuffle, random.sample
 ) | frozenset({random.__file__})
 _SECRETS_FORWARDERS = _frame_files(
-    secrets.token_bytes, secrets.token_hex, secrets.token_urlsafe
+    secrets.choice,
+    secrets.randbelow,
+    secrets.randbits,
+    secrets.token_bytes,
+    secrets.token_hex,
+    secrets.token_urlsafe,
 ) | frozenset({secrets.__file__})
 
 _instrumented: dict[CodeType, bool] = {}
@@ -142,12 +147,17 @@ def require_hash_seed(config: Config) -> None:
 @contextmanager
 def block_network() -> Iterator[None]:
     """Make an attempted network call fail loudly instead of succeeding quietly."""
-    originals = {
+    methods = {
         (socket.socket, "connect"): socket.socket.connect,
         (socket.socket, "connect_ex"): socket.socket.connect_ex,
+        (socket.socket, "send"): socket.socket.send,
+        (socket.socket, "sendall"): socket.socket.sendall,
         (socket.socket, "sendto"): socket.socket.sendto,
         (socket, "create_connection"): socket.create_connection,
     }
+    for name in ("sendfile", "sendmsg"):
+        if original := getattr(socket.socket, name, None):
+            methods[(socket.socket, name)] = original
 
     def blocked(*args: Any, **kwargs: Any) -> Any:
         raise NetworkBlocked(
@@ -157,12 +167,12 @@ def block_network() -> Iterator[None]:
             "record-capable mode if the request should reach the network."
         )
 
-    for target, name in originals:
+    for target, name in methods:
         setattr(target, name, blocked)
     try:
         yield
     finally:
-        for (target, name), original in originals.items():
+        for (target, name), original in methods.items():
             setattr(target, name, original)
 
 
@@ -254,20 +264,69 @@ class _Patcher:
         # Unseeded Random() and SystemRandom draw OS entropy. An explicitly
         # seeded Random is already reproducible — leave it alone (noise).
         real_init = random.Random.__init__
+        real_seed = random.Random.seed
+
+        def patched_seed(this: random.Random, a: Any = None, version: int = 2) -> None:
+            real_seed(this, a, version)
+            if a is None and not isinstance(this, random.SystemRandom):
+                self._shadow_random_instance(this)
 
         def patched_init(this: random.Random, x: Any = None) -> None:
             real_init(this, x)
-            if isinstance(this, random.SystemRandom) or x is None:
+            if isinstance(this, random.SystemRandom):
                 self._shadow_random_instance(this)
 
+        self._set(random.Random, "seed", patched_seed)
         self._set(random.Random, "__init__", patched_init)
 
     def _install_secrets(self) -> None:
         # secrets is stdlib, so patching SystemRandom alone would see a stdlib
         # caller and skip recording. Intercept at the secrets surface instead.
         real_bytes = secrets.token_bytes
+        real_choice = secrets.choice
         real_hex = secrets.token_hex
+        real_randbelow = secrets.randbelow
+        real_randbits = secrets.randbits
         real_urlsafe = secrets.token_urlsafe
+
+        def patched_choice(sequence: Any) -> Any:
+            if not _caller_is_instrumented(forwarders=_SECRETS_FORWARDERS):
+                return real_choice(sequence)
+            with _no_reentry() as first:
+                if not first or not sequence:
+                    return real_choice(sequence)
+                index = self._value(
+                    "random",
+                    f"secrets_choice:{len(sequence)}",
+                    lambda: real_randbelow(len(sequence)),
+                )
+                return sequence[int(index)]
+
+        def patched_randbelow(exclusive_upper_bound: int) -> int:
+            if not _caller_is_instrumented(forwarders=_SECRETS_FORWARDERS):
+                return real_randbelow(exclusive_upper_bound)
+            with _no_reentry() as first:
+                if not first:
+                    return real_randbelow(exclusive_upper_bound)
+                return int(
+                    self._value(
+                        "random",
+                        f"secrets_randbelow:{exclusive_upper_bound}",
+                        lambda: real_randbelow(exclusive_upper_bound),
+                    )
+                )
+
+        def patched_randbits(k: int) -> int:
+            if not _caller_is_instrumented(forwarders=_SECRETS_FORWARDERS):
+                return real_randbits(k)
+            with _no_reentry() as first:
+                if not first:
+                    return real_randbits(k)
+                return int(
+                    self._value(
+                        "random", f"secrets_randbits:{k}", lambda: real_randbits(k)
+                    )
+                )
 
         def patched_token_bytes(nbytes: int | None = None) -> bytes:
             n = 32 if nbytes is None else nbytes
@@ -301,6 +360,9 @@ class _Patcher:
                     self._value("random", f"token_urlsafe:{n}", lambda: real_urlsafe(n))
                 )
 
+        self._set(secrets, "choice", patched_choice)
+        self._set(secrets, "randbelow", patched_randbelow)
+        self._set(secrets, "randbits", patched_randbits)
         self._set(secrets, "token_bytes", patched_token_bytes)
         self._set(secrets, "token_hex", patched_token_hex)
         self._set(secrets, "token_urlsafe", patched_token_urlsafe)

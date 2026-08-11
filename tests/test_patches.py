@@ -213,6 +213,21 @@ def test_an_unseeded_generator_replays_from_the_log(tmp_path: Path) -> None:
         rep.outcome(status="ok")
 
 
+def test_a_generator_reseeded_from_system_entropy_replays_from_the_log(tmp_path: Path) -> None:
+    with tracewake.record("reseeded", store=tmp_path) as rec:
+        own = random.Random(1234)
+        own.seed()
+        recorded = [own.random() for _ in range(5)]
+        rec.outcome(status="ok")
+        run_id = rec.run_id
+
+    with tracewake.replay(run_id, store=tmp_path) as rep:
+        own = random.Random(1234)
+        own.seed()
+        assert [own.random() for _ in range(5)] == recorded
+        rep.outcome(status="ok")
+
+
 def test_secrets_tokens_replay_from_the_log(tmp_path: Path) -> None:
     with tracewake.record("sec", store=tmp_path) as rec:
         recorded = (secrets.token_hex(16), secrets.token_bytes(16), secrets.token_urlsafe(16))
@@ -224,6 +239,25 @@ def test_secrets_tokens_replay_from_the_log(tmp_path: Path) -> None:
             secrets.token_hex(16),
             secrets.token_bytes(16),
             secrets.token_urlsafe(16),
+        ) == recorded
+        rep.outcome(status="ok")
+
+
+def test_every_secrets_random_surface_replays_from_the_log(tmp_path: Path) -> None:
+    with tracewake.record("secrets", store=tmp_path) as rec:
+        recorded = (
+            secrets.randbelow(2**63),
+            secrets.randbits(65),
+            secrets.choice("abcdefghij"),
+        )
+        rec.outcome(status="ok")
+        run_id = rec.run_id
+
+    with tracewake.replay(run_id, store=tmp_path) as rep:
+        assert (
+            secrets.randbelow(2**63),
+            secrets.randbits(65),
+            secrets.choice("abcdefghij"),
         ) == recorded
         rep.outcome(status="ok")
 

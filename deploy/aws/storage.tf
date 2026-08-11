@@ -57,9 +57,9 @@ resource "aws_s3_bucket_policy" "artifacts" {
   })
 }
 
-# Retention of authoritative objects is enforced by the control plane, which
-# knows what a successful job still references. These rules only remove debris
-# object storage can identify on its own.
+# Retention of every completed object version is enforced by the control plane,
+# which knows the exact version a successful job still references. S3 cannot
+# infer that authority from whether a version is current.
 resource "aws_s3_bucket_lifecycle_configuration" "artifacts" {
   bucket     = aws_s3_bucket.artifacts.id
   depends_on = [aws_s3_bucket_versioning.artifacts]
@@ -75,14 +75,4 @@ resource "aws_s3_bucket_lifecycle_configuration" "artifacts" {
     }
   }
 
-  rule {
-    id     = "expire-superseded-versions"
-    status = "Enabled"
-
-    filter {}
-
-    noncurrent_version_expiration {
-      noncurrent_days = 1
-    }
-  }
 }

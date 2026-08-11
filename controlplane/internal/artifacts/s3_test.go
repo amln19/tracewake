@@ -175,13 +175,31 @@ func TestCleanupRemovesOnlyExpiredOrphanObjects(t *testing.T) {
 		response.Body.Close()
 		versions[key] = response.Header.Get("x-amz-version-id")
 	}
-	fake.Age("orphan/old", versions["orphan/old"], time.Now().Add(-25*time.Hour))
-	removed, err := store.Cleanup(ctx, map[string]bool{"kept/result": true}, time.Now().Add(-24*time.Hour))
+	replacement := []byte("superseded result")
+	grant, err := store.PutGrant(ctx, "kept/result", hexDigest(replacement), int64(len(replacement)), "application/json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if removed != 1 {
+	response := send(t, grant, replacement)
+	response.Body.Close()
+	replacementVersion := response.Header.Get("x-amz-version-id")
+	fake.Age("kept/result", versions["kept/result"], time.Now().Add(-25*time.Hour))
+	fake.Age("kept/result", replacementVersion, time.Now().Add(-25*time.Hour))
+	fake.Age("orphan/old", versions["orphan/old"], time.Now().Add(-25*time.Hour))
+	removed, err := store.Cleanup(ctx, map[artifacts.Identity]bool{{Key: "kept/result", Version: versions["kept/result"]}: true}, time.Now().Add(-24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 2 {
 		t.Fatalf("removed=%d", removed)
+	}
+	retained, err := store.Open(ctx, "kept/result", versions["kept/result"])
+	if err != nil {
+		t.Fatalf("authoritative noncurrent version was removed: %v", err)
+	}
+	retained.Close()
+	if _, err := store.Open(ctx, "kept/result", replacementVersion); err == nil {
+		t.Fatal("unreferenced version of a retained key remains")
 	}
 	remaining := map[string]bool{}
 	for _, key := range fake.Keys() {

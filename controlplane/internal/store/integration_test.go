@@ -61,8 +61,16 @@ func TestMigrateFromSchemaOne(t *testing.T) {
 	if err := legacy.Pool().QueryRow(ctx, "SELECT array_agg(version ORDER BY version) FROM schema_migrations").Scan(&versions); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(versions, []int{1, 2, 3, 4, 5, 6}) {
+	if !slices.Equal(versions, []int{1, 2, 3, 4, 5, 6, 7}) {
 		t.Fatalf("versions=%v", versions)
+	}
+	var activeDigestIndex string
+	if err := legacy.Pool().QueryRow(ctx, `SELECT indexdef FROM pg_indexes
+		WHERE schemaname=current_schema() AND indexname='runs_workspace_active_digest_idx'`).Scan(&activeDigestIndex); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(activeDigestIndex, "WHERE (state <> 'deleted'::ingestion_state)") {
+		t.Fatalf("active digest index=%q", activeDigestIndex)
 	}
 	// A database created before the widening holds varchar(24) prefixes, which
 	// cannot store a tenant token. The forward migration has to reach it.

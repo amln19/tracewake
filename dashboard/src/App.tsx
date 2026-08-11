@@ -305,7 +305,9 @@ function JobDetail({ jobID, onExpired }: { jobID: string; onExpired: () => void 
 
   const provenance = useMemo(() => {
     if (!result || typeof result !== "object") return null;
-    const value = result as Record<string, unknown>;
+    const envelope = result as Record<string, unknown>;
+    if (!envelope.result || typeof envelope.result !== "object") return null;
+    const value = envelope.result as Record<string, unknown>;
     return value.provenance && typeof value.provenance === "object" ? value.provenance as Record<string, unknown> : null;
   }, [result]);
 
@@ -341,7 +343,7 @@ function JobDetail({ jobID, onExpired }: { jobID: string; onExpired: () => void 
           {job.artifacts.map((artifact) => <ArtifactCard key={artifact.artifact_id} artifact={artifact} onReport={artifact.kind === "diff_html" ? () => setReport((value) => !value) : undefined} />)}
           {job.artifacts.length === 0 && <div className="empty-state">Artifacts appear only after an authoritative success.</div>}
         </div>
-        {report && html && <div className="report-frame"><div><strong>Sandboxed HTML report</strong><button onClick={() => setReport(false)}>Close</button></div><iframe title="Tracewake diff report" sandbox="" src={artifactURL(html.artifact_id, true)} /></div>}
+        {report && html && <div className="report-frame"><div><strong>Sandboxed HTML report</strong><button onClick={() => setReport(false)}>Close</button></div><iframe title="Tracewake diff report" sandbox="allow-scripts" src={artifactURL(html.artifact_id, true)} /></div>}
       </section>
     </>
   );

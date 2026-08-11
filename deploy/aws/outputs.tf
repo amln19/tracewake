@@ -3,6 +3,11 @@ output "public_base_url" {
   value       = local.public_base_url
 }
 
+output "worker_load_balancer_dns" {
+  description = "Private load balancer DNS name that the worker certificate or worker_base_url alias must cover."
+  value       = aws_lb.internal.dns_name
+}
+
 output "control_plane_repository" {
   description = "ECR repository for the Go control-plane image."
   value       = aws_ecr_repository.control_plane.repository_url

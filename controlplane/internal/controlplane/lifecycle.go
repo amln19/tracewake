@@ -12,6 +12,7 @@ import (
 
 	"github.com/amln19/tracewake/controlplane/internal/telemetry"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -84,7 +85,21 @@ func (s *Service) CreateUpload(ctx context.Context, principal Principal, digest 
 	key := "workspaces/" + principal.WorkspaceID + "/runs/" + runID + "/bundle.tar"
 	if _, err := s.pool.Exec(ctx, `INSERT INTO runs (id,workspace_id,declared_bundle_format,declared_bundle_digest,declared_bundle_size,bundle_object_key)
         VALUES ($1,$2,1,$3,$4,$5)`, runID, principal.WorkspaceID, digest, size, key); err != nil {
-		return Upload{}, fmt.Errorf("create upload: %w", err)
+		var databaseError *pgconn.PgError
+		if !errors.As(err, &databaseError) || databaseError.Code != "23505" || databaseError.ConstraintName != "runs_workspace_active_digest_idx" {
+			return Upload{}, fmt.Errorf("create upload: %w", err)
+		}
+		var existing Upload
+		err = s.pool.QueryRow(ctx, `SELECT id,bundle_object_key,declared_bundle_digest,declared_bundle_size,state,bundle_object_version
+			FROM runs WHERE workspace_id=$1 AND declared_bundle_digest=$2 AND declared_bundle_size=$3 AND state='pending'`,
+			principal.WorkspaceID, digest, size).Scan(&existing.RunID, &existing.Key, &existing.Digest, &existing.Size, &existing.State, &existing.Version)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Upload{}, ErrConflict
+		}
+		if err != nil {
+			return Upload{}, fmt.Errorf("reuse pending upload: %w", err)
+		}
+		return existing, nil
 	}
 	return Upload{RunID: runID, Key: key, Digest: digest, Size: size}, nil
 }
@@ -277,9 +292,15 @@ func (s *Service) CreateJob(ctx context.Context, principal Principal, key string
 	if len(request.RunIDs) == 2 {
 		runB = &request.RunIDs[1]
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO job_inputs (id,workspace_id,operation,run_a_id,run_b_id,analysis_profile,normalized_digest)
-        VALUES ($1,$2,$3,$4,$5,$6,$7)`, inputID, principal.WorkspaceID, request.Operation, request.RunIDs[0], runB, request.Profile, digest); err != nil {
+	command, err := tx.Exec(ctx, `INSERT INTO job_inputs (id,workspace_id,operation,run_a_id,run_b_id,analysis_profile,normalized_digest)
+		VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (workspace_id,normalized_digest) DO NOTHING`, inputID, principal.WorkspaceID, request.Operation, request.RunIDs[0], runB, request.Profile, digest)
+	if err != nil {
 		return Job{}, false, fmt.Errorf("insert job input: %w", err)
+	}
+	if command.RowsAffected() == 0 {
+		if err := tx.QueryRow(ctx, `SELECT id FROM job_inputs WHERE workspace_id=$1 AND normalized_digest=$2`, principal.WorkspaceID, digest).Scan(&inputID); err != nil {
+			return Job{}, false, fmt.Errorf("reuse normalized job input: %w", err)
+		}
 	}
 	if _, err := tx.Exec(ctx, "INSERT INTO jobs (id,workspace_id,input_id) VALUES ($1,$2,$3)", jobID, principal.WorkspaceID, inputID); err != nil {
 		return Job{}, false, fmt.Errorf("insert job: %w", err)

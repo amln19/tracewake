@@ -68,6 +68,7 @@ TRACEWAKE_LISTEN_ADDR="127.0.0.1:$public_port" \
 TRACEWAKE_WORKER_LISTEN_ADDR="127.0.0.1:$worker_port" \
 TRACEWAKE_BOOTSTRAP_FILE="$credential_file" \
 TRACEWAKE_DASHBOARD_DIR="$project_root/dashboard/dist" \
+TRACEWAKE_RESULT_SCHEMA="$project_root/contracts/schemas/v1/result-envelope.schema.json" \
 TRACEWAKE_SERVICE_VERSION="$(git -C "$project_root" describe --tags --always --dirty 2>/dev/null || echo unknown)" \
 "$binary" &
 api_pid=$!

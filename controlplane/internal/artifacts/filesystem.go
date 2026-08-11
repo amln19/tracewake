@@ -144,7 +144,7 @@ func (s *Filesystem) open(key string) (*os.File, error) {
 	return file, nil
 }
 
-func (s *Filesystem) Cleanup(_ context.Context, keep map[string]bool, before time.Time) (int, error) {
+func (s *Filesystem) Cleanup(_ context.Context, keep map[Identity]bool, before time.Time) (int, error) {
 	removed := 0
 	err := filepath.WalkDir(s.root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -158,7 +158,14 @@ func (s *Filesystem) Cleanup(_ context.Context, keep map[string]bool, before tim
 			return err
 		}
 		key := filepath.ToSlash(relative)
-		if keep[key] {
+		retained := false
+		for identity := range keep {
+			if identity.Key == key {
+				retained = true
+				break
+			}
+		}
+		if retained {
 			return nil
 		}
 		info, err := entry.Info()

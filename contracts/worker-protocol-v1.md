@@ -64,7 +64,10 @@ All paths include the claim's job ID and attempt number:
 * `POST /internal/v1/jobs/{job}/attempts/{attempt}/complete` accepts the
   artifact-commit schema after upload. The control plane verifies immutable
   object version, digest, size, semantic schema, and canonical result before
-  the single success transition.
+  the single success transition. Result canonicalization is the Python 3.13
+  worker encoding: recursively sorted object keys, `,` and `:` separators, JSON
+  ASCII escapes for non-ASCII code points, shortest round-trippable finite
+  number spellings, and exactly one trailing LF.
 * `POST /internal/v1/jobs/{job}/attempts/{attempt}/fail` accepts the failure
   schema. The control plane, not the worker, applies retry policy and terminal
   state.

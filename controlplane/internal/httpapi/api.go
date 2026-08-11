@@ -326,10 +326,10 @@ func (a *API) browserArtifact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer input.Close()
-	inline := r.URL.Query().Get("disposition") == "inline" && artifact.Kind == "diff_html" && artifact.MediaType == "text/html"
+	inline := inlineReport(r.URL.Query().Get("disposition"), artifact.Kind, artifact.MediaType)
 	if inline {
 		w.Header().Set("Content-Disposition", "inline")
-		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox; frame-ancestors 'self'")
+		w.Header().Set("Content-Security-Policy", reportContentSecurityPolicy)
 	} else {
 		filename := artifact.Kind + extensionFor(artifact.MediaType)
 		w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
@@ -340,6 +340,13 @@ func (a *API) browserArtifact(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("ETag", `"`+artifact.Digest+`"`)
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, io.LimitReader(input, artifact.Size))
+}
+
+const reportContentSecurityPolicy = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'; sandbox allow-scripts; frame-ancestors 'self'"
+
+func inlineReport(disposition, kind, mediaType string) bool {
+	parsed, _, err := mime.ParseMediaType(mediaType)
+	return disposition == "inline" && kind == "diff_html" && err == nil && parsed == "text/html"
 }
 
 func extensionFor(mediaType string) string {
@@ -355,12 +362,21 @@ func (a *API) listRuns(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	items, err := a.service.ListRuns(r.Context(), p, 100)
+	cursor, limit, err := listParameters(r)
 	if err != nil {
-		errorJSON(w, 500, "internal")
+		errorJSON(w, 400, "invalid_request")
 		return
 	}
-	writeJSON(w, 200, map[string]any{"runs": items})
+	page, err := a.service.ListRunPage(r.Context(), p, cursor, limit)
+	if err != nil {
+		if errors.Is(err, controlplane.ErrInvalidRequest) {
+			errorJSON(w, 400, "invalid_request")
+		} else {
+			errorJSON(w, 500, "internal")
+		}
+		return
+	}
+	writeJSON(w, 200, map[string]any{"runs": page.Items, "next_cursor": page.NextCursor})
 }
 func (a *API) getRun(w http.ResponseWriter, r *http.Request) {
 	p, ok := a.principal(w, r, "runs:read")
@@ -510,12 +526,32 @@ func (a *API) audit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	items, err := a.service.ListAudit(r.Context(), p, 100)
+	cursor, limit, err := listParameters(r)
 	if err != nil {
-		errorJSON(w, 500, "internal")
+		errorJSON(w, 400, "invalid_request")
 		return
 	}
-	writeJSON(w, 200, map[string]any{"records": items})
+	page, err := a.service.ListAuditPage(r.Context(), p, cursor, limit)
+	if err != nil {
+		if errors.Is(err, controlplane.ErrInvalidRequest) {
+			errorJSON(w, 400, "invalid_request")
+		} else {
+			errorJSON(w, 500, "internal")
+		}
+		return
+	}
+	writeJSON(w, 200, map[string]any{"records": page.Items, "next_cursor": page.NextCursor})
+}
+func listParameters(r *http.Request) (string, int, error) {
+	limit := 100
+	if value := r.URL.Query().Get("limit"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 || parsed > 100 {
+			return "", 0, errors.New("invalid list limit")
+		}
+		limit = parsed
+	}
+	return r.URL.Query().Get("cursor"), limit, nil
 }
 func decode(w http.ResponseWriter, r *http.Request, value any) error {
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))

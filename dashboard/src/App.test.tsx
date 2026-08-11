@@ -59,6 +59,81 @@ describe("browser session exchange", () => {
 });
 
 describe("authoritative job rendering", () => {
+  it("renders provenance from the semantic result inside its envelope", async () => {
+    const jobID = "11111111-1111-4111-8111-111111111111";
+    window.history.replaceState({}, "", `/jobs/${jobID}`);
+    const job: Job = {
+      job_id: jobID,
+      operation: "otlp",
+      state: "succeeded",
+      run_ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"],
+      profile: null,
+      current_attempt_number: 1,
+      attempts: [{ attempt_number: 1, state: "succeeded", started_at: "2026-08-06T23:00:00Z", finished_at: "2026-08-06T23:01:00Z", failure: null }],
+      progress: null,
+      cancel_requested_at: null,
+      failure: null,
+      created_at: "2026-08-06T23:00:00Z",
+      updated_at: "2026-08-06T23:01:00Z",
+      terminal_at: "2026-08-06T23:01:00Z",
+      artifacts: [{ artifact_id: "result", kind: "otlp_result_json", digest: "a".repeat(64), size: 100, media_type: "application/json", schema_name: "result-envelope", schema_version: 1, retention_expires_at: "2026-11-06T23:00:00Z" }],
+    };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/v1/browser/session") return json(session);
+      if (url === `/v1/jobs/${jobID}`) return json(job);
+      if (url === "/v1/browser/artifacts/result") return json({
+        protocol_version: 1,
+        status: "succeeded",
+        failure: null,
+        result: { kind: "otlp", provenance: { analysis_profile: "otlp-spans-v1", worker_build: "worker-123" } },
+      });
+      throw new Error(`unexpected request ${url}`);
+    }));
+
+    render(<App />);
+    await screen.findByText("otlp-spans-v1");
+    expect(screen.getByText("worker-123")).not.toBeNull();
+  });
+
+  it("gives a self-contained HTML report scripts without same-origin authority", async () => {
+    const jobID = "22222222-2222-4222-8222-222222222222";
+    window.history.replaceState({}, "", `/jobs/${jobID}`);
+    const job: Job = {
+      job_id: jobID,
+      operation: "diff",
+      state: "succeeded",
+      run_ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"],
+      profile: "lexical-v1",
+      current_attempt_number: 1,
+      attempts: [{ attempt_number: 1, state: "succeeded", started_at: "2026-08-06T23:00:00Z", finished_at: "2026-08-06T23:01:00Z", failure: null }],
+      progress: null,
+      cancel_requested_at: null,
+      failure: null,
+      created_at: "2026-08-06T23:00:00Z",
+      updated_at: "2026-08-06T23:01:00Z",
+      terminal_at: "2026-08-06T23:01:00Z",
+      artifacts: [
+        { artifact_id: "result", kind: "diff_json", digest: "a".repeat(64), size: 100, media_type: "application/json", schema_name: "result-envelope", schema_version: 1, retention_expires_at: "2026-11-06T23:00:00Z" },
+        { artifact_id: "report", kind: "diff_html", digest: "b".repeat(64), size: 100, media_type: "text/html; charset=utf-8", schema_name: null, schema_version: null, retention_expires_at: "2026-11-06T23:00:00Z" },
+      ],
+    };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/v1/browser/session") return json(session);
+      if (url === `/v1/jobs/${jobID}`) return json(job);
+      if (url === "/v1/browser/artifacts/result") return json({ protocol_version: 1, status: "succeeded", failure: null, result: { kind: "diff", provenance: {} } });
+      throw new Error(`unexpected request ${url}`);
+    }));
+
+    render(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: "View safely" }));
+    const frame = screen.getByTitle("Tracewake diff report");
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(frame.getAttribute("sandbox")).not.toContain("allow-same-origin");
+    expect(frame.getAttribute("src")).toBe("/v1/browser/artifacts/report?disposition=inline");
+  });
+
   it("reconstructs a job after refresh and does not predict a cancellation winner", async () => {
     const jobID = "11111111-1111-4111-8111-111111111111";
     window.history.replaceState({}, "", `/jobs/${jobID}`);

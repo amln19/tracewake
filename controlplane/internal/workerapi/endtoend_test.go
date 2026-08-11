@@ -94,7 +94,15 @@ func newDeployment(t *testing.T, hosted bool) *deployment {
 	t.Cleanup(public.Close)
 	t.Cleanup(private.Close)
 	publicMux.Handle("/", httpapi.New(service, artifactStore, public.URL).Handler())
-	privateMux.Handle("/", workerapi.New(service, artifactStore, private.URL).Handler())
+	resultSchema, err := os.ReadFile("../../../contracts/schemas/v1/result-envelope.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workerAPI, err := workerapi.New(service, artifactStore, private.URL, resultSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	privateMux.Handle("/", workerAPI.Handler())
 	workspace, token, err := service.CreateWorkspace(ctx, "end-to-end", []string{"runs:read", "runs:write", "jobs:read", "jobs:write", "artifacts:read", "audit:read"})
 	if err != nil {
 		t.Fatal(err)
@@ -432,9 +440,13 @@ func TestSingleRunAnalysisCommitsItsResultAndCompanion(t *testing.T) {
 	}
 
 	spans := []byte(`{"resourceSpans":[]}`)
-	envelope := []byte(`{"protocol_version":1,"status":"succeeded"}`)
+	invalidEnvelope := []byte(`{"protocol_version":1,"status":"succeeded"}`)
+	envelope, err := os.ReadFile("../../../contracttest/fixtures/v1/accepted/result-envelope-otlp.json")
+	if err != nil {
+		t.Fatal(err)
+	}
 	uploaded := map[string]map[string]any{}
-	for kind, body := range map[string][]byte{"otlp_json": spans, "otlp_result_json": envelope} {
+	for kind, body := range map[string][]byte{"otlp_json": spans, "otlp_result_json": invalidEnvelope} {
 		status, declaration := deployed.declare(t, jobID, kind, "application/json", body, attemptToken)
 		if status != http.StatusCreated {
 			t.Fatalf("%s declaration status=%d body=%v", kind, status, declaration)
@@ -450,8 +462,8 @@ func TestSingleRunAnalysisCommitsItsResultAndCompanion(t *testing.T) {
 
 	completion := map[string]any{
 		"artifact_id": "", "kind": "otlp_result_json", "object_key": uploaded["otlp_result_json"]["object_key"],
-		"object_version": uploaded["otlp_result_json"]["object_version"], "digest": hexDigest(envelope),
-		"media_type": "application/json", "schema_name": "result-envelope", "size": len(envelope), "schema_version": 1,
+		"object_version": uploaded["otlp_result_json"]["object_version"], "digest": hexDigest(invalidEnvelope),
+		"media_type": "application/json", "schema_name": "result-envelope", "size": len(invalidEnvelope), "schema_version": 1,
 		"logical_run_digest": "", "bundle_digest": "", "event_count": 0,
 		"bundle_format_version": 0, "cassette_format_version": 0, "event_schema_version": 0,
 		"companions": []any{map[string]any{
@@ -460,6 +472,23 @@ func TestSingleRunAnalysisCommitsItsResultAndCompanion(t *testing.T) {
 			"size": len(spans), "media_type": "application/json", "schema_name": nil, "schema_version": nil,
 		}},
 	}
+	status, rejected := deployed.call(t, "POST", deployed.private.URL+"/internal/v1/jobs/"+jobID+"/attempts/1/complete", deployed.workerToken, completion, attemptToken)
+	if status != http.StatusConflict || rejected["error"].(map[string]any)["code"] != "artifact_commit_failed" {
+		t.Fatalf("invalid result completion status=%d body=%v", status, rejected)
+	}
+	status, declaration := deployed.declare(t, jobID, "otlp_result_json", "application/json", envelope, attemptToken)
+	if status != http.StatusCreated {
+		t.Fatalf("valid result declaration status=%d body=%v", status, declaration)
+	}
+	headers, _ := declaration["upload_headers"].(map[string]any)
+	stored := transfer(t, declaration["upload_method"].(string), declaration["upload_url"].(string), headers, envelope)
+	stored.Body.Close()
+	if stored.StatusCode/100 != 2 {
+		t.Fatalf("valid result upload status=%d", stored.StatusCode)
+	}
+	completion["object_version"] = objectVersion(t, stored)
+	completion["digest"] = hexDigest(envelope)
+	completion["size"] = len(envelope)
 	status, completed := deployed.call(t, "POST", deployed.private.URL+"/internal/v1/jobs/"+jobID+"/attempts/1/complete", deployed.workerToken, completion, attemptToken)
 	if status != http.StatusOK {
 		t.Fatalf("completion status=%d body=%v", status, completed)
@@ -586,7 +615,10 @@ func TestHostedRoundTripCommitsExactArtifactIdentity(t *testing.T) {
 				t.Fatalf("worker downloaded %q", fetched)
 			}
 
-			result := []byte(`{"protocol_version":1,"status":"succeeded"}`)
+			result, err := os.ReadFile("../../../contracttest/fixtures/v1/accepted/result-envelope.json")
+			if err != nil {
+				t.Fatal(err)
+			}
 			status, declaration := deployed.call(t, "POST", deployed.private.URL+"/internal/v1/jobs/"+jobID+"/attempts/1/artifacts", deployed.workerToken,
 				map[string]any{"protocol_version": 1, "attempt_number": 1, "kind": "validation_json", "media_type": "application/json", "digest": hexDigest(result), "size": len(result)}, attemptToken)
 			if status != http.StatusCreated {

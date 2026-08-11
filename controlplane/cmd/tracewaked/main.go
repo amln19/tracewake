@@ -141,7 +141,14 @@ func main() {
 	publicMux.Handle("/", publicAPI.Handler())
 	workerMux := http.NewServeMux()
 	workerMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
-	workerAPI := workerapi.New(service, artifactStore, workerBase)
+	resultSchema, err := os.ReadFile(envOr("TRACEWAKE_RESULT_SCHEMA", "/usr/share/tracewake/contracts/result-envelope.schema.json"))
+	if err != nil {
+		log.Fatalf("read result envelope schema: %v", err)
+	}
+	workerAPI, err := workerapi.New(service, artifactStore, workerBase, resultSchema)
+	if err != nil {
+		log.Fatal(err)
+	}
 	workerAPI.UseTelemetry(observability.Metrics())
 	workerMux.Handle("/", workerAPI.Handler())
 	if localStore != nil {
@@ -185,8 +192,8 @@ func main() {
 				if _, err := service.EnforceRetention(ctx); err != nil && !errors.Is(err, context.Canceled) {
 					log.Printf("enforce retention: %v", err)
 				}
-				if keys, err := service.RetainedObjectKeys(ctx); err == nil {
-					if _, err = artifactStore.Cleanup(ctx, keys, time.Now().Add(-24*time.Hour)); err != nil {
+				if objects, err := service.RetainedObjects(ctx); err == nil {
+					if _, err = artifactStore.Cleanup(ctx, objects, time.Now().Add(-24*time.Hour)); err != nil {
 						log.Printf("artifact cleanup: %v", err)
 					}
 				} else if !errors.Is(err, context.Canceled) {

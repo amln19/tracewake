@@ -164,7 +164,7 @@ func TestCleanupRemovesOnlyExpiredOrphans(t *testing.T) {
 	if err := os.Chtimes(filepath.Join(root, "orphan/old"), old, old); err != nil {
 		t.Fatal(err)
 	}
-	removed, err := store.Cleanup(context.Background(), map[string]bool{"kept/result": true}, time.Now().Add(-24*time.Hour))
+	removed, err := store.Cleanup(context.Background(), map[Identity]bool{{Key: "kept/result", Version: sha256Hex([]byte("data"))}: true}, time.Now().Add(-24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

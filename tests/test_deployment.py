@@ -52,6 +52,13 @@ def test_artifact_bucket_has_no_browser_cors_surface() -> None:
     assert "allowed_origins" not in storage
 
 
+def test_bucket_lifecycle_never_expires_an_authoritative_object_version() -> None:
+    storage = read("storage.tf")
+    assert "noncurrent_version_expiration" not in storage
+    assert "expire-superseded-versions" not in storage
+    assert "abort_incomplete_multipart_upload" in storage
+
+
 def test_public_dashboard_listener_requires_tls() -> None:
     variables = read("variables.tf")
     load_balancer = read("loadbalancer.tf")
@@ -59,6 +66,21 @@ def test_public_dashboard_listener_requires_tls() -> None:
     assert 'protocol          = "HTTPS"' in load_balancer
     assert 'ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"' in load_balancer
     assert 'protocol    = "HTTPS"' in load_balancer
+
+
+def test_public_load_balancer_has_configurable_edge_rate_limiting() -> None:
+    waf = read("waf.tf")
+    variables = read("variables.tf")
+    assert 'resource "aws_wafv2_web_acl_association" "public"' in waf
+    assert "resource_arn = aws_lb.public.arn" in waf
+    assert 'aggregate_key_type    = "IP"' in waf
+    assert "evaluation_window_sec = var.public_rate_limit_window_seconds" in waf
+    assert "limit                 = var.public_rate_limit" in waf
+    assert "response_code            = 429" in waf
+    assert 'code    = "rate_limited"' in waf
+    for variable in ("public_rate_limit", "public_rate_limit_window_seconds"):
+        block = variables.split(f'variable "{variable}"', 1)[1].split("\n}", 1)[0]
+        assert "default" not in block
 
 
 def test_only_the_worker_security_group_reaches_the_worker_api() -> None:
@@ -70,6 +92,8 @@ def test_only_the_worker_security_group_reaches_the_worker_api() -> None:
     )
     assert internal is not None
     assert "source_security_group_id = aws_security_group.worker.id" in internal.group(1)
+    assert "from_port                = 443" in internal.group(1)
+    assert "to_port                  = 443" in internal.group(1)
     assert "cidr_blocks" not in internal.group(1)
     database = re.search(
         r'resource "aws_security_group_rule" "database_from_control_plane" \{(.*?)\n\}',
@@ -80,10 +104,48 @@ def test_only_the_worker_security_group_reaches_the_worker_api() -> None:
     assert "source_security_group_id = aws_security_group.control_plane.id" in database.group(1)
 
 
+def test_worker_credentials_cross_the_private_listener_over_tls() -> None:
+    load_balancer = read("loadbalancer.tf")
+    ecs = read("ecs.tf")
+    variables = read("variables.tf")
+    internal = re.search(
+        r'resource "aws_lb_listener" "internal" \{(.*?)\n\}',
+        load_balancer,
+        re.DOTALL,
+    )
+    assert internal is not None
+    for setting in (
+        "port              = 443",
+        'protocol          = "HTTPS"',
+        'ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"',
+        "certificate_arn   = var.worker_certificate_arn",
+    ):
+        assert setting in internal.group(1)
+    assert 'worker_base_url = var.worker_base_url != ""' in ecs
+    assert '"https://${aws_lb.internal.dns_name}"' in ecs
+    assert 'name = "TRACEWAKE_WORKER_CA_PEM", value = var.worker_ca_pem' in ecs
+    assert "worker_certificate_arn is required because worker credentials may only be sent over private HTTPS." in variables
+
+
 def test_services_run_without_public_addresses() -> None:
     ecs = read("ecs.tf")
     assert ecs.count("assign_public_ip = false") == 2
     assert ecs.count("subnets          = aws_subnet.private[*].id") == 2
+
+
+def test_worker_image_uses_the_locked_dependencies_and_is_built_in_ci() -> None:
+    dockerfile = Path("Dockerfile.worker").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert "COPY pyproject.toml uv.lock README.md LICENSE ./" in dockerfile
+    assert "uv sync --locked --no-dev --extra aws" in dockerfile
+    assert "docker build -f Dockerfile.worker -t tracewake-worker:test ." in workflow
+
+
+def test_control_plane_image_contains_the_result_contract() -> None:
+    dockerfile = Path("controlplane/Dockerfile").read_text(encoding="utf-8")
+    main = Path("controlplane/cmd/tracewaked/main.go").read_text(encoding="utf-8")
+    assert "COPY contracts/schemas/v1/result-envelope.schema.json /usr/share/tracewake/contracts/result-envelope.schema.json" in dockerfile
+    assert '"/usr/share/tracewake/contracts/result-envelope.schema.json"' in main
 
 
 @pytest.mark.parametrize(

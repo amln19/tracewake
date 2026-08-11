@@ -1,8 +1,11 @@
+FROM ghcr.io/astral-sh/uv:0.11.33 AS uv
 FROM python:3.13-slim
 WORKDIR /src
-COPY pyproject.toml README.md LICENSE ./
+COPY --from=uv /uv /bin/uv
+COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY tracewake/ tracewake/
-RUN pip install --no-cache-dir ".[aws]"
+RUN uv sync --locked --no-dev --extra aws
 RUN useradd --create-home --uid 10001 tracewake
 USER tracewake
+ENV PATH="/src/.venv/bin:$PATH"
 ENTRYPOINT ["tracewake-worker"]

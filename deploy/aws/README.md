@@ -1,7 +1,7 @@
 # AWS environment
 
 This directory deploys one Tracewake environment: a VPC, an application load
-balancer for tenants, a private load balancer for workers, ECS/Fargate services
+balancer and WAF for tenants, a private HTTPS load balancer for workers, ECS/Fargate services
 for the Go control plane and the Python worker, RDS PostgreSQL for
 authoritative hosted state, a private versioned S3 bucket for bundles and
 results, an SQS job queue with a dead-letter queue, ECR repositories, Secrets
@@ -15,13 +15,24 @@ export, and comparison never need this environment.
 
 Terraform state contains the database password and bootstrap tokens, so the S3
 backend is a required partial configuration. Choose an account, region, state
-bucket, certificate, and cost ceiling before deploying. `certificate_arn` is
-required: the public listener redirects HTTP to HTTPS, and browser sessions use
-Secure cookies.
+bucket, public and worker-listener certificates, an evidence-based public rate
+limit, and a cost ceiling before deploying. `certificate_arn` is required: the
+public listener redirects HTTP to HTTPS, and browser sessions use Secure
+cookies. `worker_certificate_arn` must cover either `worker_base_url` or the
+internal load balancer DNS name. Set `worker_ca_pem` when that certificate is
+private or self-signed; the worker verifies it rather than disabling TLS
+verification.
+
+`public_rate_limit` and `public_rate_limit_window_seconds` are deliberately
+required. The retained evidence includes bursts but is not a capacity study,
+so the repository cannot choose a safe production threshold for an operator.
+AWS WAF supports 60, 120, 300, and 600 second windows and a minimum count of
+10. Choose values above measured legitimate traffic, then adjust from observed
+demand.
 
 Standing cost is dominated by the NAT gateway, two load balancers, the RDS
-instance, and the running Fargate tasks. Destroy the environment when it is not
-in use.
+instance, the WAF web ACL, and the running Fargate tasks. Destroy the environment
+when it is not in use.
 
 ## Deploy
 
@@ -31,9 +42,19 @@ terraform init \
   -backend-config="bucket=<state-bucket>" \
   -backend-config="key=tracewake/prod.tfstate" \
   -backend-config="region=<region>"
-terraform apply -var region=<region> -var certificate_arn=<acm-certificate-arn> \
+terraform apply -var region=<region> -var certificate_arn=<public-acm-certificate-arn> \
+  -var worker_certificate_arn=<worker-acm-certificate-arn> \
+  -var public_rate_limit=<measured-request-count> \
+  -var public_rate_limit_window_seconds=<60|120|300|600> \
   -var image_tag=$(git rev-parse --short HEAD)
 ```
+
+For a private DNS name, point that name at `worker_load_balancer_dns` and pass
+its HTTPS URL as `worker_base_url`. A disposable environment without a domain
+may instead import a self-signed certificate covering the regional internal
+load balancer name and pass its PEM certificate as `worker_ca_pem`, as long as
+certificate verification remains enabled. Put multiline PEM and environment
+specific rate values in a private `.tfvars` file rather than shell history.
 
 An AWS account still on the free-tier plan caps automated backups; pass
 `-var database_backup_retention_days=1` there.
@@ -62,7 +83,10 @@ aws ecs update-service --cluster "$(terraform output -raw cluster_name)" \
 aws ecs update-service --cluster "$(terraform output -raw cluster_name)" \
   --service tracewake-prod-worker --force-new-deployment
 
-terraform apply -var region=<region> -var certificate_arn=<acm-certificate-arn> \
+terraform apply -var region=<region> -var certificate_arn=<public-acm-certificate-arn> \
+  -var worker_certificate_arn=<worker-acm-certificate-arn> \
+  -var public_rate_limit=<measured-request-count> \
+  -var public_rate_limit_window_seconds=<60|120|300|600> \
   -var image_tag=$(git rev-parse --short HEAD)
 ```
 
@@ -94,7 +118,7 @@ a task in the private subnets rather than opening the database to the internet.
 
 Roll a schema change out in this order:
 
-1. Deploy the image whose migrations are additive and backward compatible.
+1. Deploy the image whose migrations are forward-compatible with existing rows.
 2. Confirm the service is healthy and the ledger contains the new version.
 3. Only then deploy code that depends on the new shape.
 
@@ -111,10 +135,16 @@ migrations under `contracts/postgres/` drop hosted tables and types and are
 destructive; use a point-in-time restore of the RDS instance instead when
 retained hosted data matters.
 
+Migration 7 replaces one uniqueness constraint with a partial unique index; it
+does not rewrite or delete rows, and the previous query behavior remains valid.
+It is still forward-only under the migration ledger: after version 7 is
+recorded, a version-6 binary refuses startup, so rollback requires restoring the
+database to its pre-deploy point as well as rolling back the image.
+
 ## Teardown
 
 ```sh
-terraform destroy -var region=<region> -var certificate_arn=<acm-certificate-arn>
+terraform destroy -var-file=<private-environment.tfvars>
 ```
 
 The artifact bucket is created with `force_destroy` and the database with
@@ -166,8 +196,10 @@ expired or deleted object disappears without a second bookkeeping system.
 `DELETE /v1/runs/{run_id}` is a tenant deletion request. It expires the run and
 every artifact derived from it immediately, so the data stops being reachable
 in the same transaction that records the request; the next cleanup pass removes
-the stored bytes. Bucket lifecycle rules expire noncurrent object versions
-after one day, so a deleted object's earlier versions go too.
+the stored bytes. Object cleanup enumerates exact versions and removes every
+version of a key the database no longer retains. S3 lifecycle never expires
+noncurrent versions on its own, because it cannot tell a superseded upload
+from the immutable version PostgreSQL records as authoritative.
 
 ## Backup and disaster recovery
 
@@ -212,8 +244,12 @@ audit records survive it.
 * Only the control-plane task role may read or write artifacts and publish
   notifications. Workers hold queue permissions only and reach objects through
   short-lived URLs the control plane issues.
-* The worker API listens on a separate port published only through the internal
-  load balancer, which accepts traffic from the worker security group.
+* The worker API is published only through the internal HTTPS load balancer,
+  which accepts traffic from the worker security group. TLS terminates at that
+  trusted boundary; its HTTP target hop remains security-group isolated inside
+  the VPC.
+* The public load balancer is associated with a WAF per-source-IP rate rule.
+  Its threshold and evaluation window are explicit environment inputs.
 * Queue visibility matches the database lease, so a fenced worker cannot keep a
   message hidden.
 * Both services receive their credentials from Secrets Manager; no token is
@@ -229,6 +265,8 @@ succeeds at the object store.
 The declared digest is proven afterwards instead. Committing an artifact
 verifies the exact object version and size, compares the stored checksum when
 one exists, and otherwise re-reads and hashes the object up to
-`MaxVerifiedReadSize`. A bundle larger than that is proven by mandatory
-validation, which refuses to make a run `ready` unless the stored bytes hash to
-the digest its upload declared.
+`MaxVerifiedReadSize`. Worker completion additionally re-reads and hashes every
+result and companion up to the 64 MiB result limit before the success
+transition. A bundle larger than the storage re-read threshold is proven by
+mandatory validation, which refuses to make a run `ready` unless the stored
+bytes hash to the digest its upload declared.

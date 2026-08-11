@@ -112,8 +112,8 @@ resource "aws_security_group_rule" "internal_lb_from_worker" {
   type                     = "ingress"
   security_group_id        = aws_security_group.internal_lb.id
   source_security_group_id = aws_security_group.worker.id
-  from_port                = 8081
-  to_port                  = 8081
+  from_port                = 443
+  to_port                  = 443
   protocol                 = "tcp"
   description              = "Workers only"
 }

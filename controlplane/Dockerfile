@@ -19,5 +19,6 @@ RUN addgroup -S -g 10001 tracewake && adduser -S -u 10001 -G tracewake tracewake
 USER tracewake
 COPY --from=build /out/tracewaked /usr/local/bin/tracewaked
 COPY --from=dashboard /src/dashboard/dist /usr/share/tracewake/dashboard
+COPY contracts/schemas/v1/result-envelope.schema.json /usr/share/tracewake/contracts/result-envelope.schema.json
 ENV TRACEWAKE_DASHBOARD_DIR=/usr/share/tracewake/dashboard
 ENTRYPOINT ["tracewaked"]

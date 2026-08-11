@@ -198,6 +198,7 @@ jobs:
       - run: npm run test:e2e
         working-directory: dashboard
       - run: docker build -f controlplane/Dockerfile -t tracewake-control-plane:test .
+      - run: docker build -f Dockerfile.worker -t tracewake-worker:test .
 
   terraform:
     name: Terraform configuration

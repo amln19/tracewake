@@ -89,8 +89,10 @@ resource "aws_lb_target_group" "internal" {
 
 resource "aws_lb_listener" "internal" {
   load_balancer_arn = aws_lb.internal.arn
-  port              = 8081
-  protocol          = "HTTP"
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = var.worker_certificate_arn
 
   default_action {
     type             = "forward"

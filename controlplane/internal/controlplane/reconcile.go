@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/amln19/tracewake/controlplane/internal/artifacts"
 	"github.com/amln19/tracewake/controlplane/internal/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -20,19 +21,19 @@ type Notification struct {
 // notification before the reconciler treats it as stranded.
 const notificationTimeout = "60 seconds"
 
-func (s *Service) RetainedObjectKeys(ctx context.Context) (map[string]bool, error) {
-	rows, err := s.pool.Query(ctx, `SELECT bundle_object_key FROM runs WHERE state<>'deleted' AND retention_expires_at>transaction_timestamp() UNION SELECT object_key FROM artifacts WHERE authoritative AND retention_expires_at>transaction_timestamp()`)
+func (s *Service) RetainedObjects(ctx context.Context) (map[artifacts.Identity]bool, error) {
+	rows, err := s.pool.Query(ctx, `SELECT bundle_object_key,bundle_object_version FROM runs WHERE state<>'deleted' AND retention_expires_at>transaction_timestamp() AND bundle_object_version IS NOT NULL UNION SELECT object_key,object_version FROM artifacts WHERE authoritative AND retention_expires_at>transaction_timestamp()`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	result := map[string]bool{}
+	result := map[artifacts.Identity]bool{}
 	for rows.Next() {
-		var key string
-		if err := rows.Scan(&key); err != nil {
+		var identity artifacts.Identity
+		if err := rows.Scan(&identity.Key, &identity.Version); err != nil {
 			return nil, err
 		}
-		result[key] = true
+		result[identity] = true
 	}
 	return result, rows.Err()
 }

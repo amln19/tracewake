@@ -14,6 +14,9 @@ immutable normalized request. `jobs` owns current lifecycle and exact terminal
 artifact identity. `job_attempts` records monotonic attempts and leases.
 `outbox` transports transactional notifications. `audit_records` is an
 append-only description of meaningful events, not a state-reconstruction log.
+Distinct jobs with the same normalized request share one immutable `job_inputs`
+row; idempotency keys determine whether the job itself is reused or newly
+created.
 
 `artifacts` records immutable object key, version, digest, size, schema,
 retention, and the attempt that produced it. Canonical result JSON remains in
@@ -23,6 +26,11 @@ not another JSONB copy of the semantic result.
 `browser_sessions` stores only keyed token and CSRF verifiers, scopes, expiry,
 revocation, and bounded usage metadata. A session belongs to one workspace and
 cannot outlive its fixed short expiry.
+
+Migration `0007_active_run_digest.up.sql` preserves workspace-local digest
+uniqueness for every active run while releasing the digest when a run reaches
+`deleted`. Deleted rows and their historical references remain intact; a new
+upload receives a new run and object key rather than resurrecting history.
 
 Workers have no database role. Only the control plane performs mutations.
 Publishers and reconcilers use separate least-privilege roles in deployment but

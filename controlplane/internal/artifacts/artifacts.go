@@ -24,6 +24,11 @@ type Object struct {
 	Size    int64  `json:"size"`
 }
 
+type Identity struct {
+	Key     string
+	Version string
+}
+
 // Grant is short-lived access to one server-generated object key. A relative
 // URL is served by this control plane; an absolute URL belongs to the object
 // store itself.
@@ -40,7 +45,7 @@ type Store interface {
 	GetGrant(ctx context.Context, key, version, mediaType string) (Grant, error)
 	Commit(ctx context.Context, key, version, digest string, size int64) (Object, error)
 	Open(ctx context.Context, key, version string) (io.ReadCloser, error)
-	Cleanup(ctx context.Context, keep map[string]bool, before time.Time) (int, error)
+	Cleanup(ctx context.Context, keep map[Identity]bool, before time.Time) (int, error)
 }
 
 // Absolute resolves a control-plane-relative grant against the base URL the

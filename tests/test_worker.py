@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import ssl
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -212,6 +214,63 @@ def test_obsolete_notification_is_acknowledged() -> None:
     assert client.acked
 
 
+def test_active_work_is_interrupted_when_cancellation_is_observed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = threading.Event()
+    stopped = threading.Event()
+
+    class Cancelled(FakeClient):
+        def json(self, method: str, path: str, value: Any = None, **kwargs):  # type: ignore[no-untyped-def]
+            if path == "/internal/v1/claims":
+                return claim_for("validate")
+            if path.endswith("/cancellation"):
+                return {"protocol_version": 1, "cancel_requested": started.is_set()}
+            return super().json(method, path, value, **kwargs)
+
+    def handler(_client: WorkerClient, _claim: dict[str, Any], _root: Path) -> dict[str, Any]:
+        started.set()
+        try:
+            while True:
+                pass
+        finally:
+            stopped.set()
+
+    monkeypatch.setattr(worker, "CANCELLATION_SECONDS", 0.001)
+    monkeypatch.setattr(worker, "HEARTBEAT_SECONDS", 60)
+    monkeypatch.setattr(worker, "_operation", lambda _claim: handler)
+    client = Cancelled(b"")
+    delivery = worker.Delivery(
+        notification={"job_id": "j"},
+        acknowledge=lambda: setattr(client, "acked", True),
+        extend_visibility=lambda _seconds: None,
+    )
+    source = type("Source", (), {"next": lambda _self: delivery})()
+
+    assert run_once(client, source)
+    assert stopped.is_set()
+    assert client.acked
+
+
+def test_worker_supervisor_retries_after_an_unexpected_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+
+    def run(*_args: Any) -> bool:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("control plane unavailable")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(worker, "run_once", run)
+    monkeypatch.setattr(worker.time, "sleep", lambda _seconds: None)
+    with pytest.raises(KeyboardInterrupt):
+        worker._supervise(FakeClient(b""), object(), worker.Telemetry())
+    assert calls == 2
+
+
 class Validating(FakeClient):
     """Answers a complete validation attempt from memory."""
 
@@ -322,3 +381,59 @@ def test_requests_carry_the_attempt_trace_header(monkeypatch: pytest.MonkeyPatch
     client.traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
     client.request("GET", "/internal/v1/identity")
     assert seen["Traceparent"] == client.traceparent
+
+
+def test_worker_request_trusts_the_configured_private_ca(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import urllib.request
+
+    trusted_context = object()
+    received: dict[str, Any] = {}
+
+    class Response:
+        status = 204
+
+        def read(self) -> bytes:
+            return b""
+
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    monkeypatch.setattr(
+        ssl,
+        "create_default_context",
+        lambda *, cadata: received.update(cadata=cadata) or trusted_context,
+    )
+
+    def urlopen(request: Any, **options: Any) -> Response:
+        received.update(url=request.full_url, **options)
+        return Response()
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    client = WorkerClient("https://worker.internal", "worker", "token", "trusted-ca")
+    client.request("GET", "/internal/v1/identity")
+    assert received == {
+        "cadata": "trusted-ca",
+        "url": "https://worker.internal/internal/v1/identity",
+        "timeout": 30,
+        "context": trusted_context,
+    }
+
+
+def test_result_canonicalization_is_stable_across_worker_and_control_plane() -> None:
+    assert worker._canonical(
+        {
+            "whole": 1.0,
+            "text": "é<&😀",
+            "scientific": 1e16,
+            "negativeZero": -0.0,
+            "largeFixed": 1e15,
+        }
+    ) == (
+        b'{"largeFixed":1000000000000000.0,"negativeZero":-0.0,'
+        b'"scientific":1e+16,"text":"\\u00e9<&\\ud83d\\ude00","whole":1.0}\n'
+    )

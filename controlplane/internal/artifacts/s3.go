@@ -180,7 +180,7 @@ func (s *S3) verifyStoredBytes(ctx context.Context, key, version, digest string,
 	return nil
 }
 
-func (s *S3) Cleanup(ctx context.Context, keep map[string]bool, before time.Time) (int, error) {
+func (s *S3) Cleanup(ctx context.Context, keep map[Identity]bool, before time.Time) (int, error) {
 	removed := 0
 	var keyMarker, versionMarker *string
 	for {
@@ -195,7 +195,8 @@ func (s *S3) Cleanup(ctx context.Context, keep map[string]bool, before time.Time
 		var expired []types.ObjectIdentifier
 		for _, object := range page.Versions {
 			key := aws.ToString(object.Key)
-			if keep[key] || object.LastModified == nil || object.LastModified.After(before) {
+			identity := Identity{Key: key, Version: aws.ToString(object.VersionId)}
+			if keep[identity] || object.LastModified == nil || object.LastModified.After(before) {
 				continue
 			}
 			expired = append(expired, types.ObjectIdentifier{Key: object.Key, VersionId: object.VersionId})

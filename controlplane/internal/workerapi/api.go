@@ -1,12 +1,18 @@
 package workerapi
 
 import (
+	"bytes"
+	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -14,17 +20,32 @@ import (
 	"github.com/amln19/tracewake/controlplane/internal/artifacts"
 	"github.com/amln19/tracewake/controlplane/internal/controlplane"
 	"github.com/amln19/tracewake/controlplane/internal/telemetry"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 type API struct {
-	service   *controlplane.Service
-	artifacts artifacts.Store
-	baseURL   string
-	metrics   *telemetry.Metrics
+	service      *controlplane.Service
+	artifacts    artifacts.Store
+	baseURL      string
+	metrics      *telemetry.Metrics
+	resultSchema *jsonschema.Schema
 }
 
-func New(service *controlplane.Service, artifactStore artifacts.Store, baseURL string) *API {
-	return &API{service: service, artifacts: artifactStore, baseURL: baseURL, metrics: telemetry.NoMetrics()}
+func New(service *controlplane.Service, artifactStore artifacts.Store, baseURL string, schemaBytes []byte) (*API, error) {
+	document, err := jsonschema.UnmarshalJSON(bytes.NewReader(schemaBytes))
+	if err != nil {
+		return nil, fmt.Errorf("decode result schema: %w", err)
+	}
+	compiler := jsonschema.NewCompiler()
+	compiler.DefaultDraft(jsonschema.Draft2020)
+	if err := compiler.AddResource("result-envelope.schema.json", document); err != nil {
+		return nil, fmt.Errorf("load result schema: %w", err)
+	}
+	schema, err := compiler.Compile("result-envelope.schema.json")
+	if err != nil {
+		return nil, fmt.Errorf("compile result schema: %w", err)
+	}
+	return &API{service: service, artifacts: artifactStore, baseURL: baseURL, metrics: telemetry.NoMetrics(), resultSchema: schema}, nil
 }
 
 // UseTelemetry replaces the recorder this surface reports requests to.
@@ -282,15 +303,27 @@ func (a *API) complete(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, span := telemetry.Span(r.Context(), "artifact.commit", trace.SpanKindInternal)
 	object, err := a.artifacts.Commit(ctx, body.ObjectKey, body.ObjectVersion, body.Digest, body.Size)
+	committed := []artifacts.Object{object}
 	if err == nil {
 		body.ObjectVersion = object.Version
 		for index, companion := range body.Companions {
-			committed, commitErr := a.artifacts.Commit(ctx, companion.ObjectKey, companion.ObjectVersion, companion.Digest, companion.Size)
+			companionObject, commitErr := a.artifacts.Commit(ctx, companion.ObjectKey, companion.ObjectVersion, companion.Digest, companion.Size)
 			if commitErr != nil {
 				err = commitErr
 				break
 			}
-			body.Companions[index].ObjectVersion = committed.Version
+			body.Companions[index].ObjectVersion = companionObject.Version
+			committed = append(committed, companionObject)
+		}
+	}
+	if err == nil {
+		var raw []byte
+		raw, err = a.verifyStoredObject(ctx, committed[0], true)
+		if err == nil {
+			err = a.validateResultEnvelope(raw)
+		}
+		for index := 1; err == nil && index < len(committed); index++ {
+			_, err = a.verifyStoredObject(ctx, committed[index], false)
 		}
 	}
 	span.End()
@@ -305,6 +338,184 @@ func (a *API) complete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"protocol_version": 1, "status": "succeeded"})
+}
+
+func (a *API) verifyStoredObject(ctx context.Context, object artifacts.Object, capture bool) ([]byte, error) {
+	reader, err := a.artifacts.Open(ctx, object.Key, object.Version)
+	if err != nil {
+		return nil, err
+	}
+	hash := sha256.New()
+	var raw bytes.Buffer
+	destination := io.Writer(hash)
+	if capture {
+		raw.Grow(int(object.Size))
+		destination = io.MultiWriter(hash, &raw)
+	}
+	read, copyErr := io.Copy(destination, io.LimitReader(reader, object.Size+1))
+	closeErr := reader.Close()
+	if copyErr != nil {
+		return nil, fmt.Errorf("hash stored result artifact: %w", copyErr)
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("close stored result artifact: %w", closeErr)
+	}
+	if read != object.Size || fmt.Sprintf("%x", hash.Sum(nil)) != object.Digest {
+		return nil, errors.New("result artifact identity does not match stored bytes")
+	}
+	return raw.Bytes(), nil
+}
+
+func (a *API) validateResultEnvelope(raw []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var document any
+	if err := decoder.Decode(&document); err != nil {
+		return fmt.Errorf("decode result envelope: %w", err)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return errors.New("result envelope must contain one JSON value")
+	}
+	if err := a.resultSchema.Validate(document); err != nil {
+		return fmt.Errorf("validate result envelope: %w", err)
+	}
+	envelope, ok := document.(map[string]any)
+	if !ok {
+		return errors.New("result envelope must be an object")
+	}
+	switch envelope["status"] {
+	case "succeeded":
+		if envelope["result"] == nil || envelope["failure"] != nil {
+			return errors.New("successful result envelope must contain only a result")
+		}
+	case "failed":
+		if envelope["failure"] == nil || envelope["result"] != nil {
+			return errors.New("failed result envelope must contain only a failure")
+		}
+	default:
+		return errors.New("result envelope status is invalid")
+	}
+	canonical, err := canonicalResultJSON(document)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(raw, canonical) {
+		return errors.New("result envelope is not canonical JSON")
+	}
+	return nil
+}
+
+func canonicalResultJSON(value any) ([]byte, error) {
+	var result bytes.Buffer
+	if err := appendCanonicalJSON(&result, value); err != nil {
+		return nil, err
+	}
+	result.WriteByte('\n')
+	return result.Bytes(), nil
+}
+
+func appendCanonicalJSON(destination *bytes.Buffer, value any) error {
+	switch value := value.(type) {
+	case nil:
+		destination.WriteString("null")
+	case bool:
+		destination.WriteString(strconv.FormatBool(value))
+	case string:
+		appendPythonJSONString(destination, value)
+	case json.Number:
+		destination.WriteString(canonicalPythonNumber(value))
+	case []any:
+		destination.WriteByte('[')
+		for index, item := range value {
+			if index > 0 {
+				destination.WriteByte(',')
+			}
+			if err := appendCanonicalJSON(destination, item); err != nil {
+				return err
+			}
+		}
+		destination.WriteByte(']')
+	case map[string]any:
+		keys := make([]string, 0, len(value))
+		for key := range value {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		destination.WriteByte('{')
+		for index, key := range keys {
+			if index > 0 {
+				destination.WriteByte(',')
+			}
+			appendPythonJSONString(destination, key)
+			destination.WriteByte(':')
+			if err := appendCanonicalJSON(destination, value[key]); err != nil {
+				return err
+			}
+		}
+		destination.WriteByte('}')
+	default:
+		return fmt.Errorf("result envelope contains unsupported JSON value %T", value)
+	}
+	return nil
+}
+
+func canonicalPythonNumber(number json.Number) string {
+	raw := number.String()
+	if !strings.ContainsAny(raw, ".eE") {
+		return raw
+	}
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return raw
+	}
+	formatted := strconv.FormatFloat(value, 'g', -1, 64)
+	if separator := strings.IndexByte(formatted, 'e'); separator >= 0 {
+		exponent, exponentErr := strconv.Atoi(formatted[separator+1:])
+		if exponentErr == nil && exponent >= -4 && exponent < 16 {
+			formatted = strconv.FormatFloat(value, 'f', -1, 64)
+		}
+	}
+	if !strings.ContainsAny(formatted, ".eE") {
+		formatted += ".0"
+	}
+	return formatted
+}
+
+func appendPythonJSONString(destination *bytes.Buffer, value string) {
+	destination.WriteByte('"')
+	for len(value) > 0 {
+		runeValue, size := utf8.DecodeRuneInString(value)
+		value = value[size:]
+		switch runeValue {
+		case '"', '\\':
+			destination.WriteByte('\\')
+			destination.WriteRune(runeValue)
+		case '\b':
+			destination.WriteString(`\b`)
+		case '\f':
+			destination.WriteString(`\f`)
+		case '\n':
+			destination.WriteString(`\n`)
+		case '\r':
+			destination.WriteString(`\r`)
+		case '\t':
+			destination.WriteString(`\t`)
+		default:
+			switch {
+			case runeValue < 0x20:
+				fmt.Fprintf(destination, `\u%04x`, runeValue)
+			case runeValue <= 0x7f:
+				destination.WriteRune(runeValue)
+			case runeValue <= 0xffff:
+				fmt.Fprintf(destination, `\u%04x`, runeValue)
+			default:
+				value := runeValue - 0x10000
+				fmt.Fprintf(destination, `\u%04x\u%04x`, 0xd800+(value>>10), 0xdc00+(value&0x3ff))
+			}
+		}
+	}
+	destination.WriteByte('"')
 }
 
 func (a *API) input(w http.ResponseWriter, r *http.Request) {
