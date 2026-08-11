@@ -1,6 +1,6 @@
 resource "aws_ecr_repository" "control_plane" {
   name                 = "${local.prefix}/control-plane"
-  image_tag_mutability = "MUTABLE"
+  image_tag_mutability = "IMMUTABLE"
   force_delete         = true
 
   image_scanning_configuration {
@@ -10,7 +10,7 @@ resource "aws_ecr_repository" "control_plane" {
 
 resource "aws_ecr_repository" "worker" {
   name                 = "${local.prefix}/worker"
-  image_tag_mutability = "MUTABLE"
+  image_tag_mutability = "IMMUTABLE"
   force_delete         = true
 
   image_scanning_configuration {

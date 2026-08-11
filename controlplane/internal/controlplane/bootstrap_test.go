@@ -62,3 +62,48 @@ func TestBootstrapTokenAndPepperRotation(t *testing.T) {
 		t.Fatalf("replacement bootstrap secret did not authenticate: %v", err)
 	}
 }
+
+func TestBrowserSessionRefreshMigratesPepper(t *testing.T) {
+	databaseURL := os.Getenv("TRACEWAKE_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TRACEWAKE_TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	database, err := store.Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(database.Close)
+	if err = database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	previousPepper := []byte("previous-browser-pepper-material-0000")
+	currentPepper := []byte("current-browser-pepper-material-00000")
+	previous, err := controlplane.New(database.Pool(), controlplane.KeyRing{CurrentVersion: 1, Current: previousPepper}, controlplane.KeyRing{CurrentVersion: 1, Current: previousPepper})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, token, err := previous.CreateWorkspace(ctx, "browser-session-rotation", []string{"runs:read", "runs:write"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := previous.ExchangeBrowserSession(ctx, token)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rotated, err := controlplane.New(database.Pool(), controlplane.KeyRing{CurrentVersion: 2, Current: currentPepper, Previous: previousPepper}, controlplane.KeyRing{CurrentVersion: 2, Current: currentPepper, Previous: previousPepper})
+	if err != nil {
+		t.Fatal(err)
+	}
+	refreshed, err := rotated.RefreshBrowserSession(ctx, session.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = rotated.AuthenticateBrowserSession(ctx, session.Token, "runs:write", refreshed.CSRFToken, true); err != nil {
+		t.Fatalf("refreshed session did not authenticate with the current pepper: %v", err)
+	}
+	if _, _, err = rotated.AuthenticateBrowserSession(ctx, session.Token, "runs:write", session.CSRFToken, true); !errors.Is(err, controlplane.ErrForbidden) {
+		t.Fatalf("refresh did not invalidate the previous CSRF token: %v", err)
+	}
+}

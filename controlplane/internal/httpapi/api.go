@@ -173,7 +173,7 @@ func (a *API) createBrowserUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	upload, err := a.service.CreateUpload(r.Context(), p, body.BundleDigest, body.BundleSize)
 	if err != nil {
-		errorJSON(w, http.StatusConflict, "conflict")
+		uploadDeclarationError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"run_id": upload.RunID, "state": "pending"})
@@ -267,7 +267,7 @@ func (a *API) createUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	upload, err := a.service.CreateUpload(r.Context(), principal, body.BundleDigest, body.BundleSize)
 	if err != nil {
-		errorJSON(w, http.StatusConflict, "conflict")
+		uploadDeclarationError(w, err)
 		return
 	}
 	grant, err := a.artifacts.PutGrant(r.Context(), upload.Key, upload.Digest, upload.Size, "application/x-tar")
@@ -285,6 +285,15 @@ func (a *API) createUpload(w http.ResponseWriter, r *http.Request) {
 		"expires_at":      grant.ExpiresAt,
 	})
 }
+
+func uploadDeclarationError(w http.ResponseWriter, err error) {
+	if errors.Is(err, controlplane.ErrInvalidRequest) {
+		errorJSON(w, http.StatusBadRequest, "invalid_request")
+		return
+	}
+	errorJSON(w, http.StatusConflict, "conflict")
+}
+
 func (a *API) principal(w http.ResponseWriter, r *http.Request, scope string) (controlplane.Principal, bool) {
 	authorization := r.Header.Get("Authorization")
 	var p controlplane.Principal

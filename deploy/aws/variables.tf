@@ -22,9 +22,13 @@ variable "vpc_cidr" {
 }
 
 variable "image_tag" {
-  description = "Container image tag deployed for both services."
+  description = "Unique immutable container image tag deployed for both services."
   type        = string
-  default     = "latest"
+
+  validation {
+    condition     = var.image_tag != "" && var.image_tag != "latest"
+    error_message = "image_tag must be a unique immutable release tag and cannot be latest."
+  }
 }
 
 variable "control_plane_count" {

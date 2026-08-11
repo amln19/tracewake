@@ -46,7 +46,7 @@ terraform apply -var region=<region> -var certificate_arn=<public-acm-certificat
   -var worker_certificate_arn=<worker-acm-certificate-arn> \
   -var public_rate_limit=<measured-request-count> \
   -var public_rate_limit_window_seconds=<60|120|300|600> \
-  -var image_tag=$(git rev-parse --short HEAD)
+  -var image_tag=$(git rev-parse HEAD)
 ```
 
 For a private DNS name, point that name at `worker_load_balancer_dns` and pass
@@ -66,7 +66,7 @@ the images must be built for it. Build, push, then roll the services:
 ```sh
 account=$(aws sts get-caller-identity --query Account --output text)
 region=<region>
-tag=$(git rev-parse --short HEAD)
+tag=$(git rev-parse HEAD)
 aws ecr get-login-password --region "$region" \
   | docker login --username AWS --password-stdin "$account.dkr.ecr.$region.amazonaws.com"
 
@@ -87,7 +87,7 @@ terraform apply -var region=<region> -var certificate_arn=<public-acm-certificat
   -var worker_certificate_arn=<worker-acm-certificate-arn> \
   -var public_rate_limit=<measured-request-count> \
   -var public_rate_limit_window_seconds=<60|120|300|600> \
-  -var image_tag=$(git rev-parse --short HEAD)
+  -var image_tag=$(git rev-parse HEAD)
 ```
 
 Read the bootstrap tenant token from Secrets Manager. It is never printed to
@@ -140,10 +140,12 @@ Roll a schema change out in this order:
 ## Rollback
 
 Application rollback is `terraform apply -var image_tag=<previous-tag>`; ECS
-replaces tasks with the previous image. This is safe whenever the older code
-still understands the current schema version — the control plane refuses to
-start otherwise, which is the intended failure rather than silent
-reinterpretation.
+replaces tasks with the previous image. ECR release tags are immutable, so a
+previous tag continues to identify the bytes originally pushed under it. This
+is safe whenever the older code still understands the current schema version —
+the control plane refuses to start otherwise, which is the intended failure
+rather than silent reinterpretation. Rebuilding the same source requires a new
+tag instead of replacing an existing release.
 
 Schema rollback is an operator decision, not an automatic repair. The down
 migrations under `contracts/postgres/` drop hosted tables and types and are

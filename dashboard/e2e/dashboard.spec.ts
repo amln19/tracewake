@@ -107,7 +107,7 @@ test("uploads through the same-origin control plane without a storage capability
   await page.goto("/");
   await expect(page.getByText("Run inventory")).toBeVisible();
   await page.locator('input[type="file"]').setInputFiles("e2e/fixtures/browser.bundle.tar");
-  await expect(page.getByText("validating")).toBeVisible();
+  await expect(page.getByText(/Validation queued for/)).toBeVisible();
   expect(seen).toHaveLength(2);
   expect(seen.every((url) => new URL(url).origin === new URL(page.url()).origin)).toBe(true);
   expect(seen.some((url) => url.includes("amazonaws") || url.includes("s3"))).toBe(false);

@@ -67,6 +67,7 @@ input:focus { border-color: var(--red); box-shadow: 0 0 0 3px #d94b341a; }
 .panel { margin-bottom: 1rem; border: 1px solid var(--line); background: #faf8f2d9; }
 .panel-heading { min-height: 5rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; border-bottom: 1px solid var(--line); }
 .panel-heading h2, .panel-heading p { margin-bottom: 0; }
+.pagination-action { display: flex; justify-content: center; padding: 1rem; border-top: 1px solid var(--line); }
 .selection-action { display: flex; align-items: center; gap: 1rem; font: .7rem ui-monospace, monospace; }
 .run-table { overflow-x: auto; }
 .table-row { min-width: 760px; display: grid; grid-template-columns: 5rem 8rem 9rem 5rem 1fr 11rem; align-items: center; position: relative; border-bottom: 1px solid #e3dfd5; }

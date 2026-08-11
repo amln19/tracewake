@@ -51,8 +51,12 @@ export async function endSession(): Promise<void> {
   csrfToken = "";
 }
 
-export async function listRuns(): Promise<Run[]> {
-  return (await request<{ runs: Run[] }>("/v1/runs")).runs;
+export type RunPage = { runs: Run[]; next_cursor: string | null };
+
+export async function listRuns(cursor = ""): Promise<RunPage> {
+  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
+  const page = await request<{ runs: Run[]; next_cursor?: string | null }>(`/v1/runs${query}`);
+  return { runs: page.runs, next_cursor: page.next_cursor ?? null };
 }
 
 export async function getRun(id: string): Promise<Run> {

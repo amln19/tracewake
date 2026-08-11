@@ -73,9 +73,10 @@ func (s *Service) RefreshBrowserSession(ctx context.Context, token string) (Brow
 	if err != nil {
 		return BrowserSession{}, err
 	}
-	command, err := s.pool.Exec(ctx, `UPDATE browser_sessions SET csrf_verifier=$1,last_used_at=transaction_timestamp()
-        WHERE id=$2 AND workspace_id=$3 AND revoked_at IS NULL AND expires_at>transaction_timestamp()`,
-		csrfVerifier, id, principal.WorkspaceID)
+	command, err := s.pool.Exec(ctx, `UPDATE browser_sessions
+	        SET verifier=$1,csrf_verifier=$2,pepper_version=$3,last_used_at=transaction_timestamp()
+	        WHERE id=$4 AND workspace_id=$5 AND revoked_at IS NULL AND expires_at>transaction_timestamp()`,
+		hmacDigest(s.tokens.Current, token), csrfVerifier, s.tokens.CurrentVersion, id, principal.WorkspaceID)
 	if err != nil {
 		return BrowserSession{}, fmt.Errorf("refresh browser session: %w", err)
 	}

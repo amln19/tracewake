@@ -80,6 +80,23 @@ func TestListParametersValidateThePublicPageLimit(t *testing.T) {
 	}
 }
 
+func TestUploadDeclarationErrorDistinguishesMalformedInput(t *testing.T) {
+	for _, test := range []struct {
+		err        error
+		wantStatus int
+		wantCode   string
+	}{
+		{err: controlplane.ErrInvalidRequest, wantStatus: http.StatusBadRequest, wantCode: "invalid_request"},
+		{err: controlplane.ErrConflict, wantStatus: http.StatusConflict, wantCode: "conflict"},
+	} {
+		response := httptest.NewRecorder()
+		uploadDeclarationError(response, test.err)
+		if response.Code != test.wantStatus || !strings.Contains(response.Body.String(), `"code":"`+test.wantCode+`"`) {
+			t.Fatalf("error=%v status=%d body=%s", test.err, response.Code, response.Body.String())
+		}
+	}
+}
+
 func TestInlineReportPolicyRunsOnlyTheSelfContainedRenderer(t *testing.T) {
 	for _, required := range []string{
 		"default-src 'none'",

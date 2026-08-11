@@ -75,8 +75,8 @@ type Upload struct {
 }
 
 func (s *Service) CreateUpload(ctx context.Context, principal Principal, digest string, size int64) (Upload, error) {
-	if len(digest) != 64 || size < 0 || size > 256*1024*1024 {
-		return Upload{}, errors.New("upload declaration is invalid")
+	if !validDigest(digest) || size < 0 || size > 256*1024*1024 {
+		return Upload{}, fmt.Errorf("%w: upload declaration is invalid", ErrInvalidRequest)
 	}
 	runID, err := newID()
 	if err != nil {
@@ -248,8 +248,13 @@ func normalizedValidationDigest(runID string) (string, error) {
 }
 
 func (s *Service) CreateJob(ctx context.Context, principal Principal, key string, request JobRequest) (Job, bool, error) {
-	if len(key) == 0 || len(key) > 255 {
-		return Job{}, false, fmt.Errorf("%w: idempotency key must contain 1 to 255 characters", ErrInvalidRequest)
+	if !validIdempotencyKey(key) {
+		return Job{}, false, fmt.Errorf("%w: idempotency key must contain 1 to 255 visible ASCII characters", ErrInvalidRequest)
+	}
+	for _, runID := range request.RunIDs {
+		if !validID(runID) {
+			return Job{}, false, fmt.Errorf("%w: job has invalid run identities", ErrInvalidRequest)
+		}
 	}
 	digest, err := normalizedDigest(request)
 	if err != nil {
@@ -326,6 +331,30 @@ func (s *Service) CreateJob(ctx context.Context, principal Principal, key string
 	}
 	s.metrics.JobCreated(ctx, request.Operation)
 	return Job{ID: jobID, State: "queued"}, false, nil
+}
+
+func validIdempotencyKey(key string) bool {
+	if len(key) == 0 || len(key) > 255 {
+		return false
+	}
+	for index := range len(key) {
+		if key[index] < '!' || key[index] > '~' {
+			return false
+		}
+	}
+	return true
+}
+
+func validDigest(digest string) bool {
+	if len(digest) != 64 {
+		return false
+	}
+	for index := range len(digest) {
+		if (digest[index] < '0' || digest[index] > '9') && (digest[index] < 'a' || digest[index] > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Service) Claim(ctx context.Context, workerID, jobID string) (Claim, error) {

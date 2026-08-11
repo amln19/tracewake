@@ -83,6 +83,15 @@ def test_public_load_balancer_has_configurable_edge_rate_limiting() -> None:
         assert "default" not in block
 
 
+def test_secret_resource_identity_does_not_depend_on_sensitive_values() -> None:
+    secrets = read("secrets.tf")
+    assert secrets.count("for_each = local.secret_keys") == 2
+    assert "for_each = local.secret_values" not in secrets
+    assert 'nonsensitive(var.token_previous_pepper != "")' in secrets
+    assert 'nonsensitive(var.worker_previous_pepper != "")' in secrets
+    assert "secret_string = local.secret_values[each.key]" in secrets
+
+
 def test_only_the_worker_security_group_reaches_the_worker_api() -> None:
     security = read("security.tf")
     internal = re.search(
@@ -146,6 +155,13 @@ def test_control_plane_image_contains_the_result_contract() -> None:
     main = Path("controlplane/cmd/tracewaked/main.go").read_text(encoding="utf-8")
     assert "COPY contracts/schemas/v1/result-envelope.schema.json /usr/share/tracewake/contracts/result-envelope.schema.json" in dockerfile
     assert '"/usr/share/tracewake/contracts/result-envelope.schema.json"' in main
+
+
+def test_control_plane_image_prepares_writable_volume_mounts() -> None:
+    dockerfile = Path("controlplane/Dockerfile").read_text(encoding="utf-8")
+    assert "mkdir -p /run/tracewake /var/lib/tracewake/artifacts" in dockerfile
+    assert "chown -R tracewake:tracewake /run/tracewake /var/lib/tracewake" in dockerfile
+    assert "USER tracewake" in dockerfile
 
 
 @pytest.mark.parametrize(

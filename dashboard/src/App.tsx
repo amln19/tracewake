@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   APIError,
   artifactURL,
@@ -140,11 +140,26 @@ function SessionExchange({ onSession }: { onSession: (session: Session) => void 
 function Shell({ session, route, onExpired, onSignOut }: { session: Session; route: Route; onExpired: () => void; onSignOut: () => Promise<void> }) {
   const [runs, setRuns] = useState<Run[]>([]);
   const [audit, setAudit] = useState<AuditRecord[]>([]);
+  const [hasMoreRuns, setHasMoreRuns] = useState(false);
+  const [loadingMoreRuns, setLoadingMoreRuns] = useState(false);
   const [error, setError] = useState("");
+  const runPageDepth = useRef(1);
   const reload = useCallback(async () => {
     try {
-      const [nextRuns, nextAudit] = await Promise.all([listRuns(), listAudit()]);
-      setRuns(nextRuns);
+      const runsRequest = async () => {
+        const loaded: Run[] = [];
+        let cursor = "";
+        for (let pageNumber = 0; pageNumber < runPageDepth.current; pageNumber += 1) {
+          const page = await listRuns(cursor);
+          loaded.push(...page.runs);
+          cursor = page.next_cursor ?? "";
+          if (!cursor) break;
+        }
+        return { loaded, hasMore: cursor !== "" };
+      };
+      const [nextRuns, nextAudit] = await Promise.all([runsRequest(), listAudit()]);
+      setRuns(nextRuns.loaded);
+      setHasMoreRuns(nextRuns.hasMore);
       setAudit(nextAudit);
       setError("");
     } catch (cause) {
@@ -152,6 +167,15 @@ function Shell({ session, route, onExpired, onSignOut }: { session: Session; rou
       else setError(errorText(cause));
     }
   }, [onExpired]);
+  const loadMoreRuns = useCallback(async () => {
+    runPageDepth.current += 1;
+    setLoadingMoreRuns(true);
+    try {
+      await reload();
+    } finally {
+      setLoadingMoreRuns(false);
+    }
+  }, [reload]);
 
   useEffect(() => { void reload(); }, [reload]);
   useEffect(() => {
@@ -174,13 +198,13 @@ function Shell({ session, route, onExpired, onSignOut }: { session: Session; rou
       </nav>
       <main className="workspace">
         {error && <div className="error banner" role="alert">{error}<button onClick={() => void reload()}>Retry</button></div>}
-        {route.page === "overview" ? <Overview runs={runs} audit={audit} onChanged={reload} /> : <JobDetail jobID={route.id} onExpired={onExpired} />}
+        {route.page === "overview" ? <Overview runs={runs} audit={audit} hasMoreRuns={hasMoreRuns} loadingMoreRuns={loadingMoreRuns} onLoadMoreRuns={loadMoreRuns} onChanged={reload} /> : <JobDetail jobID={route.id} onExpired={onExpired} />}
       </main>
     </div>
   );
 }
 
-function Overview({ runs, audit, onChanged }: { runs: Run[]; audit: AuditRecord[]; onChanged: () => Promise<void> }) {
+function Overview({ runs, audit, hasMoreRuns, loadingMoreRuns, onLoadMoreRuns, onChanged }: { runs: Run[]; audit: AuditRecord[]; hasMoreRuns: boolean; loadingMoreRuns: boolean; onLoadMoreRuns: () => Promise<void>; onChanged: () => Promise<void> }) {
   const readyRuns = runs.filter((run) => run.state === "ready");
   const [selected, setSelected] = useState<string[]>([]);
   const [uploadState, setUploadState] = useState("");
@@ -226,8 +250,8 @@ function Overview({ runs, audit, onChanged }: { runs: Run[]; audit: AuditRecord[
       </section>
       {(uploadState || error) && <div className={error ? "error banner" : "notice banner"} role="status">{error || uploadState}</div>}
       <section className="metrics" aria-label="Run summary">
-        <Metric value={runs.length} label="Recorded runs" />
-        <Metric value={readyRuns.length} label="Ready to analyze" />
+        <Metric value={runs.length} label="Runs loaded" />
+        <Metric value={readyRuns.length} label="Ready loaded" />
         <Metric value={runs.filter((run) => run.state === "validating").length} label="Validating now" />
         <Metric value={audit.length} label="Recent audit facts" />
       </section>
@@ -238,6 +262,7 @@ function Overview({ runs, audit, onChanged }: { runs: Run[]; audit: AuditRecord[
           {runs.map((run) => <RunRow key={run.run_id} run={run} selected={selected.includes(run.run_id)} onToggle={() => toggle(run.run_id)} />)}
           {runs.length === 0 && <div className="empty-state">No runs yet. Upload a deterministic bundle to begin.</div>}
         </div>
+        {hasMoreRuns && <div className="pagination-action"><button className="quiet" disabled={loadingMoreRuns} onClick={() => void onLoadMoreRuns()}>{loadingMoreRuns ? "Loading…" : "Load more runs"}</button></div>}
       </section>
       <AuditTimeline records={audit} />
     </>

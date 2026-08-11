@@ -216,3 +216,5 @@ jobs:
         working-directory: deploy/aws
       - run: terraform validate
         working-directory: deploy/aws
+      - run: terraform test
+        working-directory: deploy/aws

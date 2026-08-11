@@ -52,10 +52,16 @@ locals {
     }, var.worker_previous_pepper == "" ? {} : {
     worker_previous_pepper = var.worker_previous_pepper
   })
+
+  secret_keys = toset(concat(
+    ["database_url", "token_pepper", "worker_pepper", "tenant_token", "worker_token"],
+    nonsensitive(var.token_previous_pepper != "") ? ["token_previous_pepper"] : [],
+    nonsensitive(var.worker_previous_pepper != "") ? ["worker_previous_pepper"] : [],
+  ))
 }
 
 resource "aws_secretsmanager_secret" "service" {
-  for_each = local.secret_values
+  for_each = local.secret_keys
 
   name                    = "${local.prefix}/${replace(each.key, "_", "-")}"
   recovery_window_in_days = 0
@@ -64,8 +70,8 @@ resource "aws_secretsmanager_secret" "service" {
 }
 
 resource "aws_secretsmanager_secret_version" "service" {
-  for_each = local.secret_values
+  for_each = local.secret_keys
 
   secret_id     = aws_secretsmanager_secret.service[each.key].id
-  secret_string = each.value
+  secret_string = local.secret_values[each.key]
 }

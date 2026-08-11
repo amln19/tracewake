@@ -214,6 +214,24 @@ def test_obsolete_notification_is_acknowledged() -> None:
     assert client.acked
 
 
+def test_uncertain_claim_failure_does_not_acknowledge() -> None:
+    class Uncertain(FakeClient):
+        def json(self, method: str, path: str, value: Any = None, **kwargs):  # type: ignore[no-untyped-def]
+            raise RuntimeError("worker request failed with HTTP 503")
+
+    client = Uncertain(b"")
+    delivery = worker.Delivery(
+        notification={"job_id": "00000000-0000-4000-8000-000000000002"},
+        acknowledge=lambda: setattr(client, "acked", True),
+        extend_visibility=lambda _seconds: None,
+    )
+    source = type("Source", (), {"next": lambda _self: delivery})()
+
+    with pytest.raises(RuntimeError, match="HTTP 503"):
+        run_once(client, source)
+    assert not client.acked
+
+
 def test_active_work_is_interrupted_when_cancellation_is_observed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

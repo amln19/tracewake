@@ -136,11 +136,20 @@ func (a *API) claim(w http.ResponseWriter, r *http.Request) {
 	}
 	claim, err := a.service.ClaimNotification(r.Context(), worker, body.Notification.JobID, body.Notification.JobVersion, body.Notification.Traceparent)
 	if err != nil {
-		writeError(w, http.StatusConflict, "conflict")
+		status, code := claimFailure(err)
+		writeError(w, status, code)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"protocol_version": 1, "job_id": claim.JobID, "attempt_number": claim.Attempt, "attempt_token": claim.AttemptToken, "lease_expires_at": claim.LeaseExpires, "operation": claim.Operation, "profile": claim.Profile, "input_artifacts": claim.Inputs})
 }
+
+func claimFailure(err error) (int, string) {
+	if errors.Is(err, controlplane.ErrConflict) {
+		return http.StatusConflict, "conflict"
+	}
+	return http.StatusServiceUnavailable, "internal"
+}
+
 func attemptNumber(r *http.Request) (int, error) { return strconv.Atoi(r.PathValue("attempt")) }
 func (a *API) heartbeat(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.worker(w, r); !ok {

@@ -14,7 +14,7 @@ RUN CGO_ENABLED=0 go build -o /out/tracewaked ./cmd/tracewaked
 
 FROM alpine:3.22
 RUN addgroup -S -g 10001 tracewake && adduser -S -u 10001 -G tracewake tracewake \
-    && mkdir -p /run/tracewake /var/lib/tracewake \
+    && mkdir -p /run/tracewake /var/lib/tracewake/artifacts \
     && chown -R tracewake:tracewake /run/tracewake /var/lib/tracewake
 USER tracewake
 COPY --from=build /out/tracewaked /usr/local/bin/tracewaked
