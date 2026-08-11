@@ -29,7 +29,7 @@ from typing import Any
 
 from tracewake.align import Step
 
-from .repos import CORPUS_ROOT
+from .repos import CORPUS_ROOT, corpus_metadata_path
 
 # The same split carries two shapes. Some rollouts record structured
 # `tool_calls`; others leave the call inline in the assistant's prose. Reading
@@ -791,7 +791,7 @@ def score_openhands_labels(
                     "_meta": {
                         "source": OPENHANDS_DATASET,
                         "n": len(rows_out),
-                        "labels": str(labels_path),
+                        "labels": corpus_metadata_path(labels_path),
                     }
                 },
                 sort_keys=True,

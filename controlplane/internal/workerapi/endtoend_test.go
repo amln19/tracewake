@@ -441,7 +441,7 @@ func TestSingleRunAnalysisCommitsItsResultAndCompanion(t *testing.T) {
 
 	spans := []byte(`{"resourceSpans":[]}`)
 	invalidEnvelope := []byte(`{"protocol_version":1,"status":"succeeded"}`)
-	envelope, err := os.ReadFile("../../../contracttest/fixtures/v1/accepted/result-envelope-otlp.json")
+	mismatchedEnvelope, err := os.ReadFile("../../../contracttest/fixtures/v1/accepted/result-envelope-otlp.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -476,15 +476,55 @@ func TestSingleRunAnalysisCommitsItsResultAndCompanion(t *testing.T) {
 	if status != http.StatusConflict || rejected["error"].(map[string]any)["code"] != "artifact_commit_failed" {
 		t.Fatalf("invalid result completion status=%d body=%v", status, rejected)
 	}
-	status, declaration := deployed.declare(t, jobID, "otlp_result_json", "application/json", envelope, attemptToken)
+	status, declaration := deployed.declare(t, jobID, "otlp_result_json", "application/json", mismatchedEnvelope, attemptToken)
 	if status != http.StatusCreated {
 		t.Fatalf("valid result declaration status=%d body=%v", status, declaration)
 	}
 	headers, _ := declaration["upload_headers"].(map[string]any)
-	stored := transfer(t, declaration["upload_method"].(string), declaration["upload_url"].(string), headers, envelope)
+	stored := transfer(t, declaration["upload_method"].(string), declaration["upload_url"].(string), headers, mismatchedEnvelope)
 	stored.Body.Close()
 	if stored.StatusCode/100 != 2 {
 		t.Fatalf("valid result upload status=%d", stored.StatusCode)
+	}
+	completion["object_version"] = objectVersion(t, stored)
+	completion["digest"] = hexDigest(mismatchedEnvelope)
+	completion["size"] = len(mismatchedEnvelope)
+	status, rejected = deployed.call(t, "POST", deployed.private.URL+"/internal/v1/jobs/"+jobID+"/attempts/1/complete", deployed.workerToken, completion, attemptToken)
+	if status != http.StatusConflict || rejected["error"].(map[string]any)["code"] != "artifact_commit_failed" {
+		t.Fatalf("mismatched result completion status=%d body=%v", status, rejected)
+	}
+
+	companion := completion["companions"].([]any)[0].(map[string]any)
+	var matchingDocument map[string]any
+	if err = json.Unmarshal(mismatchedEnvelope, &matchingDocument); err != nil {
+		t.Fatal(err)
+	}
+	result := matchingDocument["result"].(map[string]any)
+	result["artifact"] = map[string]any{
+		"artifact_id": companion["artifact_id"], "object_key": companion["object_key"],
+		"object_version": companion["object_version"], "digest": companion["digest"], "size": companion["size"],
+		"media_type": companion["media_type"], "schema_name": nil, "schema_version": nil,
+	}
+	provenance := result["provenance"].(map[string]any)
+	provenance["inputs"] = []any{map[string]any{
+		"run_id": run, "logical_run_digest": hexDigest([]byte("logical")), "bundle_digest": hexDigest([]byte("bundle")),
+		"bundle_object_key": "workspaces/" + deployed.workspace + "/runs/" + run + "/bundle.tar", "bundle_object_version": "version-1",
+		"bundle_format_version": 1, "cassette_format_version": 1, "event_schema_version": 3,
+	}}
+	envelope, err := json.Marshal(matchingDocument)
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope = append(envelope, '\n')
+	status, declaration = deployed.declare(t, jobID, "otlp_result_json", "application/json", envelope, attemptToken)
+	if status != http.StatusCreated {
+		t.Fatalf("matching result declaration status=%d body=%v", status, declaration)
+	}
+	headers, _ = declaration["upload_headers"].(map[string]any)
+	stored = transfer(t, declaration["upload_method"].(string), declaration["upload_url"].(string), headers, envelope)
+	stored.Body.Close()
+	if stored.StatusCode/100 != 2 {
+		t.Fatalf("matching result upload status=%d", stored.StatusCode)
 	}
 	completion["object_version"] = objectVersion(t, stored)
 	completion["digest"] = hexDigest(envelope)
@@ -619,6 +659,24 @@ func TestHostedRoundTripCommitsExactArtifactIdentity(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			var resultDocument map[string]any
+			if err = json.Unmarshal(result, &resultDocument); err != nil {
+				t.Fatal(err)
+			}
+			validation := resultDocument["result"].(map[string]any)
+			validation["run_id"] = runID
+			validation["logical_run_digest"] = hexDigest([]byte("logical"))
+			validation["bundle_digest"] = hexDigest(bundle)
+			validation["provenance"].(map[string]any)["inputs"] = []any{map[string]any{
+				"run_id": runID, "logical_run_digest": hexDigest([]byte("logical")), "bundle_digest": hexDigest(bundle),
+				"bundle_object_key": "workspaces/" + deployed.workspace + "/runs/" + runID + "/bundle.tar", "bundle_object_version": bundleVersion,
+				"bundle_format_version": 1, "cassette_format_version": 1, "event_schema_version": 3,
+			}}
+			result, err = json.Marshal(resultDocument)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result = append(result, '\n')
 			status, declaration := deployed.call(t, "POST", deployed.private.URL+"/internal/v1/jobs/"+jobID+"/attempts/1/artifacts", deployed.workerToken,
 				map[string]any{"protocol_version": 1, "attempt_number": 1, "kind": "validation_json", "media_type": "application/json", "digest": hexDigest(result), "size": len(result)}, attemptToken)
 			if status != http.StatusCreated {

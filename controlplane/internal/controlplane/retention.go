@@ -55,6 +55,22 @@ func (s *Service) EnforceRetention(ctx context.Context) (Retention, error) {
 		}
 		*step.count = command.RowsAffected()
 	}
+	if _, err := tx.Exec(ctx, `UPDATE job_attempts a SET state='cancelled',finished_at=transaction_timestamp()
+		FROM jobs j JOIN job_inputs i ON i.id=j.input_id
+		WHERE a.job_id=j.id AND a.state='running' AND EXISTS (
+			SELECT 1 FROM runs r WHERE r.id IN(i.run_a_id,i.run_b_id) AND r.state='deleted' AND r.retention_expires_at<=transaction_timestamp()
+		)`); err != nil {
+		return applied, fmt.Errorf("fence work whose inputs expired: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `WITH cancelled AS (
+		UPDATE jobs j SET state='cancelled',cancel_requested_at=COALESCE(cancel_requested_at,transaction_timestamp()),terminal_at=transaction_timestamp(),retry_at=NULL,updated_at=transaction_timestamp(),row_version=row_version+1
+		FROM job_inputs i WHERE j.input_id=i.id AND j.state IN('queued','running','retry_wait') AND EXISTS (
+			SELECT 1 FROM runs r WHERE r.id IN(i.run_a_id,i.run_b_id) AND r.state='deleted' AND r.retention_expires_at<=transaction_timestamp()
+		) RETURNING j.id,j.workspace_id
+	) INSERT INTO audit_records(workspace_id,aggregate_type,aggregate_id,event_type,actor_type,payload)
+		SELECT workspace_id,'job',id,'job.cancelled','retention','{}'::jsonb FROM cancelled`); err != nil {
+		return applied, fmt.Errorf("cancel work whose inputs expired: %w", err)
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return applied, fmt.Errorf("commit retention: %w", err)
 	}
@@ -79,6 +95,19 @@ func (s *Service) DeleteRun(ctx context.Context, principal Principal, runID stri
 	}
 	if command.RowsAffected() != 1 {
 		return ErrNotFound
+	}
+	if _, err := tx.Exec(ctx, `UPDATE job_attempts a SET state='cancelled',finished_at=transaction_timestamp()
+		FROM jobs j JOIN job_inputs i ON i.id=j.input_id
+		WHERE a.job_id=j.id AND a.state='running' AND j.workspace_id=$2 AND $1 IN(i.run_a_id,i.run_b_id)`, runID, principal.WorkspaceID); err != nil {
+		return fmt.Errorf("fence work derived from deleted run: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `WITH cancelled AS (
+		UPDATE jobs j SET state='cancelled',cancel_requested_at=COALESCE(cancel_requested_at,transaction_timestamp()),terminal_at=transaction_timestamp(),retry_at=NULL,updated_at=transaction_timestamp(),row_version=row_version+1
+		FROM job_inputs i WHERE j.input_id=i.id AND j.workspace_id=$2 AND $1 IN(i.run_a_id,i.run_b_id) AND j.state IN('queued','running','retry_wait')
+		RETURNING j.id,j.workspace_id
+	) INSERT INTO audit_records(workspace_id,aggregate_type,aggregate_id,event_type,actor_type,payload)
+		SELECT workspace_id,'job',id,'job.cancelled','tenant','{}'::jsonb FROM cancelled`, runID, principal.WorkspaceID); err != nil {
+		return fmt.Errorf("cancel work derived from deleted run: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `UPDATE artifacts a SET retention_expires_at=transaction_timestamp()
         FROM jobs j JOIN job_inputs i ON i.id=j.input_id

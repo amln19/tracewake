@@ -24,6 +24,15 @@ CORPUS_ROOT = Path(os.environ.get("BENCH_CORPUS", "corpus")).resolve()
 CLONE_ROOT = CORPUS_ROOT / "repos"
 VENV_ROOT = CORPUS_ROOT / "venv"
 
+
+def corpus_metadata_path(path: Path) -> str:
+    resolved = path.resolve()
+    try:
+        relative = resolved.relative_to(CORPUS_ROOT)
+    except ValueError:
+        return path.name
+    return (Path("corpus") / relative).as_posix()
+
 # Injected into the shared environment rather than per repo. These are test-only
 # imports a few suites reach for; the libraries under test are pure stdlib.
 TEST_REQUIREMENTS = (

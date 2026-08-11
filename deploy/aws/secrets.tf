@@ -41,13 +41,17 @@ locals {
   tenant_token = "tracewake_${random_id.tenant_token_prefix.hex}.${random_password.tenant_token_secret.result}"
   worker_token = "worker_${random_id.worker_token_prefix.hex}.${random_password.worker_token_secret.result}"
 
-  secret_values = {
+  secret_values = merge({
     database_url  = local.database_url
     token_pepper  = random_password.token_pepper.result
     worker_pepper = random_password.worker_pepper.result
     tenant_token  = local.tenant_token
     worker_token  = local.worker_token
-  }
+    }, var.token_previous_pepper == "" ? {} : {
+    token_previous_pepper = var.token_previous_pepper
+    }, var.worker_previous_pepper == "" ? {} : {
+    worker_previous_pepper = var.worker_previous_pepper
+  })
 }
 
 resource "aws_secretsmanager_secret" "service" {

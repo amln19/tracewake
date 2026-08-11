@@ -29,13 +29,14 @@ type S3 struct {
 	Server *httptest.Server
 	Bucket string
 
-	mutex    sync.Mutex
-	objects  map[string]map[string]storedObject
-	versions int
+	mutex          sync.Mutex
+	objects        map[string]map[string]storedObject
+	deleteFailures map[string]bool
+	versions       int
 }
 
 func NewS3(bucket string) *S3 {
-	fake := &S3{Bucket: bucket, objects: map[string]map[string]storedObject{}}
+	fake := &S3{Bucket: bucket, objects: map[string]map[string]storedObject{}, deleteFailures: map[string]bool{}}
 	fake.Server = httptest.NewServer(http.HandlerFunc(fake.serve))
 	return fake
 }
@@ -58,6 +59,12 @@ func (s *S3) Age(key, version string, modified time.Time) {
 	object := s.objects[key][version]
 	object.Modified = modified
 	s.objects[key][version] = object
+}
+
+func (s *S3) FailDelete(key, version string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.deleteFailures[key+"\x00"+version] = true
 }
 
 func (s *S3) Keys() []string {
@@ -221,10 +228,29 @@ func (s *S3) deleteObjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mutex.Lock()
+	var failed []struct {
+		Key       string `xml:"Key"`
+		VersionID string `xml:"VersionId"`
+		Code      string `xml:"Code"`
+		Message   string `xml:"Message"`
+	}
 	for _, object := range request.Objects {
+		if s.deleteFailures[object.Key+"\x00"+object.VersionID] {
+			failed = append(failed, struct {
+				Key       string `xml:"Key"`
+				VersionID string `xml:"VersionId"`
+				Code      string `xml:"Code"`
+				Message   string `xml:"Message"`
+			}{object.Key, object.VersionID, "AccessDenied", "denied for test"})
+			continue
+		}
 		delete(s.objects[object.Key], object.VersionID)
 	}
 	s.mutex.Unlock()
 	w.Header().Set("Content-Type", "application/xml")
-	_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><DeleteResult></DeleteResult>`))
+	response := struct {
+		XMLName xml.Name `xml:"DeleteResult"`
+		Errors  any      `xml:"Error"`
+	}{Errors: failed}
+	_ = xml.NewEncoder(w).Encode(response)
 }

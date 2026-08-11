@@ -180,3 +180,49 @@ variable "alarm_actions" {
   type        = list(string)
   default     = []
 }
+
+variable "token_pepper_version" {
+  description = "Version assigned to the current tenant-token pepper. Increment it by one during rotation."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.token_pepper_version >= 1 && var.token_pepper_version <= 32767 && floor(var.token_pepper_version) == var.token_pepper_version
+    error_message = "token_pepper_version must be a positive 16-bit integer."
+  }
+}
+
+variable "token_previous_pepper" {
+  description = "Immediately previous tenant-token pepper retained during a rotation window."
+  type        = string
+  default     = ""
+  sensitive   = true
+
+  validation {
+    condition     = var.token_previous_pepper == "" || (length(var.token_previous_pepper) >= 32 && var.token_pepper_version >= 2)
+    error_message = "token_previous_pepper requires at least 32 bytes and token_pepper_version of at least 2."
+  }
+}
+
+variable "worker_pepper_version" {
+  description = "Version assigned to the current worker-token pepper. Increment it by one during rotation."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.worker_pepper_version >= 1 && var.worker_pepper_version <= 32767 && floor(var.worker_pepper_version) == var.worker_pepper_version
+    error_message = "worker_pepper_version must be a positive 16-bit integer."
+  }
+}
+
+variable "worker_previous_pepper" {
+  description = "Immediately previous worker-token pepper retained during a rotation window."
+  type        = string
+  default     = ""
+  sensitive   = true
+
+  validation {
+    condition     = var.worker_previous_pepper == "" || (length(var.worker_previous_pepper) >= 32 && var.worker_pepper_version >= 2)
+    error_message = "worker_previous_pepper requires at least 32 bytes and worker_pepper_version of at least 2."
+  }
+}

@@ -92,7 +92,15 @@ class BlobStore:
                 f"directory must be copied together; a run cannot be replayed from the "
                 f"database alone."
             )
-        return path.read_bytes()
+        data = path.read_bytes()
+        actual = sha256_hex(data)
+        if actual != digest:
+            raise ValueError(
+                f"stored blob has expected digest {digest} but actual digest {actual}. "
+                "Repair it by restoring the blob from a trusted copy or delete and re-record the run; "
+                "replay cannot safely use corrupted bytes."
+            )
+        return data
 
     def has(self, digest: str) -> bool:
         return self._path(digest).exists()

@@ -7,7 +7,18 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/amln19/tracewake/controlplane/internal/controlplane"
 )
+
+func TestProgressCursorAdvancesAcrossAttemptSequenceReset(t *testing.T) {
+	if !progressIsNewer(controlplane.Progress{AttemptNumber: 2, Sequence: 1}, 1, 50) {
+		t.Fatal("the first progress snapshot from a retry was suppressed")
+	}
+	if progressIsNewer(controlplane.Progress{AttemptNumber: 1, Sequence: 51}, 2, 1) {
+		t.Fatal("a stale attempt advanced the progress cursor")
+	}
+}
 
 func TestDashboardFallbackHasRestrictiveBrowserHeaders(t *testing.T) {
 	directory := t.TempDir()

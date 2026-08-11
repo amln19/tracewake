@@ -1,4 +1,4 @@
-{"_meta": {"labels": "/Users/amlan/Documents/MyProjects/locus/corpus/labels/external/labels.jsonl", "n": 80, "source": "SWE-Gym/OpenHands-Sampled-Trajectories"}}
+{"_meta": {"labels": "corpus/labels/external/labels.jsonl", "n": 80, "source": "SWE-Gym/OpenHands-Sampled-Trajectories"}}
 {"abstained": false, "aligner": 5, "baseline_a": 5, "baseline_b": 4, "failure_steps": 6, "instance_id": "conan-io__conan-15931", "label": 5, "packet_id": "E01"}
 {"abstained": false, "aligner": 3, "baseline_a": 3, "baseline_b": 2, "failure_steps": 5, "instance_id": "python__mypy-15976", "label": 3, "packet_id": "E02"}
 {"abstained": false, "aligner": 3, "baseline_a": 3, "baseline_b": 2, "failure_steps": 4, "instance_id": "Project-MONAI__MONAI-6849", "label": 3, "packet_id": "E03"}

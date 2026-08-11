@@ -83,7 +83,7 @@ func TestControlPlanePutValidatesAndPublishesBytes(t *testing.T) {
 	if object.Version != sha256Hex(data) {
 		t.Fatalf("object version=%q", object.Version)
 	}
-	if got, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(key))); err != nil || !bytes.Equal(got, data) {
+	if got, err := os.ReadFile(filepath.Join(root, objectDirectory, filepath.FromSlash(key), object.Version)); err != nil || !bytes.Equal(got, data) {
 		t.Fatalf("stored bytes=%q err=%v", got, err)
 	}
 	if _, err := store.Put(context.Background(), key, sha256Hex(data), int64(len(data)), "application/x-tar", strings.NewReader("wrong bytes!!!")); err == nil {
@@ -103,7 +103,7 @@ func TestUploadGrantRejectsMismatchedBytes(t *testing.T) {
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status=%d", response.Code)
 	}
-	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(key))); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root, objectDirectory, filepath.FromSlash(key), sha256Hex([]byte("declared")))); !os.IsNotExist(err) {
 		t.Fatalf("rejected upload was published: %v", err)
 	}
 }
@@ -147,7 +147,7 @@ func TestCommitDetectsPostUploadCorruption(t *testing.T) {
 	store, root := testStore(t)
 	data := []byte("good")
 	object := upload(t, store, "workspaces/a/jobs/b/attempts/1/diff_json", data)
-	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(object.Key)), []byte("evil"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, objectDirectory, filepath.FromSlash(object.Key), object.Version), []byte("evil"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Commit(context.Background(), object.Key, object.Version, object.Digest, object.Size); err == nil {
@@ -161,7 +161,7 @@ func TestCleanupRemovesOnlyExpiredOrphans(t *testing.T) {
 		upload(t, store, key, []byte("data"))
 	}
 	old := time.Now().Add(-25 * time.Hour)
-	if err := os.Chtimes(filepath.Join(root, "orphan/old"), old, old); err != nil {
+	if err := os.Chtimes(filepath.Join(root, objectDirectory, "orphan/old", sha256Hex([]byte("data"))), old, old); err != nil {
 		t.Fatal(err)
 	}
 	removed, err := store.Cleanup(context.Background(), map[Identity]bool{{Key: "kept/result", Version: sha256Hex([]byte("data"))}: true}, time.Now().Add(-24*time.Hour))
@@ -172,11 +172,68 @@ func TestCleanupRemovesOnlyExpiredOrphans(t *testing.T) {
 		t.Fatalf("removed=%d", removed)
 	}
 	for _, key := range []string{"kept/result", "orphan/new"} {
-		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(key))); err != nil {
+		if _, err := os.Stat(filepath.Join(root, objectDirectory, filepath.FromSlash(key), sha256Hex([]byte("data")))); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(root, "orphan/old")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root, objectDirectory, "orphan/old", sha256Hex([]byte("data")))); !os.IsNotExist(err) {
 		t.Fatalf("old orphan remains: %v", err)
+	}
+}
+
+func TestObjectVersionsRemainImmutableAtOneKey(t *testing.T) {
+	store, _ := testStore(t)
+	key := "workspaces/a/jobs/b/attempts/1/diff_json"
+	first := upload(t, store, key, []byte("first"))
+	second := upload(t, store, key, []byte("second"))
+	for object, want := range map[Object][]byte{first: []byte("first"), second: []byte("second")} {
+		reader, err := store.Open(context.Background(), object.Key, object.Version)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, readErr := io.ReadAll(reader)
+		reader.Close()
+		if readErr != nil || !bytes.Equal(got, want) {
+			t.Fatalf("version %s returned %q, want %q (error %v)", object.Version, got, want, readErr)
+		}
+	}
+	grant, err := store.GetGrant(context.Background(), first.Key, first.Version, "application/json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	store.Handler().ServeHTTP(response, httptest.NewRequest("GET", grant.URL, nil))
+	if response.Code != http.StatusOK || response.Body.String() != "first" {
+		t.Fatalf("old signed version status=%d body=%q", response.Code, response.Body.String())
+	}
+}
+
+func TestCleanupRetainsReferencedLegacyObjectAndRemovesItsOrphan(t *testing.T) {
+	store, root := testStore(t)
+	data := []byte("legacy")
+	for _, key := range []string{"kept/legacy", "orphan/legacy"} {
+		path := filepath.Join(root, filepath.FromSlash(key))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		old := time.Now().Add(-25 * time.Hour)
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	removed, err := store.Cleanup(context.Background(), map[Identity]bool{{Key: "kept/legacy", Version: sha256Hex(data)}: true}, time.Now().Add(-24*time.Hour))
+	if err != nil || removed != 1 {
+		t.Fatalf("removed=%d error=%v", removed, err)
+	}
+	reader, err := store.Open(context.Background(), "kept/legacy", sha256Hex(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader.Close()
+	if _, err := os.Stat(filepath.Join(root, "orphan/legacy")); !os.IsNotExist(err) {
+		t.Fatalf("legacy orphan remains: %v", err)
 	}
 }

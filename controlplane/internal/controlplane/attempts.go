@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -47,6 +46,17 @@ type CompanionArtifact struct {
 	MediaType     string  `json:"media_type"`
 	SchemaName    *string `json:"schema_name"`
 	SchemaVersion *int    `json:"schema_version"`
+}
+
+type ResultInput struct {
+	RunID          string
+	ObjectKey      string
+	ObjectVersion  string
+	BundleDigest   string
+	LogicalDigest  *string
+	BundleFormat   int
+	CassetteFormat *int
+	EventSchema    *int
 }
 
 func (s *Service) Cancellation(ctx context.Context, jobID string, attempt int, token string) (bool, error) {
@@ -95,12 +105,44 @@ func (s *Service) InputArtifact(ctx context.Context, jobID string, attempt int, 
 		return InputArtifact{}, err
 	}
 	var value InputArtifact
-	err = tx.QueryRow(ctx, `SELECT r.id,r.bundle_object_key,r.bundle_object_version,r.declared_bundle_digest,r.declared_bundle_size FROM jobs j JOIN job_inputs i ON i.id=j.input_id JOIN runs r ON r.id IN(i.run_a_id,i.run_b_id) WHERE j.id=$1 AND r.id=$2`, jobID, artifactID).Scan(&value.ArtifactID, &value.ObjectKey, &value.ObjectVersion, &value.Digest, &value.Size)
+	err = tx.QueryRow(ctx, `SELECT r.id,r.bundle_object_key,r.bundle_object_version,r.declared_bundle_digest,r.declared_bundle_size FROM jobs j JOIN job_inputs i ON i.id=j.input_id JOIN runs r ON r.id IN(i.run_a_id,i.run_b_id) WHERE j.id=$1 AND r.id=$2 AND ((i.operation='validate' AND r.state='validating') OR (i.operation<>'validate' AND r.state='ready'))`, jobID, artifactID).Scan(&value.ArtifactID, &value.ObjectKey, &value.ObjectVersion, &value.Digest, &value.Size)
 	if err != nil {
 		return value, ErrNotFound
 	}
 	value.MediaType = "application/x-tar"
 	return value, tx.Commit(ctx)
+}
+
+func (s *Service) ResultInputs(ctx context.Context, jobID string, attempt int, token string) ([]ResultInput, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err = s.checkAttempt(ctx, tx, jobID, attempt, token); err != nil {
+		return nil, err
+	}
+	rows, err := tx.Query(ctx, `SELECT r.id,r.bundle_object_key,r.bundle_object_version,r.declared_bundle_digest,r.logical_run_digest,
+		COALESCE(r.validated_bundle_format,r.declared_bundle_format),r.cassette_format_version,r.event_schema_version
+		FROM jobs j JOIN job_inputs i ON i.id=j.input_id
+		JOIN LATERAL (VALUES (i.run_a_id,1),(i.run_b_id,2)) input(run_id,position) ON input.run_id IS NOT NULL
+		JOIN runs r ON r.id=input.run_id WHERE j.id=$1 ORDER BY input.position`, jobID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var inputs []ResultInput
+	for rows.Next() {
+		var input ResultInput
+		if err = rows.Scan(&input.RunID, &input.ObjectKey, &input.ObjectVersion, &input.BundleDigest, &input.LogicalDigest, &input.BundleFormat, &input.CassetteFormat, &input.EventSchema); err != nil {
+			return nil, err
+		}
+		inputs = append(inputs, input)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return inputs, tx.Commit(ctx)
 }
 
 // currentAttempt is the state a worker request is judged against: who owns the
@@ -120,7 +162,11 @@ func (s *Service) checkAttempt(ctx context.Context, tx pgx.Tx, jobID string, att
 	var lease time.Time
 	var ageSeconds float64
 	err := tx.QueryRow(ctx, `SELECT j.workspace_id,i.operation,j.state,j.current_attempt_number,a.state,a.token_verifier,a.token_pepper_version,a.lease_expires_at,EXTRACT(EPOCH FROM (transaction_timestamp()-j.created_at))
-		FROM jobs j JOIN job_inputs i ON i.id=j.input_id JOIN job_attempts a ON a.job_id=j.id AND a.attempt_number=$2 WHERE j.id=$1 AND a.lease_expires_at>transaction_timestamp() FOR UPDATE`, jobID, attempt).Scan(&value.workspaceID, &value.operation, &jobState, &current, &attemptState, &verifier, &version, &lease, &ageSeconds)
+		FROM jobs j JOIN job_inputs i ON i.id=j.input_id JOIN job_attempts a ON a.job_id=j.id AND a.attempt_number=$2
+		WHERE j.id=$1 AND a.lease_expires_at>transaction_timestamp()
+		  AND EXISTS (SELECT 1 FROM runs r WHERE r.id=i.run_a_id AND ((i.operation='validate' AND r.state='validating') OR (i.operation<>'validate' AND r.state='ready')))
+		  AND (i.run_b_id IS NULL OR EXISTS (SELECT 1 FROM runs r WHERE r.id=i.run_b_id AND r.state='ready'))
+		FOR UPDATE`, jobID, attempt).Scan(&value.workspaceID, &value.operation, &jobState, &current, &attemptState, &verifier, &version, &lease, &ageSeconds)
 	if err != nil || jobState != "running" || attemptState != "running" || current != attempt || !s.workers.Verify(version, token, verifier) {
 		return currentAttempt{}, ErrLeaseLost
 	}
@@ -316,11 +362,15 @@ func (s *Service) CompleteAttempt(ctx context.Context, jobID string, attempt int
 		return errors.New("result schema does not match operation")
 	}
 	expectedPrefix := "workspaces/" + workspace + "/jobs/" + jobID + "/attempts/" + strconv.Itoa(attempt) + "/"
-	if !strings.HasPrefix(result.ObjectKey, expectedPrefix) {
+	if result.ObjectKey != expectedPrefix+result.Kind {
 		return errors.New("artifact key is outside the current attempt")
 	}
-	for _, companion := range result.Companions {
-		if !strings.HasPrefix(companion.ObjectKey, expectedPrefix) {
+	expectedCompanions := map[string][]string{"validate": {}, "diff": {"diff_html"}, "otlp": {"otlp_json"}, "pprof": {"pprof"}}[operation]
+	if len(result.Companions) != len(expectedCompanions) {
+		return errors.New("result companion set does not match operation")
+	}
+	for index, companion := range result.Companions {
+		if companion.ArtifactID == "" || companion.Kind != expectedCompanions[index] || companion.ObjectKey != expectedPrefix+companion.Kind {
 			return errors.New("companion artifact key is outside the current attempt")
 		}
 		_, err = tx.Exec(ctx, `INSERT INTO artifacts(id,workspace_id,job_id,attempt_number,kind,object_key,object_version,digest,size,media_type,schema_name,schema_version,authoritative,retention_expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,transaction_timestamp()+interval '90 days')`, companion.ArtifactID, workspace, jobID, attempt, companion.Kind, companion.ObjectKey, companion.ObjectVersion, companion.Digest, companion.Size, companion.MediaType, companion.SchemaName, companion.SchemaVersion)

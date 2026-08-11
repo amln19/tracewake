@@ -189,7 +189,9 @@ def test_scoring_tells_apart_packets_that_share_a_run_id(tmp_path: Path) -> None
         out=out,
         rows=rows,
     )
-    scored = _read_jsonl(out)[1:]
+    generated = _read_jsonl(out)
+    assert generated[0]["_meta"]["labels"] == "labels.jsonl"
+    scored = generated[1:]
     assert [r["packet_id"] for r in scored] == ["E01", "E02"]
     assert scored[0]["aligner"] != scored[1]["aligner"], (
         "both packets scored against the same trajectories"

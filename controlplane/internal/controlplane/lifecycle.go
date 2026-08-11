@@ -276,7 +276,7 @@ func (s *Service) CreateJob(ctx context.Context, principal Principal, key string
 	}
 	for _, runID := range request.RunIDs {
 		var ready bool
-		if err := tx.QueryRow(ctx, "SELECT state = 'ready' FROM runs WHERE id=$1 AND workspace_id=$2", runID, principal.WorkspaceID).Scan(&ready); err != nil || !ready {
+		if err := tx.QueryRow(ctx, "SELECT state = 'ready' FROM runs WHERE id=$1 AND workspace_id=$2 FOR SHARE", runID, principal.WorkspaceID).Scan(&ready); err != nil || !ready {
 			return Job{}, false, ErrConflict
 		}
 	}
@@ -392,7 +392,7 @@ func (s *Service) claim(ctx context.Context, workerID, jobID string, expectedVer
 	if _, err := transaction.Exec(ctx, `INSERT INTO audit_records(workspace_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES($1,'job',$2,'attempt.claimed','worker',$3,jsonb_build_object('attempt',$4::integer))`, workspaceID, jobID, workerID, next); err != nil {
 		return Claim{}, fmt.Errorf("audit claim: %w", err)
 	}
-	rows, err := transaction.Query(ctx, `SELECT r.id,r.bundle_object_key,r.bundle_object_version,r.declared_bundle_digest,r.declared_bundle_size FROM jobs j JOIN job_inputs i ON i.id=j.input_id JOIN runs r ON r.id IN(i.run_a_id,i.run_b_id) WHERE j.id=$1 ORDER BY CASE WHEN r.id=i.run_a_id THEN 0 ELSE 1 END`, jobID)
+	rows, err := transaction.Query(ctx, `SELECT r.id,r.bundle_object_key,r.bundle_object_version,r.declared_bundle_digest,r.declared_bundle_size FROM jobs j JOIN job_inputs i ON i.id=j.input_id JOIN runs r ON r.id IN(i.run_a_id,i.run_b_id) WHERE j.id=$1 AND ((i.operation='validate' AND r.state='validating') OR (i.operation<>'validate' AND r.state='ready')) ORDER BY CASE WHEN r.id=i.run_a_id THEN 0 ELSE 1 END`, jobID)
 	if err != nil {
 		return Claim{}, err
 	}
@@ -407,6 +407,13 @@ func (s *Service) claim(ctx context.Context, workerID, jobID string, expectedVer
 		inputs = append(inputs, value)
 	}
 	rows.Close()
+	expectedInputs := 1
+	if operation == "diff" {
+		expectedInputs = 2
+	}
+	if len(inputs) != expectedInputs {
+		return Claim{}, ErrConflict
+	}
 	if err := transaction.Commit(ctx); err != nil {
 		return Claim{}, fmt.Errorf("commit claim: %w", err)
 	}

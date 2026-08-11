@@ -479,16 +479,17 @@ func (a *API) events(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
-	var sent int64
+	var sentAttempt int
+	var sentSequence int64
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
 		progress, err := a.service.CurrentProgress(r.Context(), p, r.PathValue("jobID"))
-		if err == nil && progress.Sequence > sent {
+		if err == nil && progressIsNewer(progress, sentAttempt, sentSequence) {
 			data, _ := json.Marshal(progress)
-			_, _ = fmt.Fprintf(w, "id: %d\nevent: progress\ndata: %s\n\n", progress.Sequence, data)
+			_, _ = fmt.Fprintf(w, "id: %d:%d\nevent: progress\ndata: %s\n\n", progress.AttemptNumber, progress.Sequence, data)
 			flusher.Flush()
-			sent = progress.Sequence
+			sentAttempt, sentSequence = progress.AttemptNumber, progress.Sequence
 		}
 		select {
 		case <-r.Context().Done():
@@ -496,6 +497,10 @@ func (a *API) events(w http.ResponseWriter, r *http.Request) {
 		case <-ticker.C:
 		}
 	}
+}
+
+func progressIsNewer(progress controlplane.Progress, attempt int, sequence int64) bool {
+	return progress.AttemptNumber > attempt || (progress.AttemptNumber == attempt && progress.Sequence > sequence)
 }
 func (a *API) download(w http.ResponseWriter, r *http.Request) {
 	p, ok := a.principal(w, r, "artifacts:read")

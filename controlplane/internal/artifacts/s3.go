@@ -202,11 +202,15 @@ func (s *S3) Cleanup(ctx context.Context, keep map[Identity]bool, before time.Ti
 			expired = append(expired, types.ObjectIdentifier{Key: object.Key, VersionId: object.VersionId})
 		}
 		if len(expired) > 0 {
-			if _, err := s.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+			deleted, err := s.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
 				Bucket: aws.String(s.bucket),
 				Delete: &types.Delete{Objects: expired, Quiet: aws.Bool(true)},
-			}); err != nil {
+			})
+			if err != nil {
 				return removed, fmt.Errorf("delete expired artifacts: %w", err)
+			}
+			if len(deleted.Errors) > 0 {
+				return removed, fmt.Errorf("delete expired artifacts: %d of %d object versions failed", len(deleted.Errors), len(expired))
 			}
 			removed += len(expired)
 		}

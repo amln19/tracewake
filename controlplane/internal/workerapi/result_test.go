@@ -46,7 +46,7 @@ func TestResultEnvelopeValidationUsesTheVersionedContract(t *testing.T) {
 		if readErr != nil {
 			t.Fatal(readErr)
 		}
-		if validateErr := api.validateResultEnvelope(raw); validateErr != nil {
+		if _, validateErr := api.validateResultEnvelope(raw); validateErr != nil {
 			t.Errorf("accepted fixture %s: %v", filepath.Base(path), validateErr)
 		}
 	}
@@ -64,7 +64,7 @@ func TestResultEnvelopeValidationUsesTheVersionedContract(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if validateErr := api.validateResultEnvelope(raw); validateErr == nil {
+		if _, validateErr := api.validateResultEnvelope(raw); validateErr == nil {
 			t.Errorf("%s result was accepted", name)
 		}
 	}
@@ -84,7 +84,7 @@ func TestResultEnvelopeValidationRejectsNoncanonicalBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := api.validateResultEnvelope(noncanonical); err == nil || !strings.Contains(err.Error(), "not canonical") {
+	if _, err := api.validateResultEnvelope(noncanonical); err == nil || !strings.Contains(err.Error(), "not canonical") {
 		t.Fatalf("noncanonical result was not rejected: %v", err)
 	}
 }

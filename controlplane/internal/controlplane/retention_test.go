@@ -97,6 +97,74 @@ func TestDeletionRemovesWhatWasDerivedFromTheRun(t *testing.T) {
 	}
 }
 
+func TestDeletionCancelsQueuedAndRunningDerivedWork(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	for _, running := range []bool{false, true} {
+		jobID, _ := f.job(t, "otlp", "delete-active-"+testID(t))
+		var claim controlplane.Claim
+		var err error
+		if running {
+			claim, err = f.service.Claim(ctx, f.worker, jobID)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		var runID string
+		if err := f.pool.QueryRow(ctx, `SELECT i.run_a_id FROM jobs j JOIN job_inputs i ON i.id=j.input_id WHERE j.id=$1`, jobID).Scan(&runID); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.service.DeleteRun(ctx, f.principal, runID); err != nil {
+			t.Fatal(err)
+		}
+		job, err := f.service.GetJob(ctx, f.principal, jobID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if job.State != "cancelled" {
+			t.Fatalf("running=%v state=%q", running, job.State)
+		}
+		if _, err := f.service.Claim(ctx, f.worker, jobID); !errors.Is(err, controlplane.ErrConflict) {
+			t.Fatalf("running=%v deleted input was claimable: %v", running, err)
+		}
+		if running {
+			if _, err := f.service.Heartbeat(ctx, jobID, claim.Attempt, claim.AttemptToken); !errors.Is(err, controlplane.ErrLeaseLost) {
+				t.Fatalf("deleted input kept its attempt lease: %v", err)
+			}
+			completion := f.completion(t, jobID, claim.Attempt, operationCase{name: "otlp", kind: "otlp_result_json", companion: "otlp_json", media: "application/json"}, "")
+			if err := f.service.CompleteAttempt(ctx, jobID, claim.Attempt, claim.AttemptToken, completion); !errors.Is(err, controlplane.ErrLeaseLost) {
+				t.Fatalf("deleted input accepted a completion: %v", err)
+			}
+		}
+	}
+}
+
+func TestRetentionCancelsWorkWhoseInputExpires(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	jobID, _ := f.job(t, "pprof", "expire-active-"+testID(t))
+	claim, err := f.service.Claim(ctx, f.worker, jobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE runs r SET retention_expires_at=transaction_timestamp()-interval '1 second' FROM jobs j JOIN job_inputs i ON i.id=j.input_id WHERE j.id=$1 AND r.id=i.run_a_id`, jobID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.service.EnforceRetention(ctx); err != nil {
+		t.Fatal(err)
+	}
+	job, err := f.service.GetJob(ctx, f.principal, jobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.State != "cancelled" {
+		t.Fatalf("expired input left job %q", job.State)
+	}
+	if _, err := f.service.Heartbeat(ctx, jobID, claim.Attempt, claim.AttemptToken); !errors.Is(err, controlplane.ErrLeaseLost) {
+		t.Fatalf("expired input kept its attempt lease: %v", err)
+	}
+}
+
 func TestRetentionRemovesOnlyExpiredRows(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()

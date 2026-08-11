@@ -25,6 +25,8 @@ type Filesystem struct {
 	now     func() time.Time
 }
 
+const objectDirectory = ".objects"
+
 func NewFilesystem(root string, signingKey []byte) (*Filesystem, error) {
 	if root == "" {
 		return nil, errors.New("artifact root is required")
@@ -34,6 +36,9 @@ func NewFilesystem(root string, signingKey []byte) (*Filesystem, error) {
 	}
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return nil, fmt.Errorf("create artifact root: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, objectDirectory), 0o700); err != nil {
+		return nil, fmt.Errorf("create versioned artifact root: %w", err)
 	}
 	return &Filesystem{root: root, signing: signingKey, now: time.Now}, nil
 }
@@ -70,7 +75,7 @@ func (s *Filesystem) Commit(_ context.Context, key, version, digest string, size
 	if !validDeclaration(key, digest, size) || version != digest {
 		return Object{}, errors.New("artifact identity is invalid")
 	}
-	file, err := s.open(key)
+	file, err := s.openVersion(key, version)
 	if err != nil {
 		return Object{}, err
 	}
@@ -88,17 +93,14 @@ func (s *Filesystem) Commit(_ context.Context, key, version, digest string, size
 }
 
 func (s *Filesystem) Open(_ context.Context, key, version string) (io.ReadCloser, error) {
-	if len(version) != 64 {
-		return nil, errors.New("artifact identity is invalid")
-	}
-	return s.open(key)
+	return s.openVersion(key, version)
 }
 
 func (s *Filesystem) Put(_ context.Context, key, expectedDigest string, expectedSize int64, _ string, input io.Reader) (Object, error) {
 	if !validDeclaration(key, expectedDigest, expectedSize) {
 		return Object{}, errors.New("artifact declaration is invalid")
 	}
-	target := filepath.Join(s.root, filepath.FromSlash(key))
+	target := s.versionPath(key, expectedDigest)
 	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 		return Object{}, fmt.Errorf("create artifact parent: %w", err)
 	}
@@ -133,39 +135,67 @@ func (s *Filesystem) put(key, expectedDigest string, expectedSize int64, input i
 	return s.Put(context.Background(), key, expectedDigest, expectedSize, "", input)
 }
 
-func (s *Filesystem) open(key string) (*os.File, error) {
-	if !safeKey(key) {
+func (s *Filesystem) openVersion(key, version string) (*os.File, error) {
+	if !safeKey(key) || !validVersion(version) {
 		return nil, errors.New("artifact identity is invalid")
 	}
-	file, err := os.Open(filepath.Join(s.root, filepath.FromSlash(key)))
+	file, err := os.Open(s.versionPath(key, version))
+	if err != nil && os.IsNotExist(err) {
+		file, err = s.openLegacyVersion(key, version)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("open artifact: %w", err)
 	}
 	return file, nil
 }
 
+func (s *Filesystem) versionPath(key, version string) string {
+	return filepath.Join(s.root, objectDirectory, filepath.FromSlash(key), version)
+}
+
+func (s *Filesystem) openLegacyVersion(key, version string) (*os.File, error) {
+	file, err := os.Open(filepath.Join(s.root, filepath.FromSlash(key)))
+	if err != nil {
+		return nil, err
+	}
+	hash := sha256.New()
+	if _, err = io.Copy(hash, file); err != nil {
+		file.Close()
+		return nil, err
+	}
+	if hex.EncodeToString(hash.Sum(nil)) != version {
+		file.Close()
+		return nil, errors.New("legacy artifact bytes do not match the requested version")
+	}
+	if _, err = file.Seek(0, io.SeekStart); err != nil {
+		file.Close()
+		return nil, err
+	}
+	return file, nil
+}
+
+func validVersion(version string) bool {
+	raw, err := hex.DecodeString(version)
+	return err == nil && len(raw) == sha256.Size
+}
+
 func (s *Filesystem) Cleanup(_ context.Context, keep map[Identity]bool, before time.Time) (int, error) {
 	removed := 0
-	err := filepath.WalkDir(s.root, func(path string, entry os.DirEntry, walkErr error) error {
+	objectsRoot := filepath.Join(s.root, objectDirectory)
+	err := filepath.WalkDir(objectsRoot, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
 		if entry.IsDir() {
 			return nil
 		}
-		relative, err := filepath.Rel(s.root, path)
+		relative, err := filepath.Rel(objectsRoot, path)
 		if err != nil {
 			return err
 		}
-		key := filepath.ToSlash(relative)
-		retained := false
-		for identity := range keep {
-			if identity.Key == key {
-				retained = true
-				break
-			}
-		}
-		if retained {
+		version := filepath.Base(relative)
+		key := filepath.ToSlash(filepath.Dir(relative))
+		if validVersion(version) && keep[Identity{Key: key, Version: version}] {
 			return nil
 		}
 		info, err := entry.Info()
@@ -183,6 +213,50 @@ func (s *Filesystem) Cleanup(_ context.Context, keep map[Identity]bool, before t
 	})
 	if err != nil {
 		return removed, fmt.Errorf("clean orphan artifacts: %w", err)
+	}
+	err = filepath.WalkDir(s.root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if path == objectsRoot {
+			return filepath.SkipDir
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil || info.ModTime().After(before) {
+			return err
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		hash := sha256.New()
+		_, copyErr := io.Copy(hash, file)
+		closeErr := file.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		relative, err := filepath.Rel(s.root, path)
+		if err != nil {
+			return err
+		}
+		identity := Identity{Key: filepath.ToSlash(relative), Version: hex.EncodeToString(hash.Sum(nil))}
+		if keep[identity] {
+			return nil
+		}
+		if err = os.Remove(path); err != nil {
+			return err
+		}
+		removed++
+		return nil
+	})
+	if err != nil {
+		return removed, fmt.Errorf("clean legacy orphan artifacts: %w", err)
 	}
 	return removed, nil
 }

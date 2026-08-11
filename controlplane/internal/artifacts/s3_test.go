@@ -209,3 +209,24 @@ func TestCleanupRemovesOnlyExpiredOrphanObjects(t *testing.T) {
 		t.Fatalf("remaining=%v", remaining)
 	}
 }
+
+func TestCleanupReportsPartialDeleteFailures(t *testing.T) {
+	store, fake := s3Store(t)
+	ctx := context.Background()
+	data := []byte("orphan")
+	object, err := store.Put(ctx, "orphan/result", hexDigest(data), int64(len(data)), "application/json", bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake.Age(object.Key, object.Version, time.Now().Add(-25*time.Hour))
+	fake.FailDelete(object.Key, object.Version)
+	removed, err := store.Cleanup(ctx, nil, time.Now().Add(-24*time.Hour))
+	if err == nil || removed != 0 {
+		t.Fatalf("partial deletion removed=%d error=%v", removed, err)
+	}
+	reader, err := store.Open(ctx, object.Key, object.Version)
+	if err != nil {
+		t.Fatalf("failed version disappeared despite reported deletion error: %v", err)
+	}
+	reader.Close()
+}

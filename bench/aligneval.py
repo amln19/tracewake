@@ -36,7 +36,7 @@ from tracewake.align import (
 
 from .fidelity import ledger_rows
 from .label import LABELS_FILE, LABEL_ROOT, SELECT_SEED, SelectedPair, select_pairs
-from .repos import CORPUS_ROOT
+from .repos import CORPUS_ROOT, corpus_metadata_path
 from .runner import LEDGER, STORE
 
 PRED_ROOT = CORPUS_ROOT / "alignment"
@@ -227,7 +227,7 @@ def run_predictions(
             "embedding_revision": None if lexical else EMBEDDING_REVISION,
             "lexical": lexical,
             "n_pairs": len(preds),
-            "llm_sheet": str(llm_path) if llm_path and llm_path.exists() else None,
+            "llm_sheet": corpus_metadata_path(llm_path) if llm_path and llm_path.exists() else None,
         }
         fh.write(json.dumps({"_meta": meta}, sort_keys=True) + "\n")
         for pred in preds:
@@ -533,7 +533,7 @@ def run_ablations(
                     "_meta": {
                         "arms": [a for a, _ in ABLATION_ARMS],
                         "n": len(selected),
-                        "labels": str(labels_path),
+                        "labels": corpus_metadata_path(labels_path),
                     }
                 },
                 sort_keys=True,

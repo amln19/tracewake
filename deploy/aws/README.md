@@ -108,6 +108,21 @@ tracewake remote upload run.bundle.tar
 tracewake remote runs
 ```
 
+## Rotate token peppers
+
+The control plane accepts the current pepper and the immediately previous
+version. During rotation, retain the old value in the matching
+`*_previous_pepper` variable, increment `*_pepper_version` by exactly one,
+replace the current pepper secret, and deploy the control plane. Successful
+authentication rewrites durable token verifiers with the current version;
+browser sessions expire after 15 minutes. Remove the previous pepper only
+after retained credentials have either been used once, rotated, revoked, or
+expired. Tenant and worker peppers rotate independently.
+
+The bootstrap tenant token is authoritative deployment configuration. If its
+secret changes while its non-secret prefix stays the same, startup replaces
+the stored verifier and the previous token stops authenticating.
+
 ## Schema migrations
 
 The control plane applies embedded migrations at startup inside a migration

@@ -15,6 +15,8 @@ from typing import Any
 
 import pytest
 
+from evidence.stack import Stack
+
 RESULTS = Path("evidence/results")
 
 pytestmark = pytest.mark.skipif(
@@ -215,6 +217,19 @@ def test_the_demonstration_recorded_every_step(measurements: dict[str, Any]) -> 
     for digests in provenance["input_digests"]:
         assert all(digests.values())
     assert {"job.created", "attempt.claimed", "job.succeeded"} <= set(provenance["audit_events"])
+
+
+def test_worker_launcher_uses_the_repository_result_contract(tmp_path: Path) -> None:
+    stack = object.__new__(Stack)
+    stack.root = tmp_path
+    stack.repository = Path.cwd()
+    stack.worker_port = 8091
+
+    environment = stack._worker_environment("test")
+
+    assert environment["TRACEWAKE_RESULT_SCHEMA"] == str(
+        Path.cwd() / "contracts" / "schemas" / "v1" / "result-envelope.schema.json"
+    )
 
 
 AWS_RESULTS = RESULTS / "aws" / "measurements.json"

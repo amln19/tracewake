@@ -140,7 +140,11 @@ func TestPostgresLifecycle(t *testing.T) {
 	}
 	artifactID := testID(t)
 	resultDigest := digest("result")
-	completion := controlplane.Completion{ArtifactID: artifactID, Kind: "diff_json", ObjectKey: "workspaces/" + workspace + "/jobs/" + job2.ID + "/attempts/1/diff_json", ObjectVersion: resultDigest, Digest: resultDigest, Size: 10, MediaType: "application/json", SchemaName: "result-envelope", SchemaVersion: 1}
+	companionDigest := digest("html")
+	completion := controlplane.Completion{
+		ArtifactID: artifactID, Kind: "diff_json", ObjectKey: "workspaces/" + workspace + "/jobs/" + job2.ID + "/attempts/1/diff_json", ObjectVersion: resultDigest, Digest: resultDigest, Size: 10, MediaType: "application/json", SchemaName: "result-envelope", SchemaVersion: 1,
+		Companions: []controlplane.CompanionArtifact{{ArtifactID: testID(t), Kind: "diff_html", ObjectKey: "workspaces/" + workspace + "/jobs/" + job2.ID + "/attempts/1/diff_html", ObjectVersion: companionDigest, Digest: companionDigest, Size: 10, MediaType: "text/html"}},
+	}
 	if err := service.CompleteAttempt(ctx, job2.ID, 1, claim.AttemptToken, completion); err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +236,10 @@ func TestPostgresLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	raceDigest := digest("race-result")
-	raceCompletion := controlplane.Completion{ArtifactID: testID(t), Kind: "diff_json", ObjectKey: "workspaces/" + workspace + "/jobs/" + raceJob.ID + "/attempts/1/diff_json", ObjectVersion: raceDigest, Digest: raceDigest, Size: 10, MediaType: "application/json", SchemaName: "result-envelope", SchemaVersion: 1}
+	raceCompletion := controlplane.Completion{
+		ArtifactID: testID(t), Kind: "diff_json", ObjectKey: "workspaces/" + workspace + "/jobs/" + raceJob.ID + "/attempts/1/diff_json", ObjectVersion: raceDigest, Digest: raceDigest, Size: 10, MediaType: "application/json", SchemaName: "result-envelope", SchemaVersion: 1,
+		Companions: []controlplane.CompanionArtifact{{ArtifactID: testID(t), Kind: "diff_html", ObjectKey: "workspaces/" + workspace + "/jobs/" + raceJob.ID + "/attempts/1/diff_html", ObjectVersion: raceDigest, Digest: raceDigest, Size: 10, MediaType: "text/html"}},
+	}
 	start := make(chan struct{})
 	var wait sync.WaitGroup
 	wait.Add(2)

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -254,11 +255,31 @@ func reachableURL(addr string) string {
 }
 
 func keyRing(name string) controlplane.KeyRing {
-	value := os.Getenv(name)
-	if len(value) < 32 {
-		log.Fatalf("%s must contain at least 32 bytes", name)
+	ring, err := keyRingFromEnvironment(name)
+	if err != nil {
+		log.Fatal(err)
 	}
-	return controlplane.KeyRing{CurrentVersion: 1, Current: []byte(value)}
+	return ring
+}
+
+func keyRingFromEnvironment(name string) (controlplane.KeyRing, error) {
+	current := os.Getenv(name)
+	if len(current) < 32 {
+		return controlplane.KeyRing{}, fmt.Errorf("%s must contain at least 32 bytes", name)
+	}
+	version := int64(1)
+	if raw := strings.TrimSpace(os.Getenv(name + "_VERSION")); raw != "" {
+		parsed, err := strconv.ParseInt(raw, 10, 16)
+		if err != nil || parsed < 1 {
+			return controlplane.KeyRing{}, fmt.Errorf("%s_VERSION must be a positive 16-bit integer", name)
+		}
+		version = parsed
+	}
+	previous := os.Getenv(name + "_PREVIOUS")
+	if previous != "" && (len(previous) < 32 || version < 2) {
+		return controlplane.KeyRing{}, fmt.Errorf("%s_PREVIOUS requires at least 32 bytes and %s_VERSION of at least 2", name, name)
+	}
+	return controlplane.KeyRing{CurrentVersion: int16(version), Current: []byte(current), Previous: []byte(previous)}, nil
 }
 
 func envOr(name, fallback string) string {

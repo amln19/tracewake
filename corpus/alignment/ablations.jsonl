@@ -1,4 +1,4 @@
-{"_meta": {"arms": ["full", "needleman_wunsch", "no_reasoning", "lexical_reasoning", "target_only_args", "strict_args"], "labels": "/Users/amlan/Documents/MyProjects/locus/corpus/labels/labels.jsonl", "n": 41}}
+{"_meta": {"arms": ["full", "needleman_wunsch", "no_reasoning", "lexical_reasoning", "target_only_args", "strict_args"], "labels": "corpus/labels/labels.jsonl", "n": 41}}
 {"full": 7, "label": 7, "lexical_reasoning": 7, "needleman_wunsch": 2, "no_reasoning": 7, "strict_args": 7, "target_only_args": 7, "task_id": "bidict-argument_swap-13"}
 {"full": 12, "label": 16, "lexical_reasoning": 14, "needleman_wunsch": 14, "no_reasoning": 14, "strict_args": 14, "target_only_args": 12, "task_id": "bidict-argument_swap-9"}
 {"full": 9, "label": 15, "lexical_reasoning": 9, "needleman_wunsch": 9, "no_reasoning": 9, "strict_args": 9, "target_only_args": 9, "task_id": "bidict-deleted_guard-3"}

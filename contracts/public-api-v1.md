@@ -122,7 +122,9 @@ than response arrival order.
 
 `GET /v1/jobs/{job_id}/events` serves SSE with `jobs:read`. Events are bounded
 progress snapshots and lifecycle hints, carry monotonic per-job sequence IDs,
-and contain no source or tool content. SSE is not durable authority. After
+encoded as `<attempt_number>:<attempt_sequence>`, and contain no source or tool
+content. The pair is ordered first by attempt and then by its sequence, so a
+retry's sequence reset cannot suppress its events. SSE is not durable authority. After
 reconnect or refresh, clients reconstruct state with `GET /v1/jobs/{job_id}`.
 
 ## Artifacts and audit

@@ -183,17 +183,7 @@ class Stack:
         self.control_plane = _terminate(self.control_plane, kill)
 
     def start_worker(self, build: str = "evidence") -> None:
-        environment = dict(os.environ)
-        environment.update(
-            {
-                "TRACEWAKE_WORKER_URL": self.worker_url,
-                "TRACEWAKE_WORKER_CREDENTIALS_FILE": str(self.root / "credentials.json"),
-                "TRACEWAKE_WORKER_BUILD": build,
-                "TRACEWAKE_ENVIRONMENT": "evidence",
-                "TRACEWAKE_SERVICE_VERSION": "evidence",
-                "PYTHONUNBUFFERED": "1",
-            }
-        )
+        environment = self._worker_environment(build)
         stream = open(self.telemetry_dir / "worker.jsonl", "ab")
         errors = open(self.root / "worker.err", "ab")
         # The launcher is a wrapper around the real worker, so the whole
@@ -206,6 +196,23 @@ class Stack:
             stderr=errors,
             start_new_session=True,
         )
+
+    def _worker_environment(self, build: str) -> dict[str, str]:
+        environment = dict(os.environ)
+        environment.update(
+            {
+                "TRACEWAKE_WORKER_URL": self.worker_url,
+                "TRACEWAKE_WORKER_CREDENTIALS_FILE": str(self.root / "credentials.json"),
+                "TRACEWAKE_WORKER_BUILD": build,
+                "TRACEWAKE_ENVIRONMENT": "evidence",
+                "TRACEWAKE_SERVICE_VERSION": "evidence",
+                "TRACEWAKE_RESULT_SCHEMA": str(
+                    self.repository / "contracts" / "schemas" / "v1" / "result-envelope.schema.json"
+                ),
+                "PYTHONUNBUFFERED": "1",
+            }
+        )
+        return environment
 
     def stop_worker(self, kill: bool = True) -> None:
         self.worker = _terminate(self.worker, kill)

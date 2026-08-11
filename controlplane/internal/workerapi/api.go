@@ -318,12 +318,20 @@ func (a *API) complete(w http.ResponseWriter, r *http.Request) {
 	}
 	if err == nil {
 		var raw []byte
+		var document map[string]any
 		raw, err = a.verifyStoredObject(ctx, committed[0], true)
 		if err == nil {
-			err = a.validateResultEnvelope(raw)
+			document, err = a.validateResultEnvelope(raw)
 		}
 		for index := 1; err == nil && index < len(committed); index++ {
 			_, err = a.verifyStoredObject(ctx, committed[index], false)
+		}
+		if err == nil {
+			var inputs []controlplane.ResultInput
+			inputs, err = a.service.ResultInputs(ctx, r.PathValue("job"), attempt, r.Header.Get("Tracewake-Attempt-Token"))
+			if err == nil {
+				err = validateResultBindings(document, body, inputs)
+			}
 		}
 	}
 	span.End()
@@ -366,44 +374,185 @@ func (a *API) verifyStoredObject(ctx context.Context, object artifacts.Object, c
 	return raw.Bytes(), nil
 }
 
-func (a *API) validateResultEnvelope(raw []byte) error {
+func (a *API) validateResultEnvelope(raw []byte) (map[string]any, error) {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
 	var document any
 	if err := decoder.Decode(&document); err != nil {
-		return fmt.Errorf("decode result envelope: %w", err)
+		return nil, fmt.Errorf("decode result envelope: %w", err)
 	}
 	var extra any
 	if err := decoder.Decode(&extra); err != io.EOF {
-		return errors.New("result envelope must contain one JSON value")
+		return nil, errors.New("result envelope must contain one JSON value")
 	}
 	if err := a.resultSchema.Validate(document); err != nil {
-		return fmt.Errorf("validate result envelope: %w", err)
+		return nil, fmt.Errorf("validate result envelope: %w", err)
 	}
 	envelope, ok := document.(map[string]any)
 	if !ok {
-		return errors.New("result envelope must be an object")
+		return nil, errors.New("result envelope must be an object")
 	}
 	switch envelope["status"] {
 	case "succeeded":
 		if envelope["result"] == nil || envelope["failure"] != nil {
-			return errors.New("successful result envelope must contain only a result")
+			return nil, errors.New("successful result envelope must contain only a result")
 		}
 	case "failed":
 		if envelope["failure"] == nil || envelope["result"] != nil {
-			return errors.New("failed result envelope must contain only a failure")
+			return nil, errors.New("failed result envelope must contain only a failure")
 		}
 	default:
-		return errors.New("result envelope status is invalid")
+		return nil, errors.New("result envelope status is invalid")
 	}
 	canonical, err := canonicalResultJSON(document)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !bytes.Equal(raw, canonical) {
-		return errors.New("result envelope is not canonical JSON")
+		return nil, errors.New("result envelope is not canonical JSON")
+	}
+	return envelope, nil
+}
+
+func validateResultBindings(envelope map[string]any, completion controlplane.Completion, inputs []controlplane.ResultInput) error {
+	if envelope["status"] != "succeeded" {
+		return errors.New("workers cannot commit failed result envelopes")
+	}
+	result, ok := envelope["result"].(map[string]any)
+	if !ok {
+		return errors.New("result is not an object")
+	}
+	kind, _ := result["kind"].(string)
+	expectedArtifactKind := map[string]string{"validation": "validation_json", "diff": "diff_json", "otlp": "otlp_result_json", "pprof": "pprof_result_json"}[kind]
+	expectedCompanionKind := map[string]string{"diff": "diff_html", "otlp": "otlp_json", "pprof": "pprof"}[kind]
+	if expectedArtifactKind == "" || completion.Kind != expectedArtifactKind {
+		return errors.New("result kind does not match the committed artifact kind")
+	}
+	if kind == "validation" {
+		if len(inputs) != 1 || len(completion.Companions) != 0 || !validationResultMatches(result, completion, inputs[0]) {
+			return errors.New("validation result does not match its input and completion metadata")
+		}
+	} else {
+		if len(inputs) != expectedInputCount(kind) || len(completion.Companions) != 1 || completion.Companions[0].Kind != expectedCompanionKind {
+			return errors.New("analysis result has an invalid input or companion set")
+		}
+		artifactField := "artifact"
+		if kind == "diff" {
+			artifactField = "html"
+		}
+		artifact, ok := result[artifactField].(map[string]any)
+		if !ok || !artifactReferenceMatches(artifact, completion.Companions[0]) {
+			return errors.New("result artifact reference does not match the committed companion")
+		}
+	}
+	provenance, ok := result["provenance"].(map[string]any)
+	if !ok || !provenanceInputsMatch(provenance, completion, inputs, kind == "validation") {
+		return errors.New("result provenance does not match the authoritative job inputs")
 	}
 	return nil
+}
+
+func expectedInputCount(kind string) int {
+	if kind == "diff" {
+		return 2
+	}
+	return 1
+}
+
+func validationResultMatches(result map[string]any, completion controlplane.Completion, input controlplane.ResultInput) bool {
+	return stringValue(result["run_id"]) == input.RunID &&
+		stringValue(result["bundle_digest"]) == input.BundleDigest &&
+		stringValue(result["logical_run_digest"]) == completion.LogicalDigest &&
+		integerValue(result["event_count"]) == int64(completion.EventCount) &&
+		completion.BundleDigest == input.BundleDigest && completion.BundleFormat == input.BundleFormat
+}
+
+func provenanceInputsMatch(provenance map[string]any, completion controlplane.Completion, expected []controlplane.ResultInput, validating bool) bool {
+	values, ok := provenance["inputs"].([]any)
+	if !ok || len(values) != len(expected) {
+		return false
+	}
+	for index, expectedInput := range expected {
+		value, ok := values[index].(map[string]any)
+		if !ok {
+			return false
+		}
+		logicalDigest := pointerString(expectedInput.LogicalDigest)
+		cassetteFormat := pointerInt(expectedInput.CassetteFormat)
+		eventSchema := pointerInt(expectedInput.EventSchema)
+		if validating {
+			logicalDigest = completion.LogicalDigest
+			cassetteFormat = int64(completion.CassetteFormat)
+			eventSchema = int64(completion.EventSchema)
+		}
+		if stringValue(value["run_id"]) != expectedInput.RunID ||
+			stringValue(value["logical_run_digest"]) != logicalDigest ||
+			stringValue(value["bundle_digest"]) != expectedInput.BundleDigest ||
+			stringValue(value["bundle_object_key"]) != expectedInput.ObjectKey ||
+			stringValue(value["bundle_object_version"]) != expectedInput.ObjectVersion ||
+			integerValue(value["bundle_format_version"]) != int64(expectedInput.BundleFormat) ||
+			integerValue(value["cassette_format_version"]) != cassetteFormat ||
+			integerValue(value["event_schema_version"]) != eventSchema {
+			return false
+		}
+	}
+	return true
+}
+
+func artifactReferenceMatches(value map[string]any, companion controlplane.CompanionArtifact) bool {
+	return stringValue(value["artifact_id"]) == companion.ArtifactID &&
+		stringValue(value["object_key"]) == companion.ObjectKey &&
+		stringValue(value["object_version"]) == companion.ObjectVersion &&
+		stringValue(value["digest"]) == companion.Digest &&
+		integerValue(value["size"]) == companion.Size &&
+		stringValue(value["media_type"]) == companion.MediaType &&
+		nullableStringMatches(value["schema_name"], companion.SchemaName) &&
+		nullableIntMatches(value["schema_version"], companion.SchemaVersion)
+}
+
+func stringValue(value any) string {
+	text, _ := value.(string)
+	return text
+}
+
+func integerValue(value any) int64 {
+	number, ok := value.(json.Number)
+	if !ok {
+		return -1
+	}
+	integer, err := number.Int64()
+	if err != nil {
+		return -1
+	}
+	return integer
+}
+
+func pointerString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func pointerInt(value *int) int64 {
+	if value == nil {
+		return -1
+	}
+	return int64(*value)
+}
+
+func nullableStringMatches(value any, expected *string) bool {
+	if expected == nil {
+		return value == nil
+	}
+	return stringValue(value) == *expected
+}
+
+func nullableIntMatches(value any, expected *int) bool {
+	if expected == nil {
+		return value == nil
+	}
+	return integerValue(value) == int64(*expected)
 }
 
 func canonicalResultJSON(value any) ([]byte, error) {

@@ -45,7 +45,7 @@ func (s *Filesystem) serveDownload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "object grant is not valid", http.StatusForbidden)
 		return
 	}
-	file, err := s.open(key)
+	file, err := s.openVersion(key, version)
 	if err != nil {
 		http.Error(w, "object is not available", http.StatusNotFound)
 		return

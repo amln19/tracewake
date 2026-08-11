@@ -60,6 +60,16 @@ def test_missing_blob_says_what_to_do(tmp_path: Path) -> None:
     store.close()
 
 
+def test_blob_read_rejects_bytes_that_do_not_match_the_address(tmp_path: Path) -> None:
+    store = Store(tmp_path)
+    reference = store.blobs.put(b"recorded response")
+    store.blobs._path(reference.digest).write_bytes(b"tampered response")
+
+    with pytest.raises(ValueError, match=r"expected digest.*actual digest.*re-record"):
+        store.blobs.get(reference.digest)
+    store.close()
+
+
 def test_a_path_shaped_digest_is_refused(tmp_path: Path) -> None:
     store = Store(tmp_path)
     secret = tmp_path / "secret.txt"

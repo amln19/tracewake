@@ -107,10 +107,26 @@ func (s *Service) EnsureWorkspaceToken(ctx context.Context, name, token string, 
 	if err != nil {
 		return "", errors.New("bootstrap token must be a prefixed high-entropy secret")
 	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return "", fmt.Errorf("begin bootstrap transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", prefix); err != nil {
+		return "", fmt.Errorf("lock bootstrap token: %w", err)
+	}
 	var workspaceID string
-	if err := s.pool.QueryRow(ctx, "SELECT workspace_id FROM api_tokens WHERE prefix=$1", prefix).Scan(&workspaceID); err == nil {
+	err = tx.QueryRow(ctx, "SELECT workspace_id FROM api_tokens WHERE prefix=$1 FOR UPDATE", prefix).Scan(&workspaceID)
+	if err == nil {
+		if _, err = tx.Exec(ctx, `UPDATE api_tokens SET verifier=$2,pepper_version=$3,scopes=$4,revoked_at=NULL WHERE prefix=$1`, prefix, hmacDigest(s.tokens.Current, token), s.tokens.CurrentVersion, scopes); err != nil {
+			return "", fmt.Errorf("update bootstrap token: %w", err)
+		}
+		if err = tx.Commit(ctx); err != nil {
+			return "", fmt.Errorf("commit bootstrap token update: %w", err)
+		}
 		return workspaceID, nil
-	} else if !errors.Is(err, pgx.ErrNoRows) {
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
 		return "", fmt.Errorf("read bootstrap token: %w", err)
 	}
 	workspaceID, err = newID()
@@ -121,23 +137,15 @@ func (s *Service) EnsureWorkspaceToken(ctx context.Context, name, token string, 
 	if err != nil {
 		return "", err
 	}
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return "", fmt.Errorf("begin bootstrap transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
 	if _, err := tx.Exec(ctx, "INSERT INTO workspaces (id, name) VALUES ($1, $2)", workspaceID, name); err != nil {
 		return "", fmt.Errorf("insert bootstrap workspace: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO api_tokens (id, workspace_id, prefix, verifier, pepper_version, scopes)
-        VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (prefix) DO NOTHING`, tokenID, workspaceID, prefix, hmacDigest(s.tokens.Current, token), s.tokens.CurrentVersion, scopes); err != nil {
+		VALUES ($1,$2,$3,$4,$5,$6)`, tokenID, workspaceID, prefix, hmacDigest(s.tokens.Current, token), s.tokens.CurrentVersion, scopes); err != nil {
 		return "", fmt.Errorf("insert bootstrap token: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return "", fmt.Errorf("commit bootstrap transaction: %w", err)
-	}
-	if err := s.pool.QueryRow(ctx, "SELECT workspace_id FROM api_tokens WHERE prefix=$1", prefix).Scan(&workspaceID); err != nil {
-		return "", fmt.Errorf("read bootstrap token: %w", err)
 	}
 	return workspaceID, nil
 }
@@ -176,6 +184,15 @@ func (s *Service) AuthenticateWorker(ctx context.Context, token string) (string,
 	if err != nil || !s.workers.Verify(version, token, verifier) {
 		return "", ErrUnauthenticated
 	}
+	if version != s.workers.CurrentVersion {
+		command, updateErr := s.pool.Exec(ctx, "UPDATE worker_credentials SET verifier=$2,pepper_version=$3 WHERE id=$1 AND verifier=$4 AND pepper_version=$5", id, hmacDigest(s.workers.Current, token), s.workers.CurrentVersion, verifier, version)
+		if updateErr != nil {
+			return "", fmt.Errorf("rotate worker credential verifier: %w", updateErr)
+		}
+		if command.RowsAffected() != 1 {
+			return "", ErrUnauthenticated
+		}
+	}
 	return id, nil
 }
 
@@ -212,8 +229,15 @@ func (s *Service) authenticateToken(ctx context.Context, token string, requiredS
 	if requiredScope != "" && !principal.Scopes[requiredScope] {
 		return Principal{}, ErrForbidden
 	}
-	if _, err := s.pool.Exec(ctx, "UPDATE api_tokens SET last_used_at = transaction_timestamp() WHERE prefix = $1", prefix); err != nil {
+	command, err := s.pool.Exec(ctx, `UPDATE api_tokens SET last_used_at=transaction_timestamp(),
+		verifier=CASE WHEN pepper_version<>$2 THEN $3 ELSE verifier END,pepper_version=$2
+		WHERE prefix=$1 AND verifier=$4 AND pepper_version=$5`,
+		prefix, s.tokens.CurrentVersion, hmacDigest(s.tokens.Current, token), verifier, pepperVersion)
+	if err != nil {
 		return Principal{}, fmt.Errorf("record API token use: %w", err)
+	}
+	if command.RowsAffected() != 1 {
+		return Principal{}, ErrUnauthenticated
 	}
 	return principal, nil
 }

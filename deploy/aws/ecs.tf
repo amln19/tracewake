@@ -82,16 +82,22 @@ resource "aws_ecs_task_definition" "control_plane" {
       { name = "TRACEWAKE_ENVIRONMENT", value = var.environment },
       { name = "TRACEWAKE_SERVICE_VERSION", value = var.image_tag },
       { name = "TRACEWAKE_METRIC_NAMESPACE", value = local.control_plane_metric_namespace },
+      { name = "TRACEWAKE_TOKEN_PEPPER_VERSION", value = tostring(var.token_pepper_version) },
+      { name = "TRACEWAKE_WORKER_PEPPER_VERSION", value = tostring(var.worker_pepper_version) },
       { name = "AWS_REGION", value = var.region },
     ]
 
-    secrets = [
+    secrets = concat([
       { name = "TRACEWAKE_DATABASE_URL", valueFrom = local.secret_arns["database_url"] },
       { name = "TRACEWAKE_TOKEN_PEPPER", valueFrom = local.secret_arns["token_pepper"] },
       { name = "TRACEWAKE_WORKER_PEPPER", valueFrom = local.secret_arns["worker_pepper"] },
       { name = "TRACEWAKE_BOOTSTRAP_TOKEN", valueFrom = local.secret_arns["tenant_token"] },
       { name = "TRACEWAKE_WORKER_BOOTSTRAP_TOKEN", valueFrom = local.secret_arns["worker_token"] },
-    ]
+      ], var.token_previous_pepper == "" ? [] : [
+      { name = "TRACEWAKE_TOKEN_PEPPER_PREVIOUS", valueFrom = local.secret_arns["token_previous_pepper"] },
+      ], var.worker_previous_pepper == "" ? [] : [
+      { name = "TRACEWAKE_WORKER_PEPPER_PREVIOUS", valueFrom = local.secret_arns["worker_previous_pepper"] },
+    ])
 
     logConfiguration = {
       logDriver = "awslogs"
