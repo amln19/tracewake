@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/amln19/tracewake/controlplane/internal/telemetry"
@@ -466,13 +465,4 @@ func getJob(ctx context.Context, q interface {
 		return Job{}, fmt.Errorf("read job: %w", err)
 	}
 	return job, nil
-}
-
-func sortedScopes(scopes map[string]bool) []string {
-	items := make([]string, 0, len(scopes))
-	for scope := range scopes {
-		items = append(items, scope)
-	}
-	sort.Strings(items)
-	return items
 }

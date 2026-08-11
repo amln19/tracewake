@@ -17,9 +17,13 @@ from .events import (
     EVENT_ADAPTER,
     EVENT_SCHEMA_VERSION,
     BlobRef,
+    ModelCallEvent,
     ModelIdentity,
     RunHeader,
     StoredEvent,
+    ToolCallEvent,
+    hash_args,
+    hash_messages,
     run_digest,
     sha256_hex,
 )
@@ -82,6 +86,27 @@ def _blob_refs(events: list[StoredEvent] | tuple[StoredEvent, ...]) -> dict[str,
 
 def _blob_digests(events: list[StoredEvent] | tuple[StoredEvent, ...]) -> set[str]:
     return set(_blob_refs(events))
+
+
+def _validate_derived_request_hashes(events: list[StoredEvent], source: Path) -> None:
+    for stored in events:
+        event = stored.event
+        if isinstance(event, ModelCallEvent):
+            actual = hash_messages(event.messages)
+            if event.messages_hash != actual:
+                raise ValueError(
+                    f"cassette {source} event sequence {stored.seq} has an inconsistent "
+                    f"messages_hash; expected {actual}, actual {event.messages_hash}. "
+                    "Re-record the run with a Tracewake recorder."
+                )
+        if isinstance(event, ToolCallEvent):
+            actual = hash_args(event.args)
+            if event.args_hash != actual:
+                raise ValueError(
+                    f"cassette {source} event sequence {stored.seq} has an inconsistent "
+                    f"args_hash; expected {actual}, actual {event.args_hash}. "
+                    "Re-record the run with a Tracewake recorder."
+                )
 
 
 def _line(stored: StoredEvent) -> str:
@@ -295,6 +320,7 @@ def _validate_cassette(source: str | Path) -> _ValidatedCassette:
             f"cassette {path} entry {cassette_path} has the wrong event count; expected "
             f"{header.event_count}, actual {len(events)}."
         )
+    _validate_derived_request_hashes(events, path)
     actual_digest = run_digest(events)
     if actual_digest != header.digest:
         raise ValueError(

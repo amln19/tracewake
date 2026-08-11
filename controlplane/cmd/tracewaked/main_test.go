@@ -1,6 +1,12 @@
 package main
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
 
 func TestKeyRingReadsCurrentAndPreviousVersions(t *testing.T) {
 	t.Setenv("TEST_PEPPER", "current-pepper-material-at-least-32-bytes")
@@ -21,5 +27,24 @@ func TestKeyRingRejectsInvalidRotationConfiguration(t *testing.T) {
 	t.Setenv("TEST_PEPPER_PREVIOUS", "previous-pepper-material-at-least-32-bytes")
 	if _, err := keyRingFromEnvironment("TEST_PEPPER"); err == nil {
 		t.Fatal("a previous pepper was accepted at version 1")
+	}
+}
+
+func TestReadinessDistinguishesDependencyAvailability(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		err  error
+		want int
+	}{
+		{name: "ready", want: http.StatusNoContent},
+		{name: "unavailable", err: errors.New("database unavailable"), want: http.StatusServiceUnavailable},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			readinessHandler(func(context.Context) error { return test.err }).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+			if response.Code != test.want {
+				t.Fatalf("status=%d want=%d", response.Code, test.want)
+			}
+		})
 	}
 }

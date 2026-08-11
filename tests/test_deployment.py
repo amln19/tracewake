@@ -164,6 +164,12 @@ def test_control_plane_image_prepares_writable_volume_mounts() -> None:
     assert "USER tracewake" in dockerfile
 
 
+def test_load_balancers_probe_dependency_readiness() -> None:
+    load_balancer = read("loadbalancer.tf")
+    assert load_balancer.count('path                = "/readyz"') == 2
+    assert 'path                = "/healthz"' not in load_balancer
+
+
 @pytest.mark.parametrize(
     ("action", "role"),
     [

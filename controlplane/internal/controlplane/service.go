@@ -36,6 +36,13 @@ func New(pool *pgxpool.Pool, tokens, workers KeyRing) (*Service, error) {
 // that is never given one records nothing.
 func (s *Service) UseTelemetry(metrics *telemetry.Metrics) { s.metrics = metrics }
 
+// Ready proves that the authoritative lifecycle store is reachable. Liveness
+// deliberately does not use it: a process can stay alive while its dependency
+// is unavailable.
+func (s *Service) Ready(ctx context.Context) error {
+	return s.pool.Ping(ctx)
+}
+
 func (s *Service) CreateWorkspace(ctx context.Context, name string, scopes []string) (string, string, error) {
 	if strings.TrimSpace(name) == "" || len(name) > 200 {
 		return "", "", errors.New("workspace name must contain 1 to 200 characters")
@@ -181,7 +188,13 @@ func (s *Service) AuthenticateWorker(ctx context.Context, token string) (string,
 	var verifier []byte
 	var version int16
 	err = s.pool.QueryRow(ctx, `SELECT id,verifier,pepper_version FROM worker_credentials WHERE prefix=$1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>transaction_timestamp())`, prefix).Scan(&id, &verifier, &version)
-	if err != nil || !s.workers.Verify(version, token, verifier) {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrUnauthenticated
+	}
+	if err != nil {
+		return "", fmt.Errorf("read worker credential: %w", err)
+	}
+	if !s.workers.Verify(version, token, verifier) {
 		return "", ErrUnauthenticated
 	}
 	if version != s.workers.CurrentVersion {

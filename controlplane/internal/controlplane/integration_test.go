@@ -223,6 +223,10 @@ func TestPostgresLifecycle(t *testing.T) {
 	if err := database.Pool().QueryRow(ctx, "SELECT count(*) FROM outbox WHERE aggregate_id=$1 AND published_at IS NULL", stranded.ID).Scan(&unpublished); err != nil || unpublished != 1 {
 		t.Fatalf("stranded outbox count=%d err=%v", unpublished, err)
 	}
+	var republishAudits int
+	if err := database.Pool().QueryRow(ctx, "SELECT count(*) FROM audit_records WHERE aggregate_id=$1 AND event_type='job.notification_republished' AND actor_type='reconciler'", stranded.ID).Scan(&republishAudits); err != nil || republishAudits != 1 {
+		t.Fatalf("stranded audit count=%d err=%v", republishAudits, err)
+	}
 	if err := service.RequestCancellation(ctx, principal, stranded.ID); err != nil {
 		t.Fatal(err)
 	}

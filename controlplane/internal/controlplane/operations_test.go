@@ -170,17 +170,44 @@ func (f *fixture) fenceAndRetry(t *testing.T, jobID string) controlplane.Claim {
 	if _, err := f.service.Reconcile(ctx, 100); err != nil {
 		t.Fatal(err)
 	}
+	assertAuditEvents(t, f.pool, jobID, "attempt.fenced", "job.retry_scheduled")
 	if _, err := f.pool.Exec(ctx, "UPDATE jobs SET retry_at=transaction_timestamp()-interval '1 second' WHERE id=$1", jobID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.service.Reconcile(ctx, 100); err != nil {
 		t.Fatal(err)
 	}
+	assertAuditEvents(t, f.pool, jobID, "job.retry_enqueued")
 	claim, err := f.service.Claim(ctx, f.worker, jobID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return claim
+}
+
+func assertAuditEvents(t *testing.T, pool *pgxpool.Pool, jobID string, wanted ...string) {
+	t.Helper()
+	rows, err := pool.Query(context.Background(), "SELECT event_type FROM audit_records WHERE aggregate_type='job' AND aggregate_id=$1", jobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	seen := map[string]bool{}
+	for rows.Next() {
+		var event string
+		if err := rows.Scan(&event); err != nil {
+			t.Fatal(err)
+		}
+		seen[event] = true
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range wanted {
+		if !seen[event] {
+			t.Fatalf("audit for job %s lacks %q: %v", jobID, event, seen)
+		}
+	}
 }
 
 func TestEveryOperationRetriesFencesAndCommitsOneResult(t *testing.T) {
@@ -248,6 +275,40 @@ func TestEveryOperationRetriesFencesAndCommitsOneResult(t *testing.T) {
 				t.Fatalf("job state=%q result kind=%q", state, resultKind)
 			}
 		})
+	}
+}
+
+func TestReconcilerAuditsRetryExhaustionAndInvalidatesValidationRun(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	jobID, _ := f.job(t, "validate", "retry-exhaustion")
+	first, err := f.service.Claim(ctx, f.worker, jobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := f.fenceAndRetry(t, jobID)
+	third := f.fenceAndRetry(t, jobID)
+	if first.Attempt != 1 || second.Attempt != 2 || third.Attempt != 3 {
+		t.Fatalf("attempt numbers = %d, %d, %d", first.Attempt, second.Attempt, third.Attempt)
+	}
+	if _, err = f.pool.Exec(ctx, "UPDATE job_attempts SET lease_expires_at=transaction_timestamp()-interval '1 second' WHERE job_id=$1 AND attempt_number=3", jobID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.service.Reconcile(ctx, 100); err != nil {
+		t.Fatal(err)
+	}
+	assertAuditEvents(t, f.pool, jobID, "attempt.failed")
+	var runID string
+	if err = f.pool.QueryRow(ctx, "SELECT run_a_id FROM job_inputs WHERE id=(SELECT input_id FROM jobs WHERE id=$1)", jobID).Scan(&runID); err != nil {
+		t.Fatal(err)
+	}
+	var state string
+	if err = f.pool.QueryRow(ctx, "SELECT state FROM runs WHERE id=$1", runID).Scan(&state); err != nil || state != "invalid" {
+		t.Fatalf("validation run state=%q err=%v", state, err)
+	}
+	var invalidAudits int
+	if err = f.pool.QueryRow(ctx, "SELECT count(*) FROM audit_records WHERE aggregate_type='run' AND aggregate_id=$1 AND event_type='run.invalid' AND actor_type='reconciler'", runID).Scan(&invalidAudits); err != nil || invalidAudits != 1 {
+		t.Fatalf("run invalid audits=%d err=%v", invalidAudits, err)
 	}
 }
 

@@ -386,6 +386,37 @@ def test_validation_checks_the_logical_run_digest(tmp_path: Path) -> None:
         _validate_cassette(cassette)
 
 
+@pytest.mark.parametrize(
+    ("event_type", "field"),
+    [("model_call", "messages_hash"), ("tool_call", "args_hash")],
+)
+def test_validation_recomputes_derived_request_hashes(
+    tmp_path: Path, event_type: str, field: str
+) -> None:
+    cassette, _ = _exported(tmp_path)
+
+    def change(header: dict[str, Any], events: list[dict[str, Any]]) -> None:
+        for event in events:
+            if event["type"] == event_type:
+                event[field] = "0" * 64
+        stored = []
+        for event in events:
+            data = dict(event)
+            seq = data.pop("seq")
+            stored.append(
+                StoredEvent(
+                    run_id=header["run_id"],
+                    seq=seq,
+                    event=EVENT_ADAPTER.validate_python(data),
+                )
+            )
+        header["digest"] = run_digest(stored)
+
+    _rewrite(cassette, change)
+    with pytest.raises(ValueError, match=field):
+        _validate_cassette(cassette)
+
+
 def test_validation_failure_does_not_change_store_state(tmp_path: Path) -> None:
     cassette, _ = _exported(tmp_path)
     _blob_paths(cassette)[0].unlink()

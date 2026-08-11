@@ -149,6 +149,9 @@ class Stack:
                 "TRACEWAKE_ENVIRONMENT": "evidence",
                 "TRACEWAKE_SERVICE_VERSION": "evidence",
                 "TRACEWAKE_TELEMETRY_INTERVAL": self.metric_interval,
+                "TRACEWAKE_RESULT_SCHEMA": str(
+                    self.repository / "contracts" / "schemas" / "v1" / "result-envelope.schema.json"
+                ),
             }
         )
         return environment

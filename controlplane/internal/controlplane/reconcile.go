@@ -3,11 +3,13 @@ package controlplane
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/amln19/tracewake/controlplane/internal/artifacts"
 	"github.com/amln19/tracewake/controlplane/internal/telemetry"
+	"github.com/jackc/pgx/v5"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -41,6 +43,9 @@ func (s *Service) RetainedObjects(ctx context.Context) (map[artifacts.Identity]b
 func (s *Service) NextNotification(ctx context.Context) (Notification, error) {
 	var notification Notification
 	err := s.pool.QueryRow(ctx, `SELECT id,payload FROM outbox WHERE topic='job.created' AND available_at<=transaction_timestamp() AND published_at IS NULL ORDER BY id LIMIT 1`).Scan(&notification.ID, &notification.Payload)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Notification{}, ErrNotFound
+	}
 	return notification, err
 }
 
@@ -142,13 +147,14 @@ func (s *Service) Reconcile(ctx context.Context, limit int) (repaired int, err e
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	rows, err := tx.Query(ctx, `SELECT j.id,j.current_attempt_number,i.operation,EXTRACT(EPOCH FROM (transaction_timestamp()-j.created_at)) FROM jobs j JOIN job_inputs i ON i.id=j.input_id JOIN job_attempts a ON a.job_id=j.id AND a.attempt_number=j.current_attempt_number
+	rows, err := tx.Query(ctx, `SELECT j.id,j.workspace_id,j.current_attempt_number,i.operation,EXTRACT(EPOCH FROM (transaction_timestamp()-j.created_at)) FROM jobs j JOIN job_inputs i ON i.id=j.input_id JOIN job_attempts a ON a.job_id=j.id AND a.attempt_number=j.current_attempt_number
         WHERE j.state='running' AND a.state='running' AND a.lease_expires_at<=transaction_timestamp() ORDER BY a.lease_expires_at FOR UPDATE OF j,a SKIP LOCKED LIMIT $1`, limit)
 	if err != nil {
 		return 0, fmt.Errorf("find expired attempts: %w", err)
 	}
 	type expired struct {
 		id        string
+		workspace string
 		attempt   int
 		operation string
 		age       float64
@@ -156,7 +162,7 @@ func (s *Service) Reconcile(ctx context.Context, limit int) (repaired int, err e
 	var items []expired
 	for rows.Next() {
 		var item expired
-		if err := rows.Scan(&item.id, &item.attempt, &item.operation, &item.age); err != nil {
+		if err := rows.Scan(&item.id, &item.workspace, &item.attempt, &item.operation, &item.age); err != nil {
 			rows.Close()
 			return 0, err
 		}
@@ -177,6 +183,11 @@ func (s *Service) Reconcile(ctx context.Context, limit int) (repaired int, err e
 			if _, err = tx.Exec(ctx, `UPDATE jobs SET state='retry_wait',current_attempt_number=NULL,retry_at=transaction_timestamp()+$2::interval,updated_at=transaction_timestamp(),row_version=row_version+1 WHERE id=$1 AND state='running'`, item.id, delay); err != nil {
 				return 0, err
 			}
+			if _, err = tx.Exec(ctx, `INSERT INTO audit_records(workspace_id,aggregate_type,aggregate_id,event_type,actor_type,payload)
+                VALUES($1,'job',$2,'attempt.fenced','reconciler',jsonb_build_object('attempt',$3::integer,'failure_code','lease_lost')),
+                      ($1,'job',$2,'job.retry_scheduled','reconciler',jsonb_build_object('attempt',$3::integer,'delay',$4::text))`, item.workspace, item.id, item.attempt, delay); err != nil {
+				return 0, fmt.Errorf("audit expired attempt retry: %w", err)
+			}
 		} else {
 			exhaustedItems = append(exhaustedItems, item)
 			if _, err = tx.Exec(ctx, `UPDATE job_attempts SET state='failed',finished_at=transaction_timestamp(),failure_code='retry_exhausted',failure_message='worker lease expired' WHERE job_id=$1 AND attempt_number=$2`, item.id, item.attempt); err != nil {
@@ -185,20 +196,32 @@ func (s *Service) Reconcile(ctx context.Context, limit int) (repaired int, err e
 			if _, err = tx.Exec(ctx, `UPDATE jobs SET state='failed',terminal_at=transaction_timestamp(),failure_code='retry_exhausted',failure_message='worker lease expired',updated_at=transaction_timestamp(),row_version=row_version+1 WHERE id=$1`, item.id); err != nil {
 				return 0, err
 			}
-			if _, err = tx.Exec(ctx, `UPDATE runs r SET state='invalid',failure_code='retry_exhausted',failure_message='worker lease expired',row_version=row_version+1 FROM job_inputs i WHERE i.id=(SELECT input_id FROM jobs WHERE id=$1) AND i.operation='validate' AND r.id=i.run_a_id AND r.state='validating'`, item.id); err != nil {
+			if _, err = tx.Exec(ctx, `INSERT INTO audit_records(workspace_id,aggregate_type,aggregate_id,event_type,actor_type,payload)
+                VALUES($1,'job',$2,'attempt.failed','reconciler',jsonb_build_object('attempt',$3::integer,'failure_code','retry_exhausted'))`, item.workspace, item.id, item.attempt); err != nil {
+				return 0, fmt.Errorf("audit exhausted attempt: %w", err)
+			}
+			var runID string
+			err = tx.QueryRow(ctx, `UPDATE runs r SET state='invalid',failure_code='retry_exhausted',failure_message='worker lease expired',row_version=row_version+1 FROM job_inputs i WHERE i.id=(SELECT input_id FROM jobs WHERE id=$1) AND i.operation='validate' AND r.id=i.run_a_id AND r.state='validating' RETURNING r.id`, item.id).Scan(&runID)
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 				return 0, err
+			}
+			if err == nil {
+				if _, err = tx.Exec(ctx, `INSERT INTO audit_records(workspace_id,aggregate_type,aggregate_id,event_type,actor_type,payload)
+                    VALUES($1,'run',$2,'run.invalid','reconciler',jsonb_build_object('failure_code','retry_exhausted'))`, item.workspace, runID); err != nil {
+					return 0, fmt.Errorf("audit invalid run: %w", err)
+				}
 			}
 		}
 	}
 	parent := telemetry.Traceparent(ctx)
-	command, err := tx.Exec(ctx, `WITH due AS (SELECT id FROM jobs WHERE state='retry_wait' AND retry_at<=transaction_timestamp() AND cancel_requested_at IS NULL FOR UPDATE SKIP LOCKED LIMIT $1), updated AS (UPDATE jobs j SET state='queued',retry_at=NULL,updated_at=transaction_timestamp(),row_version=row_version+1 FROM due WHERE j.id=due.id RETURNING j.id,j.row_version,(SELECT operation FROM job_inputs WHERE id=j.input_id) operation) INSERT INTO outbox(aggregate_type,aggregate_id,aggregate_version,topic,payload) SELECT 'job',id,row_version,'job.created',jsonb_strip_nulls(jsonb_build_object('protocol_version',1,'job_id',id,'job_version',row_version,'operation',operation,'traceparent',NULLIF($2,''))) FROM updated`, limit, parent)
+	command, err := tx.Exec(ctx, `WITH due AS (SELECT id FROM jobs WHERE state='retry_wait' AND retry_at<=transaction_timestamp() AND cancel_requested_at IS NULL FOR UPDATE SKIP LOCKED LIMIT $1), updated AS (UPDATE jobs j SET state='queued',retry_at=NULL,updated_at=transaction_timestamp(),row_version=row_version+1 FROM due WHERE j.id=due.id RETURNING j.id,j.workspace_id,j.row_version,(SELECT operation FROM job_inputs WHERE id=j.input_id) operation), audited AS (INSERT INTO audit_records(workspace_id,aggregate_type,aggregate_id,event_type,actor_type,payload) SELECT workspace_id,'job',id,'job.retry_enqueued','reconciler','{}' FROM updated) INSERT INTO outbox(aggregate_type,aggregate_id,aggregate_version,topic,payload) SELECT 'job',id,row_version,'job.created',jsonb_strip_nulls(jsonb_build_object('protocol_version',1,'job_id',id,'job_version',row_version,'operation',operation,'traceparent',NULLIF($2,''))) FROM updated`, limit, parent)
 	if err != nil {
 		return 0, err
 	}
 	// A queued job whose notification was published but never claimed is only
 	// stranded once delivery has had time to happen; republishing sooner would
 	// storm the queue with duplicates of healthy work.
-	stranded, err := tx.Exec(ctx, `WITH candidates AS (SELECT j.id FROM jobs j WHERE j.state='queued' AND j.updated_at<transaction_timestamp()-$2::interval AND NOT EXISTS(SELECT 1 FROM outbox o WHERE o.aggregate_id=j.id AND o.topic='job.created' AND (o.published_at IS NULL OR o.created_at>transaction_timestamp()-$2::interval)) FOR UPDATE SKIP LOCKED LIMIT $1), updated AS (UPDATE jobs j SET row_version=row_version+1,updated_at=transaction_timestamp() FROM candidates WHERE j.id=candidates.id RETURNING j.id,j.row_version,(SELECT operation FROM job_inputs WHERE id=j.input_id) operation) INSERT INTO outbox(aggregate_type,aggregate_id,aggregate_version,topic,payload) SELECT 'job',id,row_version,'job.created',jsonb_strip_nulls(jsonb_build_object('protocol_version',1,'job_id',id,'job_version',row_version,'operation',operation,'traceparent',NULLIF($3,''))) FROM updated`, limit, notificationTimeout, parent)
+	stranded, err := tx.Exec(ctx, `WITH candidates AS (SELECT j.id FROM jobs j WHERE j.state='queued' AND j.updated_at<transaction_timestamp()-$2::interval AND NOT EXISTS(SELECT 1 FROM outbox o WHERE o.aggregate_id=j.id AND o.topic='job.created' AND (o.published_at IS NULL OR o.created_at>transaction_timestamp()-$2::interval)) FOR UPDATE SKIP LOCKED LIMIT $1), updated AS (UPDATE jobs j SET row_version=row_version+1,updated_at=transaction_timestamp() FROM candidates WHERE j.id=candidates.id RETURNING j.id,j.workspace_id,j.row_version,(SELECT operation FROM job_inputs WHERE id=j.input_id) operation), audited AS (INSERT INTO audit_records(workspace_id,aggregate_type,aggregate_id,event_type,actor_type,payload) SELECT workspace_id,'job',id,'job.notification_republished','reconciler','{}' FROM updated) INSERT INTO outbox(aggregate_type,aggregate_id,aggregate_version,topic,payload) SELECT 'job',id,row_version,'job.created',jsonb_strip_nulls(jsonb_build_object('protocol_version',1,'job_id',id,'job_version',row_version,'operation',operation,'traceparent',NULLIF($3,''))) FROM updated`, limit, notificationTimeout, parent)
 	if err != nil {
 		return 0, err
 	}

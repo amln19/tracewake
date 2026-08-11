@@ -134,7 +134,7 @@ tracewake verify cassette
 tracewake import cassette
 ```
 
-`verify` checks the cassette header and versions, dense event sequence, event schemas, logical run digest, canonical paths, and every referenced blob's presence, digest, and size without changing the store. Import validates completely before making a run visible; export re-verifies stored blob bytes before publishing its destination.
+`verify` checks the cassette header and versions, dense event sequence, event schemas, derived request hashes, logical run digest, canonical paths, and every referenced blob's presence, digest, and size without changing the store. Import validates completely before making a run visible; export re-verifies stored blob bytes before publishing its destination.
 
 Two distinct digests matter:
 
@@ -158,7 +158,7 @@ PostgreSQL is authoritative for hosted lifecycle state; object storage holds imm
 
 ### Run the local hosted stack
 
-With Go 1.24, PostgreSQL 17, Node 26, npm, and `uv` installed:
+With Go 1.26, PostgreSQL 17, Node 26, npm, and `uv` installed:
 
 ```sh
 scripts/local-control-plane
@@ -198,7 +198,7 @@ The main conclusion is narrow: trajectory alignment beats the named positional b
 
 ## Operational evidence
 
-Tracewake includes a local end-to-end harness that drives bundle ingestion, mandatory validation, burst load, worker loss, stale completion, retry exhaustion, artifact contradictions, outbox backlog, database outage, tenant isolation, backup/restore, and local independence. It uses one control-plane process, one worker, PostgreSQL 17, Go 1.24.13, and Python 3.13.14 on one macOS arm64 machine. These are correctness and single-machine observations, not scale claims.
+Tracewake includes a local end-to-end harness that drives bundle ingestion, mandatory validation, burst load, worker loss, stale completion, retry exhaustion, artifact contradictions, outbox backlog, database outage, tenant isolation, backup/restore, and local independence. It uses one control-plane process, one worker, PostgreSQL 17, Go 1.26.5, and Python 3.13.14 on one macOS arm64 machine. These are correctness and single-machine observations, not scale claims.
 
 Reproduce the retained local run (about ten minutes; it needs `go`, `uv`, and local PostgreSQL 17):
 

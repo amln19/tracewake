@@ -27,6 +27,18 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 )
 
+func readinessHandler(check func(context.Context) error) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := check(ctx); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 func main() {
 	databaseURL := os.Getenv("TRACEWAKE_DATABASE_URL")
 	if databaseURL == "" {
@@ -137,11 +149,13 @@ func main() {
 	workerBase := envOr("TRACEWAKE_WORKER_BASE_URL", reachableURL(workerAddr))
 	publicMux := http.NewServeMux()
 	publicMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	publicMux.HandleFunc("GET /readyz", readinessHandler(service.Ready))
 	publicAPI := httpapi.New(service, artifactStore, publicBase, strings.TrimSpace(os.Getenv("TRACEWAKE_DASHBOARD_DIR")))
 	publicAPI.UseTelemetry(observability.Metrics())
 	publicMux.Handle("/", publicAPI.Handler())
 	workerMux := http.NewServeMux()
 	workerMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	workerMux.HandleFunc("GET /readyz", readinessHandler(service.Ready))
 	resultSchema, err := os.ReadFile(envOr("TRACEWAKE_RESULT_SCHEMA", "/usr/share/tracewake/contracts/result-envelope.schema.json"))
 	if err != nil {
 		log.Fatalf("read result envelope schema: %v", err)

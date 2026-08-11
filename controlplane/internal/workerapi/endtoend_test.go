@@ -28,6 +28,7 @@ import (
 type deployment struct {
 	service     *controlplane.Service
 	pool        *pgxpool.Pool
+	artifacts   artifacts.Store
 	public      *httptest.Server
 	private     *httptest.Server
 	workspace   string
@@ -112,7 +113,7 @@ func newDeployment(t *testing.T, hosted bool) *deployment {
 		t.Fatal(err)
 	}
 	return &deployment{
-		service: service, pool: database.Pool(), public: public, private: private,
+		service: service, pool: database.Pool(), artifacts: artifactStore, public: public, private: private,
 		workspace: workspace, token: token, workerID: workerID, workerToken: workerToken,
 	}
 }
@@ -643,6 +644,13 @@ func TestHostedRoundTripCommitsExactArtifactIdentity(t *testing.T) {
 			attemptToken := map[string]string{"Tracewake-Attempt-Token": claim["attempt_token"].(string)}
 			inputs := claim["input_artifacts"].([]any)
 			input := inputs[0].(map[string]any)
+			declared, err := deployed.service.InputArtifact(ctx, jobID, 1, claim["attempt_token"].(string), input["artifact_id"].(string))
+			if err != nil {
+				t.Fatalf("service input artifact: %v", err)
+			}
+			if _, err = deployed.artifacts.GetGrant(ctx, declared.ObjectKey, declared.ObjectVersion, declared.MediaType); err != nil {
+				t.Fatalf("input grant: key=%q version=%q error=%v", declared.ObjectKey, declared.ObjectVersion, err)
+			}
 
 			status, reference := deployed.call(t, "GET", deployed.private.URL+"/internal/v1/jobs/"+jobID+"/attempts/1/inputs/"+input["artifact_id"].(string), deployed.workerToken, nil, attemptToken)
 			if status != http.StatusOK {

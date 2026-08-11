@@ -73,7 +73,13 @@ func (s *Service) Cancellation(ctx context.Context, jobID string, attempt int, t
 	var leaseValid bool
 	err = tx.QueryRow(ctx, `SELECT j.cancel_requested_at IS NOT NULL,j.current_attempt_number,j.state,a.state,a.token_verifier,a.token_pepper_version,a.lease_expires_at>transaction_timestamp()
 		FROM jobs j JOIN job_attempts a ON a.job_id=j.id AND a.attempt_number=$2 WHERE j.id=$1`, jobID, attempt).Scan(&requested, &current, &jobState, &attemptState, &verifier, &version, &leaseValid)
-	if err != nil || current != attempt || !s.workers.Verify(version, token, verifier) {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, ErrLeaseLost
+	}
+	if err != nil {
+		return false, fmt.Errorf("read cancellation state: %w", err)
+	}
+	if current != attempt || !s.workers.Verify(version, token, verifier) {
 		return false, ErrLeaseLost
 	}
 	if !requested && (jobState != "running" || attemptState != "running" || !leaseValid) {
@@ -106,8 +112,11 @@ func (s *Service) InputArtifact(ctx context.Context, jobID string, attempt int, 
 	}
 	var value InputArtifact
 	err = tx.QueryRow(ctx, `SELECT r.id,r.bundle_object_key,r.bundle_object_version,r.declared_bundle_digest,r.declared_bundle_size FROM jobs j JOIN job_inputs i ON i.id=j.input_id JOIN runs r ON r.id IN(i.run_a_id,i.run_b_id) WHERE j.id=$1 AND r.id=$2 AND ((i.operation='validate' AND r.state='validating') OR (i.operation<>'validate' AND r.state='ready'))`, jobID, artifactID).Scan(&value.ArtifactID, &value.ObjectKey, &value.ObjectVersion, &value.Digest, &value.Size)
-	if err != nil {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return value, ErrNotFound
+	}
+	if err != nil {
+		return value, fmt.Errorf("read input artifact: %w", err)
 	}
 	value.MediaType = "application/x-tar"
 	return value, tx.Commit(ctx)
@@ -167,7 +176,13 @@ func (s *Service) checkAttempt(ctx context.Context, tx pgx.Tx, jobID string, att
 		  AND EXISTS (SELECT 1 FROM runs r WHERE r.id=i.run_a_id AND ((i.operation='validate' AND r.state='validating') OR (i.operation<>'validate' AND r.state='ready')))
 		  AND (i.run_b_id IS NULL OR EXISTS (SELECT 1 FROM runs r WHERE r.id=i.run_b_id AND r.state='ready'))
 		FOR UPDATE`, jobID, attempt).Scan(&value.workspaceID, &value.operation, &jobState, &current, &attemptState, &verifier, &version, &lease, &ageSeconds)
-	if err != nil || jobState != "running" || attemptState != "running" || current != attempt || !s.workers.Verify(version, token, verifier) {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return currentAttempt{}, ErrLeaseLost
+	}
+	if err != nil {
+		return currentAttempt{}, fmt.Errorf("read current attempt: %w", err)
+	}
+	if jobState != "running" || attemptState != "running" || current != attempt || !s.workers.Verify(version, token, verifier) {
 		return currentAttempt{}, ErrLeaseLost
 	}
 	value.age = time.Duration(ageSeconds * float64(time.Second))

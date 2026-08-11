@@ -18,7 +18,7 @@ resource "aws_lb_target_group" "public" {
   deregistration_delay = 30
 
   health_check {
-    path                = "/healthz"
+    path                = "/readyz"
     matcher             = "200-299"
     interval            = 15
     timeout             = 5
@@ -78,7 +78,7 @@ resource "aws_lb_target_group" "internal" {
   deregistration_delay = 30
 
   health_check {
-    path                = "/healthz"
+    path                = "/readyz"
     matcher             = "200-299"
     interval            = 15
     timeout             = 5

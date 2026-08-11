@@ -86,6 +86,7 @@ no writes.
 
 Validation checks the outer byte limit before parsing; validates archive type,
 names, entry count, metadata, and exact canonical bytes; validates the manifest
-and declared versions; then validates events, logical digest, references, blob
-bytes, digests, and sizes. An invalid or unsupported bundle never becomes a
+and declared versions; then validates events, derived model-request and
+tool-argument hashes, logical digest, references, blob bytes, digests, and
+sizes. An invalid or unsupported bundle never becomes a
 usable hosted run.

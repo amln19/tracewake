@@ -232,6 +232,23 @@ def test_worker_launcher_uses_the_repository_result_contract(tmp_path: Path) -> 
     )
 
 
+def test_control_plane_launcher_uses_the_repository_result_contract(tmp_path: Path) -> None:
+    stack = object.__new__(Stack)
+    stack.root = tmp_path
+    stack.repository = Path.cwd()
+    stack.postgres_port = 55440
+    stack.postgres_socket = tmp_path / "postgres"
+    stack.public_port = 8090
+    stack.worker_port = 8091
+    stack.metric_interval = "2s"
+
+    environment = stack._environment()
+
+    assert environment["TRACEWAKE_RESULT_SCHEMA"] == str(
+        Path.cwd() / "contracts" / "schemas" / "v1" / "result-envelope.schema.json"
+    )
+
+
 AWS_RESULTS = RESULTS / "aws" / "measurements.json"
 
 deployed_only = pytest.mark.skipif(

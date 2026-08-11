@@ -63,6 +63,33 @@ func TestBootstrapTokenAndPepperRotation(t *testing.T) {
 	}
 }
 
+func TestWorkerAuthenticationDoesNotDisguiseDatabaseFailures(t *testing.T) {
+	databaseURL := os.Getenv("TRACEWAKE_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TRACEWAKE_TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	database, err := store.Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = database.Migrate(ctx); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	ring := controlplane.KeyRing{CurrentVersion: 1, Current: []byte("worker-auth-database-error-pepper")}
+	service, err := controlplane.New(database.Pool(), ring, ring)
+	if err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	database.Close()
+	_, err = service.AuthenticateWorker(ctx, "worker_database_error.abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ")
+	if err == nil || errors.Is(err, controlplane.ErrUnauthenticated) {
+		t.Fatalf("database failure was reported as authentication failure: %v", err)
+	}
+}
+
 func TestBrowserSessionRefreshMigratesPepper(t *testing.T) {
 	databaseURL := os.Getenv("TRACEWAKE_TEST_DATABASE_URL")
 	if databaseURL == "" {

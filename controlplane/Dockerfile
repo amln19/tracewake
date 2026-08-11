@@ -5,7 +5,7 @@ RUN npm ci
 COPY dashboard/ ./
 RUN npm run build
 
-FROM golang:1.24.12 AS build
+FROM golang:1.26.5 AS build
 WORKDIR /src
 COPY controlplane/go.mod controlplane/go.sum ./
 RUN go mod download

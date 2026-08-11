@@ -75,10 +75,18 @@ func (a *API) worker(w http.ResponseWriter, r *http.Request) (string, bool) {
 	}
 	id, err := a.service.AuthenticateWorker(r.Context(), strings.TrimPrefix(header, "Bearer "))
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "unauthenticated")
+		status, code := workerAuthenticationFailure(err)
+		writeError(w, status, code)
 		return "", false
 	}
 	return id, true
+}
+
+func workerAuthenticationFailure(err error) (int, string) {
+	if errors.Is(err, controlplane.ErrUnauthenticated) {
+		return http.StatusUnauthorized, "unauthenticated"
+	}
+	return http.StatusServiceUnavailable, "internal"
 }
 
 // identity lets a worker that received only a credential learn the worker ID
@@ -97,6 +105,10 @@ func (a *API) next(w http.ResponseWriter, r *http.Request) {
 	}
 	item, err := a.service.NextNotification(r.Context())
 	if err != nil {
+		if !errors.Is(err, controlplane.ErrNotFound) {
+			writeError(w, http.StatusServiceUnavailable, "internal")
+			return
+		}
 		trace.SpanFromContext(r.Context()).SetAttributes(attribute.Bool(telemetry.IdleAttribute, true))
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -108,8 +120,12 @@ func (a *API) ack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil || a.service.AcknowledgeNotification(r.Context(), id) != nil {
+	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request")
+		return
+	}
+	if err = a.service.AcknowledgeNotification(r.Context(), id); err != nil {
+		writeError(w, http.StatusServiceUnavailable, "internal")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -150,6 +166,13 @@ func claimFailure(err error) (int, string) {
 	return http.StatusServiceUnavailable, "internal"
 }
 
+func attemptFailure(err error) (int, string) {
+	if errors.Is(err, controlplane.ErrLeaseLost) || errors.Is(err, controlplane.ErrConflict) || errors.Is(err, controlplane.ErrNotFound) {
+		return http.StatusConflict, "lease_lost"
+	}
+	return http.StatusServiceUnavailable, "internal"
+}
+
 func attemptNumber(r *http.Request) (int, error) { return strconv.Atoi(r.PathValue("attempt")) }
 func (a *API) heartbeat(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.worker(w, r); !ok {
@@ -171,7 +194,8 @@ func (a *API) heartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 	lease, err := a.service.Heartbeat(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Tracewake-Attempt-Token"))
 	if err != nil {
-		writeError(w, 409, "lease_lost")
+		status, code := attemptFailure(err)
+		writeError(w, status, code)
 		return
 	}
 	w.Header().Set("Tracewake-Lease-Expires-At", lease.Format("2006-01-02T15:04:05.999999999Z07:00"))
@@ -198,7 +222,8 @@ func (a *API) progress(w http.ResponseWriter, r *http.Request) {
 	}
 	err = a.service.UpdateProgress(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Tracewake-Attempt-Token"), controlplane.Progress{Sequence: body.Sequence, Stage: body.Stage, Message: body.Message})
 	if err != nil {
-		writeError(w, 409, "lease_lost")
+		status, code := attemptFailure(err)
+		writeError(w, status, code)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -214,7 +239,8 @@ func (a *API) cancellation(w http.ResponseWriter, r *http.Request) {
 	}
 	cancelled, err := a.service.Cancellation(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Tracewake-Attempt-Token"))
 	if err != nil {
-		writeError(w, 409, "lease_lost")
+		status, code := attemptFailure(err)
+		writeError(w, status, code)
 		return
 	}
 	writeJSON(w, 200, map[string]any{"protocol_version": 1, "cancel_requested": cancelled})
@@ -239,7 +265,8 @@ func (a *API) fail(w http.ResponseWriter, r *http.Request) {
 	}
 	state, err := a.service.FailAttempt(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Tracewake-Attempt-Token"), body.Code, body.Message, body.Retryable)
 	if err != nil {
-		writeError(w, 409, "lease_lost")
+		status, code := attemptFailure(err)
+		writeError(w, status, code)
 		return
 	}
 	status := http.StatusOK
@@ -276,7 +303,8 @@ func (a *API) declareArtifact(w http.ResponseWriter, r *http.Request) {
 	}
 	workspace, err := a.service.AuthorizeAttempt(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Tracewake-Attempt-Token"))
 	if err != nil {
-		writeError(w, 409, "lease_lost")
+		status, code := attemptFailure(err)
+		writeError(w, status, code)
 		return
 	}
 	key := "workspaces/" + workspace + "/jobs/" + r.PathValue("job") + "/attempts/" + strconv.Itoa(attempt) + "/" + body.Kind
@@ -351,7 +379,8 @@ func (a *API) complete(w http.ResponseWriter, r *http.Request) {
 	}
 	err = a.service.CompleteAttempt(ctx, r.PathValue("job"), attempt, r.Header.Get("Tracewake-Attempt-Token"), body)
 	if err != nil {
-		writeError(w, 409, "lease_lost")
+		status, code := attemptFailure(err)
+		writeError(w, status, code)
 		return
 	}
 	writeJSON(w, 200, map[string]any{"protocol_version": 1, "status": "succeeded"})
@@ -687,7 +716,8 @@ func (a *API) input(w http.ResponseWriter, r *http.Request) {
 	}
 	value, err := a.service.InputArtifact(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Tracewake-Attempt-Token"), r.PathValue("artifact"))
 	if err != nil {
-		writeError(w, 409, "lease_lost")
+		status, code := attemptFailure(err)
+		writeError(w, status, code)
 		return
 	}
 	grant, err := a.artifacts.GetGrant(r.Context(), value.ObjectKey, value.ObjectVersion, value.MediaType)

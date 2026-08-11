@@ -153,6 +153,10 @@ jobs:
         working-directory: controlplane
       - run: go vet ./...
         working-directory: controlplane
+      - run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+          "$(go env GOPATH)/bin/govulncheck" ./...
+        working-directory: controlplane
 
   evidence:
     name: Operational evidence harness
