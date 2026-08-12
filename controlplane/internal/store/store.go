@@ -21,9 +21,6 @@ const migrationStatementBreak = "-- tracewake-statement-break"
 const migrationLockID int64 = 0x747261636577616b
 
 func migrationStatements(contents string) []string {
-	// Deployed migration bytes retain the pre-rename delimiter. Normalizing it
-	// here preserves those bytes without making it the name for new migrations.
-	contents = strings.ReplaceAll(contents, "-- locus-statement-break", migrationStatementBreak)
 	return strings.Split(contents, migrationStatementBreak)
 }
 
