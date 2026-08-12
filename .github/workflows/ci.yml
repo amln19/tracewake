@@ -25,7 +25,7 @@ jobs:
       - run: PYTHONHASHSEED=0 uv run --python 3.13 pytest
 
   package:
-    name: Build and installed-wheel smoke test
+    name: Build, installed-wheel smoke test, and sdist suite
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -93,6 +93,19 @@ jobs:
           replayed=$("$RUNNER_TEMP/tracewake-wheel/bin/tracewake" replay smoke --store "$smoke/store")
           test "$(printf '%s\n' "$recorded" | head -n 1)" = \
             "$(printf '%s\n' "$replayed" | head -n 1)"
+      # The sdist ships this suite so a packager can verify the artifact. That
+      # is only worth anything if the shipped tests actually run against the
+      # shipped tree, which a checkout cannot show: the editable install puts
+      # the repository root on sys.path and hides everything the sdist omits.
+      - name: Run the shipped suite against the unpacked sdist
+        run: |
+          sdist=$(ls dist/*.tar.gz)
+          unpacked="$RUNNER_TEMP/tracewake-sdist"
+          mkdir "$unpacked"
+          tar -xzf "$sdist" -C "$unpacked" --strip-components=1
+          "$RUNNER_TEMP/tracewake-wheel/bin/python" -m pip install pytest
+          cd "$unpacked"
+          PYTHONHASHSEED=0 "$RUNNER_TEMP/tracewake-wheel/bin/python" -m pytest -q
 
   contracts:
     name: Contract compatibility / ${{ matrix.os }}

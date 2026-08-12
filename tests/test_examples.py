@@ -8,7 +8,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 DEMO = Path(__file__).parent.parent / "examples" / "demo.py"
+
+# The examples are not packaged, so this check only applies to a checkout.
+pytestmark = pytest.mark.skipif(
+    not DEMO.is_file(), reason="the examples are not part of the distribution"
+)
 
 
 def test_the_demo_records_replays_and_reports_a_real_divergence() -> None:

@@ -4,6 +4,8 @@
 .tracewake
 __pycache__
 .pytest_cache
+.mypy_cache
+.ruff_cache
 *.pyc
 build
 dist
@@ -12,3 +14,9 @@ dashboard/dist
 dashboard/test-results
 dashboard/playwright-report
 dashboard/*.tsbuildinfo
+# No image copies these, and on a machine that has run the harnesses they are
+# the build context: provider binaries and state under deploy/, the recorded
+# stores under corpus/, retained telemetry under evidence/.
+deploy
+corpus
+evidence
