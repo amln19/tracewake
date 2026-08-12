@@ -1,6 +1,6 @@
 [project]
 name = "tracewake"
-version = "0.3.1"
+version = "0.4.0"
 description = "Record. Replay. Find the divergence. Deterministic execution recording, replay, and differential debugging for AI agents."
 readme = "README.md"
 license = "MIT"
