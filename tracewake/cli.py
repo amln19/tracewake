@@ -14,7 +14,14 @@ from typing import Annotated
 
 import typer
 
-from .align import DiffResult, LexicalEmbedder, MlxEmbedder, diff_runs, format_diff
+from .align import (
+    DiffResult,
+    LexicalEmbedder,
+    MlxEmbedder,
+    diff_runs,
+    extract_steps,
+    format_diff,
+)
 from .cassette import _validate_cassette, export_cassette, import_cassette, read_header
 from .config import RECORD_MODES, Config, RecordMode
 from .events import RunHeader, StoredEvent
@@ -407,7 +414,11 @@ StoreBOption = Annotated[
 
 
 def _align_pair(
-    db: Store, db_b: Store, good: str, bad: str, lexical: bool
+    db: Store,
+    db_b: Store,
+    good: str,
+    bad: str,
+    lexical: bool,
 ) -> tuple[RunHeader, list[StoredEvent], RunHeader, list[StoredEvent], DiffResult]:
     good_header = db.resolve(good)
     bad_header = db_b.resolve(bad)
@@ -458,6 +469,38 @@ def diff_(
     )
     if result.excluded_by_length:
         raise typer.Exit(2)
+
+
+@app.command("localize")
+def localize_(
+    run: Annotated[str, typer.Argument(help="Failing run id or cassette name.")],
+    store: StoreOption = Path(".tracewake"),
+) -> None:
+    """Report where a failing run went irrecoverably wrong, from that run alone.
+
+    Needs no passing run to compare against. `diff` answers a different
+    question -- where two runs stopped agreeing -- and is much weaker on long
+    traces; see contracts/divergence.md.
+    """
+    from .diverge import RELIABILITY_ACCURACY, localize
+
+    db = Store(store)
+    header = db.resolve(run)
+    steps = extract_steps(db.events(header.run_id))
+    db.close()
+
+    if not steps:
+        raise typer.BadParameter(f"run {header.run_id} has no steps to localize")
+
+    step, klass = localize(steps)
+    typer.echo(f"first irrecoverable step: {step} of {len(steps)}")
+    typer.echo(f"reliability {klass} (~{RELIABILITY_ACCURACY[klass]:.0%} within two steps)")
+    typer.echo(f"  {steps[step - 1].name} {steps[step - 1].target}".rstrip())
+    if klass == "silent-long":
+        typer.echo(
+            "this run changed nothing it had not created, over a long trace; "
+            "treat the step above as unreliable"
+        )
 
 
 @app.command("view")
