@@ -170,12 +170,20 @@ def to_steps(
         names: list[str] = []
         targets: list[str] = []
         merged: dict[str, Any] = {}
+        written: set[str] = set()
         for name, args in calls:
             if name in (_SHELL, _OPENHANDS_BASH):
                 verb, args = _shell_step(str(args.get("command", "")))
                 name = verb if shell_verbs else name
             else:
                 name, args = _normalize_editor(name, args, changed)
+                # Not a `changed` delta: the set is keyed by (path, command), so
+                # a second edit to the same path adds nothing to it while still
+                # being a write.
+                command = name.rpartition(".")[2]
+                if name.startswith(f"{_EDITOR}.") and command in _EDIT_COMMANDS:
+                    if args.get("path"):
+                        written.add(str(args["path"]))
             names.append(name)
             targets.append(str(args.get("path", "")))
             merged.update(args)
@@ -188,6 +196,7 @@ def to_steps(
                 changed_files=frozenset(changed),
                 batch_names=tuple(names) if len(names) > 1 else (),
                 batch_targets=tuple(targets) if len(targets) > 1 else (),
+                writes=frozenset(written),
             )
         )
     return steps
