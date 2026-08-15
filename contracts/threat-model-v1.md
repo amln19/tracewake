@@ -120,6 +120,30 @@ authoritative success references: the artifact row is the record of what a job
 committed and outlives the bytes it describes, which is what lets provenance
 stay truthful after data is gone.
 
+## What is checked
+
+Prose does not fail, so the claims above that can be executed are, by tests that
+name the sentence they defend:
+
+* attempt tokens constraining mutation to their own claim, another workspace's
+  identifiers answering indistinguishably from unknown ones, the audit ledger
+  holding no token material, and the browser surface withholding object
+  identity — `controlplane/internal/workerapi/threat_model_test.go`;
+* a worker not choosing an arbitrary object key —
+  `TestCompleteAuthorizesBeforeReadingAWorkerSuppliedKey`;
+* fencing of stolen, duplicated, expired, and late attempts, and exactly one
+  committed result — `controlplane/internal/controlplane/operations_test.go`;
+* the browser session's lifetime, flags, scoping, and CSRF rotation —
+  `TestBrowserSessionIsShortLivedScopedAndCSRFProtected`;
+* the report renderer's sandbox and CSP — `internal/httpapi/api_test.go`;
+* telemetry carrying no tenant content — `tests/test_evidence.py`, against the
+  bytes two real services emitted rather than review alone;
+* the retention windows, and that retention keeps what a success references —
+  `controlplane/internal/controlplane/retention_test.go`.
+
+The rest is review, and nothing here verifies that this document still
+describes the code.
+
 ## Residual risks
 
 Redaction targets known secrets and home paths but cannot prove arbitrary
