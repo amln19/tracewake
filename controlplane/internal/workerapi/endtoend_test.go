@@ -784,3 +784,62 @@ func TestDeletionRemovesATenantRunThroughThePublicAPI(t *testing.T) {
 		t.Fatalf("deleting twice did not report the run as gone: %d", status)
 	}
 }
+
+// TestCompleteAuthorizesBeforeReadingAWorkerSuppliedKey pins the ordering the
+// threat model promises: "a worker cannot choose a workspace or arbitrary
+// object key". The completion body names the key to commit, so the attempt
+// token has to be judged before the object store is consulted. A request that
+// holds no live attempt must be refused as a lost lease, not reported as a
+// failed commit of an object it was never entitled to have read.
+func TestCompleteAuthorizesBeforeReadingAWorkerSuppliedKey(t *testing.T) {
+	deployed := newDeployment(t, false)
+	ctx := context.Background()
+	run := newID(t)
+	_, err := deployed.pool.Exec(ctx, `INSERT INTO runs(id,workspace_id,state,declared_bundle_format,declared_bundle_digest,declared_bundle_size,bundle_object_key,bundle_object_version,validated_bundle_format,cassette_format_version,event_schema_version,logical_run_digest,event_count,ready_at)
+        VALUES($1,$2,'ready',1,$3,1,$4,'version-1',1,1,3,$5,1,transaction_timestamp())`,
+		run, deployed.workspace, hexDigest([]byte("bundle")), "workspaces/"+deployed.workspace+"/runs/"+run+"/bundle.tar", hexDigest([]byte("logical")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, created := deployed.call(t, "POST", deployed.public.URL+"/v1/jobs", deployed.token,
+		map[string]any{"operation": "otlp", "run_ids": []string{run}}, map[string]string{"Idempotency-Key": "ordering-" + run})
+	if status != http.StatusCreated {
+		t.Fatalf("job creation status=%d body=%v", status, created)
+	}
+	jobID := created["job_id"].(string)
+	status, claim := deployed.call(t, "POST", deployed.private.URL+"/internal/v1/claims", deployed.workerToken,
+		map[string]any{"protocol_version": 1, "worker_id": deployed.workerID, "notification": map[string]any{"protocol_version": 1, "job_id": jobID, "job_version": 1, "operation": "otlp"}}, nil)
+	if status != http.StatusCreated {
+		t.Fatalf("claim status=%d body=%v", status, claim)
+	}
+
+	envelope := []byte(`{"protocol_version":1,"status":"succeeded"}`)
+	completion := func(key string) map[string]any {
+		return map[string]any{
+			"artifact_id": "", "kind": "otlp_result_json", "object_key": key,
+			"object_version": hexDigest(envelope), "digest": hexDigest(envelope),
+			"media_type": "application/json", "schema_name": "result-envelope",
+			"size": len(envelope), "schema_version": 1,
+			"logical_run_digest": "", "bundle_digest": "", "event_count": 0,
+			"bundle_format_version": 0, "cassette_format_version": 0, "event_schema_version": 0,
+			"companions": []any{},
+		}
+	}
+	url := deployed.private.URL + "/internal/v1/jobs/" + jobID + "/attempts/1/complete"
+	attemptKey := "workspaces/" + deployed.workspace + "/jobs/" + jobID + "/attempts/1/otlp_result_json"
+
+	// No live attempt: the token decides, whatever key the body names.
+	status, refused := deployed.call(t, "POST", url, deployed.workerToken, completion(attemptKey),
+		map[string]string{"Tracewake-Attempt-Token": "attempt.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"})
+	if code := refused["error"].(map[string]any)["code"]; status != http.StatusConflict || code != "lease_lost" {
+		t.Fatalf("a completion with no live attempt was answered status=%d code=%v; the attempt token must be judged before the named object is read", status, code)
+	}
+
+	// A live attempt still cannot name a key outside itself.
+	foreign := "workspaces/" + deployed.workspace + "/runs/" + run + "/bundle.tar"
+	status, outside := deployed.call(t, "POST", url, deployed.workerToken, completion(foreign),
+		map[string]string{"Tracewake-Attempt-Token": claim["attempt_token"].(string)})
+	if status/100 == 2 {
+		t.Fatalf("a completion committed a key outside its own attempt: %v", outside)
+	}
+}

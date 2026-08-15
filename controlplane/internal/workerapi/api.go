@@ -338,6 +338,30 @@ func (a *API) complete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_request")
 		return
 	}
+	// The completion body names the keys to commit, so the attempt has to be
+	// judged before the object store is consulted — and the keys constrained to
+	// the attempt that authorized them. `declareArtifact` never has to ask,
+	// because it builds the key from the authorized workspace itself; here the
+	// worker supplies it, and a worker cannot be allowed to choose an arbitrary
+	// object key even for a read. `CompleteAttempt` checks the exact keys again
+	// inside the transaction that commits them.
+	workspace, err := a.service.AuthorizeAttempt(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Tracewake-Attempt-Token"))
+	if err != nil {
+		status, code := attemptFailure(err)
+		writeError(w, status, code)
+		return
+	}
+	prefix := "workspaces/" + workspace + "/jobs/" + r.PathValue("job") + "/attempts/" + strconv.Itoa(attempt) + "/"
+	if !strings.HasPrefix(body.ObjectKey, prefix) {
+		writeError(w, 409, "artifact_commit_failed")
+		return
+	}
+	for _, companion := range body.Companions {
+		if !strings.HasPrefix(companion.ObjectKey, prefix) {
+			writeError(w, 409, "artifact_commit_failed")
+			return
+		}
+	}
 	ctx, span := telemetry.Span(r.Context(), "artifact.commit", trace.SpanKindInternal)
 	object, err := a.artifacts.Commit(ctx, body.ObjectKey, body.ObjectVersion, body.Digest, body.Size)
 	committed := []artifacts.Object{object}
