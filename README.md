@@ -188,69 +188,65 @@ The AWS Terraform environment is optional and requires an account, state backend
 
 ## Evaluation
 
-Tracewake locates where a failing run went irrecoverably wrong using only that run. There is no reference run and no model call. `tracewake localize <run>` reports a step and a reliability class. The full definition, every measurement, and the limits are in [`contracts/divergence.md`](contracts/divergence.md).
+Tracewake locates where a failing run went irrecoverably wrong using only that run. There is no reference run and no model call. `tracewake localize <run>` reports a step and a reliability class. The full definition, every measurement and every limit is in [`contracts/divergence.md`](contracts/divergence.md).
 
-Reading a file is recoverable; writing one is not. Three facts each bound the point of no return from above: the run changed something it did not create, its actions became exactly periodic to the end, or it stopped doing anything it does not also repeat. The earliest of the three is the tightest bound, so that is what gets reported. Nothing here is weighted or fitted.
+Reading a file is recoverable; writing one is not. Three facts each bound the point of no return from above: the run changed something it did not create, its actions became exactly periodic to the end, or it stopped doing anything it does not also repeat. The earliest of the three is the tightest bound, so that is what gets reported. Nothing is weighted or fitted.
 
-The four labelled sets differ in who wrote the labels, which agent framework produced the runs, and how long the failures are:
+### What it scores
 
-| Set | Pairs | Labelled by | Agent framework | Median failing trace |
+Scored once on 109 held-out failures, with the rule frozen. Traces average 40 steps, and the window is how much of one you must read before the answer is inside it:
+
+| Window | Steps to read | All 109 | The 41% it flags as reliable |
+| --- | --- | --- | --- |
+| ±2 | 5 | 57% | **82%** |
+| ±5 | 11 | 71% | **87%** |
+| ±10 | 21 | 84% | 91% |
+
+The single most useful line: **on the two-fifths of failures it identifies as tractable, an eleven-step window contains the point of no return 87% of the time.**
+
+Two label-free facts decide that flag: whether the run wrote to anything it did not create, and whether the trace is longer than 18 steps. They sort failures into classes from 87% down to 21% accurate, and the ordering holds inside every dataset. A long run that changed nothing pre-existing is right about a fifth of the time, and is reported as unreliable rather than dressed up as an answer.
+
+### The data
+
+| Set | Failures | Labelled by | Agent framework | Median trace |
 | --- | --- | --- | --- | --- |
-| OpenHands dev | 40 | Tracewake | OpenHands | 18 steps |
-| OpenHands held-out | 40 | Tracewake | OpenHands | 18 steps |
-| RootSE | 58 | TrajAudit authors | four scaffolds | 51 steps |
-| nebius | 40 | Tracewake | SWE-agent | 56 steps |
+| OpenHands | 80 | Tracewake | OpenHands | 18 steps |
+| RootSE | 102 | **TrajAudit authors** | four scaffolds | 52 steps |
+| nebius | 55 | Tracewake | SWE-agent | 56 steps |
 
-The two OpenHands halves come from one 80-pair set, split with a fixed seed before any design work and never re-split. The development half was open during design; the held-out half was scored at the end. Both are shown because the comparison between them is the check: a method fitted to its development data would score lower on the half it never saw.
+Each is split by a fixed seed into a development half and a held-out half, written once and refused a rewrite. Only RootSE carries labels from outside this project, so its column is worth more than the others.
 
-RootSE is the only set labelled by people outside this project, and the only one spanning several agent frameworks. Its failures and nebius's run about three times longer than the OpenHands ones, which is the regime where every method here is weakest.
+An earlier sweep selected the rule while looking at all of them, which made those figures in-sample. Two later measurements checked it, each scored once:
 
-Within ±2 steps of the label, on all 178 pairs:
+* **44 RootSE failures labelled by the TrajAudit authors and never used**, since they ship no passing run and only a single-trace rule can attempt them: 48%, against 47% on the ones that had been used.
+* **15 freshly labelled nebius pairs** from pool entries nothing had rendered: 53%, against 54% in-sample.
 
-| Rule | OpenHands dev | OpenHands held-out | RootSE | nebius | pooled |
-| --- | --- | --- | --- | --- | --- |
-| `earliest_bound` | 25/40 | 25/40 | 27/58 | 19/40 | **96/178 = 54%** |
-| `first_commitment` | 25/40 | 23/40 | 27/58 | 15/40 | 90/178 = 51% |
-| `align-v1` (alignment readout) | 18/40 | 18/40 | 5/58 | 4/40 | 45/178 = 25% |
-| constant 10, fitted on development data | 22/40 | 21/40 | 9/58 | 5/40 | 57/178 = 32% |
+Neither is precise alone. Both land on the in-sample figure, so the number is not an artefact of picking a winner.
 
-Read the columns rather than the pooled total. The sets are not equivalent evidence, and the pool is dominated by whichever one happens to be largest.
+Against the alternatives, in-sample across all 178 pairs then available:
 
-These four sets were all used to select the rule, so the figures above are in-sample. Two later measurements checked that, both scored once with the rule frozen:
-
-* **44 RootSE failures labelled by the TrajAudit authors and never used**, because they ship no passing reference run and only a single-trace rule can attempt them: 21/44 = 48%, against 47% on the 58 that were used.
-* **15 freshly labelled nebius pairs** drawn from pool entries nothing had rendered: 8/15 = 53%, against 54% in-sample.
-
-Neither is precise on its own, but both land on the in-sample figure, so the headline is not a selection artefact.
-
-Two label-free facts sort the pairs into classes ranging from 87% to 21% accurate: whether the run committed at all, and whether the trace exceeds 18 steps. The ordering holds inside each dataset, not only in the pool:
-
-| Answering | Coverage | Accuracy |
-| --- | --- | --- |
-| everything | 100% | 54% |
-| drop `silent-long` | 89% | 58% |
-| also drop `commit-long-many` | 42% | **80%** |
-| `commit-short` only | 17% | 87% |
-
-A long run that never changed anything pre-existing is right about a fifth of the time. Tracewake reports that class as unreliable instead of dressing it up as an answer.
-
-Reporting a single step also understates it. What matters when debugging is how much of the trace you have to read before the answer is inside it. Scored once on the held-out halves (109 pairs, traces averaging 40 steps):
-
-| Window | Steps to read | Held out |
-| --- | --- | --- |
-| ±2 | 5 | 57% |
-| ±5 | 11 | 71% |
-| ±10 | 21 | 84% |
-
-On the two-fifths of failures it flags as tractable, an eleven-step window contains the point of no return **87%** of the time.
+| Rule | pooled |
+| --- | --- |
+| `earliest_bound` | **96/178 = 54%** |
+| `first_commitment` | 90/178 = 51% |
+| constant 10, fitted on development data | 57/178 = 32% |
+| `align-v1` (the alignment readout) | 45/178 = 25% |
 
 ### Compared with published methods
 
-The literature reports *exact* step match. On RootSE that is 21% here, against 56.6% for [TrajAudit](https://arxiv.org/abs/2605.26563) at roughly 122k tokens per instance, 31.9% for all-at-once prompting, and 15.8% for binary search over steps. That puts it between the field's search baselines and its weaker prompting baselines, at zero marginal cost, and well behind the state of the art.
+The literature reports *exact* step match. On RootSE that is 21% here, against 56.6% for [TrajAudit](https://arxiv.org/abs/2605.26563) at roughly 122k tokens per instance, 31.9% for all-at-once prompting and 15.8% for binary search over steps. That places it between the field's search baselines and its weaker prompting baselines, at zero marginal cost, and well behind the state of the art.
 
-The accuracy is not what stands out. No published work reports a purely non-LLM baseline for this task at all. A reference-based variant was built, measured, and withdrawn once it turned out to win only on the scaffold it was tuned against; a prediction registered in advance to explain those wins was then falsified on fresh data. Around thirty other candidate signals were tried and lost. [`contracts/divergence.md`](contracts/divergence.md) records each one and why.
+The accuracy is not what stands out. No published work reports a purely non-LLM baseline for this task at all.
 
-[`corpus/`](corpus/README.txt) describes the labelled packets, the seeded development and held-out partition, and the per-pair prediction sheets. The benchmark commands live in [`bench/`](bench/). Running `python -m bench.pooled` reproduces both tables above.
+### Where it stops, and why
+
+Roughly seventy candidate signals were measured and lost, including a reference-based variant that was built, measured and withdrawn after winning only on the scaffold it was tuned against, on a prediction registered in advance and then falsified.
+
+The residual errors are now located rather than guessed at. On RootSE, 21 development labels fall before the run's first write, and eight of those sit on a step with **no action at all**, a turn where the agent only reasoned. Such steps are 2.9% of RootSE but carry 17% of its labels. The point of no return concentrates where the agent stops acting and thinks, and those steps contain nothing but prose for a structural rule to read.
+
+That is a limit of modality rather than of tuning: what remains needs language, which is what the LLM methods above spend their tokens on. [`contracts/divergence.md`](contracts/divergence.md) records every failed signal and why.
+
+[`corpus/`](corpus/README.txt) holds the labelled packets, the seeded splits and the per-pair predictions. The benchmark commands live in [`bench/`](bench/); `python -m bench.pooled` reproduces the rule comparison.
 
 ## Operational evidence
 
