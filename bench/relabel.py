@@ -37,6 +37,8 @@ from collections import defaultdict
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from tracewake.align import Step
+
 from .repos import CORPUS_ROOT
 
 # Fixed before the draw and never changed. A re-draw under a new seed after
@@ -125,6 +127,21 @@ def _openhands_snapshot() -> Path:
     return hits[-1]
 
 
+def has_model_prose(messages: list[dict]) -> bool:
+    """Did the model say anything at all across the rollout?
+
+    36% of OpenHands failing rollouts emit no prose in any assistant turn: a
+    handful of identical tool calls against an empty directory listing, no
+    patch, and `empty_generation` from the grader. There is no point of no
+    return in one of those, because there is no decision — the run failed
+    before the agent did anything a rule could read. They are excluded here
+    rather than labelled, and the exclusion is fixed before any label exists.
+
+    nebius shows none of this: zero of 660 sampled rollouts lack prose.
+    """
+    return any((m.get("content") or "").strip() for m in messages if m.get("role") == "assistant")
+
+
 def _openhands_candidates(excluded: set[str], model: str) -> dict[str, list[str]]:
     """Eligible failing run ids for one model, grouped by instance.
 
@@ -138,14 +155,17 @@ def _openhands_candidates(excluded: set[str], model: str) -> dict[str, list[str]
 
     grouped: dict[str, list[str]] = defaultdict(list)
     for shard in sorted(_openhands_snapshot().glob("*.parquet")):
-        table = pq.read_table(shard, columns=["instance_id", "resolved", "run_id"])
-        for instance, resolved, run in zip(
+        table = pq.read_table(shard, columns=["instance_id", "resolved", "run_id", "messages"])
+        for instance, resolved, run, messages in zip(
             table["instance_id"].to_pylist(),
             table["resolved"].to_pylist(),
             table["run_id"].to_pylist(),
+            table["messages"].to_pylist(),
             strict=True,
         ):
             if resolved or instance in excluded or model_of_run_id(run) != model:
+                continue
+            if not has_model_prose(messages):
                 continue
             grouped[instance].append(run)
     return dict(grouped)
@@ -220,6 +240,189 @@ def draw_calibration() -> list[Draw]:
             )
     rng.shuffle(drawn)
     return [replace(item, packet_id=f"C{index:03d}") for index, item in enumerate(drawn, start=1)]
+
+
+# Long enough that the decisive detail is rarely cut, short enough that a packet
+# stays readable. Observations are held tighter than the rest: they are included
+# so a step's effect is visible — whether an edit applied, whether a test errored
+# — not so the label can be read off a traceback, which would answer where the
+# failure became evident rather than where it became certain.
+ARG_CHARS = 400
+REASON_CHARS = 600
+OBSERVATION_CHARS = 300
+
+DEFINITION = """\
+Operational definition: the 1-based index of the earliest step after which no
+later step could plausibly have recovered this run, without undoing work already
+done or outside intervention.
+
+Not the first mistake — a wrong turn the run notices and fixes is not it.
+Not where failure became evident — evidence arrives later than commitment.
+Not the last step by default.
+
+If the run was never on a recoverable path, answer 1. If it stayed recoverable
+to the very end, answer the last step. A step with no action can be the answer:
+if the decisive commitment is made in reasoning and later steps merely execute
+it, name the reasoning step. If two adjacent steps both qualify, take the
+earlier.
+
+Exclusions, in place of an integer: E1 truncated or malformed, E2 failed for
+reasons outside the run's control, E3 appears to have solved it, E4 no judgment
+reachable after reading the whole trajectory.
+"""
+
+
+def _clip(text: str, limit: int) -> str:
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]} …[+{len(text) - limit} chars]"
+
+
+def load_steps(draw: Draw, rows: dict[str, object] | None = None) -> list[Step]:
+    """The failing trajectory, extracted exactly as its source is scored.
+
+    OpenHands strips the trailing `finish` and SWE-agent does not; the two
+    adapters differ here, and a label indexes the steps a method will see.
+    """
+    if draw.source == "nebius":
+        from .nebius import to_steps
+
+        trajectory = rows[row_key(draw)] if rows is not None else _nebius_row(draw.row)
+        return to_steps(trajectory)
+    from .external import strip_terminal, to_steps
+
+    messages = rows[row_key(draw)] if rows is not None else _openhands_row(draw)
+    return strip_terminal(to_steps(messages, shell_verbs=True))
+
+
+def row_key(draw: Draw) -> str:
+    """What identifies one rollout inside its source.
+
+    An OpenHands run id names the sampling configuration, not the rollout —
+    6,055 rollouts share nine of them — so it identifies a trajectory only
+    together with its instance. A nebius row is already unique.
+    """
+    if draw.source == "nebius":
+        return draw.row
+    return f"{draw.instance_id}|{draw.row}"
+
+
+def _nebius_row(row: str):
+    import pyarrow.parquet as pq
+
+    from .nebius import _snapshot
+
+    shard, index = row.rsplit(":", 1)
+    return pq.read_table(_snapshot() / shard, columns=["trajectory"])["trajectory"][int(index)].as_py()
+
+
+def _openhands_row(draw: Draw):
+    import pyarrow.parquet as pq
+
+    for shard in sorted(_openhands_snapshot().glob("*.parquet")):
+        table = pq.read_table(shard, columns=["instance_id", "run_id", "messages"])
+        for instance, run, messages in zip(
+            table["instance_id"].to_pylist(),
+            table["run_id"].to_pylist(),
+            table["messages"].to_pylist(),
+            strict=True,
+        ):
+            if instance == draw.instance_id and run == draw.row:
+                return messages
+    raise KeyError(f"{draw.packet_id}: no rollout {draw.row} for {draw.instance_id}")
+
+
+def render_packet(draw: Draw, steps: list[Step]) -> str:
+    """One trajectory as the labeller sees it.
+
+    The instance, the model and the source are withheld: they name the bug and
+    the scaffold, and neither belongs in a judgment about this run's own steps.
+    """
+    lines = [f"# Packet {draw.packet_id}", "", DEFINITION, "Label: ________", "Confident: ________", "", f"## FAILING RUN  ({len(steps)} steps)", ""]
+    for index, step in enumerate(steps, start=1):
+        head = f"  {index:>3}. {step.name}"
+        if step.target:
+            head += f"  → {step.target}"
+        lines.append(head)
+        if step.args:
+            lines.append(f"       args: {_clip(json.dumps(step.args, sort_keys=True), ARG_CHARS)}")
+        if step.reasoning:
+            lines.append(f"       reason: {_clip(step.reasoning, REASON_CHARS)}")
+        if step.observation:
+            lines.append(f"       saw: {_clip(step.observation, OBSERVATION_CHARS)}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def export(draws: list[Draw], name: str) -> Path:
+    """Write packets and the key that maps them back, into separate files.
+
+    The key names the instance and, for calibration, the packet whose label is
+    being reproduced. It stays closed until every packet in the set is labelled.
+    """
+    root = LABEL_ROOT / name
+    (root / "packets").mkdir(parents=True, exist_ok=True)
+    grouped: dict[str, list[Draw]] = defaultdict(list)
+    for draw in draws:
+        grouped[draw.source].append(draw)
+    for source, items in grouped.items():
+        rows = _bulk_rows(source, items)
+        for draw in items:
+            steps = load_steps(draw, rows)
+            (root / "packets" / f"{draw.packet_id}.md").write_text(
+                render_packet(draw, steps), encoding="utf-8"
+            )
+    key = [
+        {
+            "packet_id": d.packet_id,
+            "source": d.source,
+            "instance_id": d.instance_id,
+            "model": d.model,
+            "row": d.row,
+            **({"origin_packet": d.origin_packet} if d.origin_packet else {}),
+        }
+        for d in sorted(draws, key=lambda d: d.packet_id)
+    ]
+    (root / "key.jsonl").write_text(
+        "\n".join(json.dumps(row, sort_keys=True) for row in key) + "\n", encoding="utf-8"
+    )
+    return root
+
+
+def _bulk_rows(source: str, draws: list[Draw]) -> dict[str, object]:
+    """Every trajectory a source needs, read one shard at a time."""
+    import pyarrow.parquet as pq
+
+    if source == "nebius":
+        from .nebius import _snapshot
+
+        wanted: dict[str, set[int]] = defaultdict(set)
+        for draw in draws:
+            shard, index = draw.row.rsplit(":", 1)
+            wanted[shard].add(int(index))
+        out: dict[str, object] = {}
+        snapshot = _snapshot()
+        for shard, indices in sorted(wanted.items()):
+            column = pq.read_table(snapshot / shard, columns=["trajectory"])["trajectory"]
+            for index in sorted(indices):
+                out[f"{shard}:{index}"] = column[index].as_py()
+            del column
+        return out
+    wanted_runs = {(d.instance_id, d.row): row_key(d) for d in draws}
+    out = {}
+    for shard in sorted(_openhands_snapshot().glob("*.parquet")):
+        table = pq.read_table(shard, columns=["instance_id", "run_id", "messages"])
+        for instance, run, messages in zip(
+            table["instance_id"].to_pylist(),
+            table["run_id"].to_pylist(),
+            table["messages"].to_pylist(),
+            strict=True,
+        ):
+            key = wanted_runs.get((instance, run))
+            if key is not None:
+                out[key] = messages
+    return out
 
 
 def summarize(draws: list[Draw]) -> str:
