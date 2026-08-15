@@ -234,6 +234,16 @@ Two label-free facts sort the pairs into classes ranging from 87% to 21% accurat
 
 A long run that never changed anything pre-existing is right about a fifth of the time. Tracewake reports that class as unreliable instead of dressing it up as an answer.
 
+Reporting a single step also understates it. What matters when debugging is how much of the trace you have to read before the answer is inside it. Scored once on the held-out halves (109 pairs, traces averaging 40 steps):
+
+| Window | Steps to read | Held out |
+| --- | --- | --- |
+| ±2 | 5 | 57% |
+| ±5 | 11 | 71% |
+| ±10 | 21 | 84% |
+
+On the two-fifths of failures it flags as tractable, an eleven-step window contains the point of no return **87%** of the time.
+
 ### Compared with published methods
 
 The literature reports *exact* step match. On RootSE that is 21% here, against 56.6% for [TrajAudit](https://arxiv.org/abs/2605.26563) at roughly 122k tokens per instance, 31.9% for all-at-once prompting, and 15.8% for binary search over steps. That puts it between the field's search baselines and its weaker prompting baselines, at zero marginal cost, and well behind the state of the art.

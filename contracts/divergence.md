@@ -189,6 +189,43 @@ information the action sequence does not carry. Reaching those labels needs a
 signal over intent rather than over effects, which is what the LLM methods in
 the comparison above are buying with their tokens.
 
+## How much of the trace you have to read
+
+Reporting a single step and scoring it at ±2 understates what the rule
+delivers. The useful question for someone debugging is how large a window they
+must read to be reasonably sure the answer is inside it. Scored once on the
+held-out halves (109 pairs; development figures alongside):
+
+| Window | Steps to read | Development | **Held out** |
+| --- | --- | --- | --- |
+| ±0 (exact) | 1 | 27% | 27% |
+| ±2 | 5 | 49% | **57%** |
+| ±5 | 11 | 63% | **71%** |
+| ±10 | 21 | 76% | **84%** |
+| ±15 | 31 | 80% | 91% |
+
+Median trace is 40 steps, so ±5 is 11 steps, about a quarter of the trace, and
+contains the answer 71% of the time.
+
+Restricting to the three classes `reliability` flags as trustworthy, which is
+41% of pairs:
+
+| Window | Development | **Held out** |
+| --- | --- | --- |
+| ±2 | 79% | **37/45 = 82%** |
+| ±5 | 92% | 39/45 = 87% |
+| ±10 | 97% | 41/45 = 91% |
+
+That is the sharpest honest statement of what this does: **on the two-fifths of
+failures it identifies as tractable, an eleven-step window contains the point of
+no return 87% of the time, in traces averaging forty steps, at no marginal
+cost.**
+
+Held-out ±2 overall is 62/109 = 57% (95% CI 48–66%), against 49% on
+development. The held-out half scoring higher than development is the opposite
+of overfitting, and comes from its different mix rather than from any tuning.
+Per set: OpenHands 62%, RootSE 57%, nebius 45%.
+
 ## Reliability
 
 The largest effect is not a better rule but knowing when the rule works. Two
@@ -280,6 +317,28 @@ pairs. All of these lost, and are recorded so they are not tried again:
   fallback constants. All worse or within noise.
 * **Tail slack on the periodicity test** (letting the cycle end k steps early):
   RootSE firing goes 0→6 of 58 at k=5. A knob for nothing.
+
+### Confidence and output shape were searched too, and are also flat
+
+Beyond the point estimate, two further families were measured on development:
+
+* **Ranking pairs by predicted correctness.** Ten orderings, including trace
+  length, the spread between the three bounds, path count, commitment count,
+  and combinations. Best area under the risk–coverage curve was 0.667 against
+  0.663 for the five published classes, and the published classes were better at
+  40% coverage (78% against 67%). Trace length is the strongest single feature
+  at 0.63 pooled standard deviations; the *number of bounds that fire* separates
+  hit from miss by 0.01, which is nothing.
+* **Stability under perturbation** — recomputing the answer under three
+  signature notions and three truncations, then using the variance as
+  confidence, and the median or mode as the estimate. As an estimator it loses
+  (54/113 against 55). As confidence it separates by 0.49 standard deviations
+  but does not improve the curve where it matters.
+* **Reporting the span between the bounds as a window** rather than a point.
+  The span contains the label 67% of the time; a fixed window of the same
+  median width centred on `earliest_bound` contains it 76%. So the bounds are
+  worse than their own midpoint at delimiting a range, and the window framing
+  above uses the point estimate instead.
 
 ### Observations carry no usable bound
 
