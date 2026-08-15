@@ -333,6 +333,12 @@ uv build
 
 `tracewake diff` and `view` need `uv sync --extra embeddings` unless you pass `--lexical`. Replay needs `PYTHONHASHSEED=0`; the CLI sets it for wrapped processes, and the library explains the requirement elsewhere. The offline replay gate records a real socket through the CLI, then proves the replay process makes zero connections.
 
+The control plane's lifecycle, fencing and end-to-end tests need PostgreSQL and skip without it, so `go test ./...` passes on its unit tests alone and reports nothing about the parts that hold the guarantees. Point them at a database to run all of them, as CI does:
+
+```sh
+(cd controlplane && TRACEWAKE_TEST_DATABASE_URL=postgres://localhost/tracewake go test ./...)
+```
+
 ## Limits
 
 Tracewake is intentionally not a universal recorder or a security sandbox. It does not claim complete syscall, native-code, subprocess, or arbitrary filesystem interception. It cannot prove redaction removed every sensitive value. A divergence report is a debugging lead, not a causal diagnosis: `localize` lands within two steps of a human label about half the time, and reports which cases it cannot localise at all. Hosted analysis currently accepts recorded bundles only, and the hosted profile is `align-v1`; it does not remotely execute untrusted agent code.
