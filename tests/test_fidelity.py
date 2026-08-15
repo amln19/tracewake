@@ -221,7 +221,7 @@ def test_chance_agreement_reflects_the_marginal_distribution():
 
 
 def recorded_run(store, name, task_id, actions):
-    with tracewake.record(name, store=store, task_id=task_id, block_network=False) as session:
+    with tracewake.record(name, store=store, task_id=task_id) as session:
         model = session.model(
             provider="p",
             model_id="m",

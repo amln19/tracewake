@@ -48,7 +48,6 @@ class Config:
     before_record: Callable[[AnyEvent], AnyEvent | None] | None = None
     stale_after_days: float | None = 30.0
     require_hash_seed: bool = True
-    block_network: bool = True
     patch_environment: bool = True
 
     def __post_init__(self) -> None:

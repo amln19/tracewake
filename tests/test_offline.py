@@ -174,31 +174,15 @@ def test_every_socket_send_surface_is_blocked_during_replay(
                 send(sock)
 
 
-@pytest.mark.parametrize(
-    "options",
-    [
-        {"block_network": False},
-        {"config": Config(block_network=False)},
-    ],
-)
-def test_none_mode_cannot_be_configured_to_reach_the_network(
-    server: _Server,
-    tmp_path: Path,
-    env: dict[str, str],
-    options: dict[str, object],
-) -> None:
-    store = tmp_path / "store"
-    recorded = _tracewake(
-        "record", "--store", str(store), "--name", "gate", "--", sys.executable, str(AGENT), env=env
-    )
-    assert recorded.returncode == 0, recorded.stderr
-    run_id = Store(store).latest_named("gate").run_id
-    server.reset()
-
-    with tracewake.replay(run_id, store=store, **options):
-        with pytest.raises(tracewake.NetworkBlocked, match="record-capable mode"):
-            socket.create_connection(("127.0.0.1", server.server_address[1]), timeout=5)
-    assert server.connections == 0
+def test_the_replay_gate_exposes_no_off_switch(tmp_path: Path) -> None:
+    """What keeps the gate from being configured away is that there is nothing to
+    configure: replay consults no setting before blocking, so asking for the
+    setting is an error rather than a request that gets quietly ignored."""
+    with pytest.raises(TypeError, match="block_network"):
+        Config(block_network=False)  # type: ignore[call-arg]
+    with pytest.raises(TypeError, match="block_network"):
+        with tracewake.replay("gate", store=tmp_path, block_network=False):
+            pass
 
 
 def test_once_mode_is_blocked_when_it_resolves_to_pure_replay(
@@ -211,7 +195,7 @@ def test_once_mode_is_blocked_when_it_resolves_to_pure_replay(
     assert recorded.returncode == 0, recorded.stderr
     server.reset()
 
-    with tracewake.session("gate", store=store, mode="once", block_network=False):
+    with tracewake.session("gate", store=store, mode="once"):
         with pytest.raises(tracewake.NetworkBlocked):
             socket.create_connection(("127.0.0.1", server.server_address[1]), timeout=5)
     assert server.connections == 0

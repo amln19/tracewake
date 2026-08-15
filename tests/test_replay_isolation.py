@@ -24,7 +24,7 @@ def recorded(tmp_path):
     (work / "recorded.txt").write_text("recorded", encoding="utf-8")
     (work / "unrecorded.txt").write_text("live secret", encoding="utf-8")
     store = tmp_path / "store"
-    with tracewake.record("probe", store=store, block_network=False) as session:
+    with tracewake.record("probe", store=store) as session:
         ask(session)
         session.fs.rooted(work).read_text("recorded.txt")
     return (store, work)
@@ -109,6 +109,6 @@ def test_the_append_boundary_refuses_a_write_during_replay(recorded):
 
 def test_a_divergent_replay_can_still_be_captured_as_a_new_episode(recorded):
     store, work = recorded
-    with tracewake.session("probe", store=store, mode="new_episodes", block_network=False) as session:
+    with tracewake.session("probe", store=store, mode="new_episodes") as session:
         ask(session)
         assert session.fs.rooted(work).read_text("unrecorded.txt") == "live secret"
