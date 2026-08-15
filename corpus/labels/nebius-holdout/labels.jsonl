@@ -1,0 +1,30 @@
+{"label": 5, "note": "edits the @click.command block at 36:49 and then 36:100; the resolved fix is in validate_orcid_id at 24:34, which this run never touches", "packet_id": "H01"}
+{"label": 17, "note": "edits the right line (core.py 78) with the wrong predicate, adding Identifier handling where the fix is to skip comment tokens; never becomes the comment check across 25 more steps", "packet_id": "H02"}
+{"label": 8, "note": "starts a terminal thrash on line 31 - five 'end_of_edit' deletions then 'del is_k_edge_connected' re-issued 41 times to the end, with nothing else attempted", "packet_id": "H03"}
+{"label": 10, "note": "edit content locks to 'filename = expanduser(expandvars(...))' at 522:522 and is re-issued 47 times to the end; nothing is run after step 3", "packet_id": "H04"}
+{"label": 7, "note": "edits /opt/conda/.../site-packages/marshmallow/fields.py, the installed dependency rather than the repository, so no change it makes can be part of the patch; its eventual project edit at step 40 is at serialization.py:97 where the fix is at 120", "packet_id": "H05"}
+{"label": 4, "note": "enters a 2-step grep alternation ('def re_search' / 're_search') at step 4 and repeats it for 180 steps to the end, never editing anything", "packet_id": "H06"}
+{"label": 14, "note": "edit range locks to 94:104 and is re-issued fourteen times with flake8 between, never varying", "packet_id": "H07"}
+{"label": 17, "note": "enters a 3-step navigation cycle (goto 396 / search timestamp_utc / goto 432) repeated eight times to the end; never edits adafruit_gps.py", "packet_id": "H08"}
+{"label": 10, "note": "first failed wheel-build attempt; spends the next 98 steps cycling build tooling (pypa/build, pip wheel, setuptools) and never opens wheel/metadata.py, where the fix lives", "packet_id": "H09"}
+{"label": 11, "note": "starts alternating 'edit 4:4' and 'edit 2:2' on data.nex, a file it created, writing Python into a NEXUS data file; runs to step 223 without ever editing src/nexus/reader.py", "packet_id": "H10"}
+{"label": 20, "note": "writes a test class (class DummyPlugin(BasePlugin)) into src/apispec/plugin.py, corrupting the library, then spends the rest of the run guessing import paths in that file; never repaired", "packet_id": "H11"}
+{"label": 16, "note": "locks into a 2-step alternation of 'pip list --verbose | grep attrs-strict' and a find under site-packages, repeated to the end; never edits the library", "packet_id": "H12"}
+{"label": 11, "note": "writes print statements into sqllineage/core.py lines 11-13, the import region, because the ACI still had that file open; never repaired, and the run moves to its test script immediately after", "packet_id": "H13"}
+{"label": 7, "note": "first library edit is at line 1551 and the run then works around 1534-1535; the resolved fix is at 1574 and 2981, which it never reaches", "packet_id": "H14"}
+{"label": 30, "note": "locks into a 3-step cycle (goto 195 / edit 183:194 / python) repeated to the end; its earlier edit at the right line 195 used a different expression from the resolved fix and was never restored", "packet_id": "H15"}
+{"label": null, "note": "", "packet_id": "H16"}
+{"label": null, "note": "", "packet_id": "H17"}
+{"label": null, "note": "", "packet_id": "H18"}
+{"label": null, "note": "", "packet_id": "H19"}
+{"label": null, "note": "", "packet_id": "H20"}
+{"label": null, "note": "", "packet_id": "H21"}
+{"label": null, "note": "", "packet_id": "H22"}
+{"label": null, "note": "", "packet_id": "H23"}
+{"label": null, "note": "", "packet_id": "H24"}
+{"label": null, "note": "", "packet_id": "H25"}
+{"label": null, "note": "", "packet_id": "H26"}
+{"label": null, "note": "", "packet_id": "H27"}
+{"label": null, "note": "", "packet_id": "H28"}
+{"label": null, "note": "", "packet_id": "H29"}
+{"label": null, "note": "", "packet_id": "H30"}

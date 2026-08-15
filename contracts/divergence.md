@@ -96,6 +96,50 @@ baselines and its weaker prompting baselines, at zero marginal cost, and is
 about 35 points behind the state of the art. No published work reports a
 purely non-LLM baseline for this task, which is the gap this fills.
 
+## The earlier figures are in-sample
+
+The improvement sweep that produced `earliest_bound` tested about thirty
+candidate signals, and from partway through it compared them on all four
+labelled sets at once. `earliest_bound` was kept partly because it "never loses
+on an individual set", which is a statement about RootSE and nebius. The
+reliability classes and their percentages were likewise chosen and computed on
+the same 178 pairs they are reported on.
+
+So the table above is descriptive of those pairs, not a prediction about new
+ones. Selecting the best of thirty candidates on the data you then report
+inflates the winner's margin, and at 6 pairs out of 178 with p=0.11 the gap
+between `earliest_bound` and `first_commitment` is not demonstrated at all. The
+honest claim for `earliest_bound` is that it is never worse, is a bound rather
+than a fit, and costs nothing.
+
+### Scored once on data nothing had seen
+
+The nebius pool holds 119 pairs and only 40 were ever exported. Thirty were
+drawn from the untouched remainder, fifteen labelled from the packets alone, and
+scored once with the rule frozen:
+
+| Rule | within ±2 | within ±5 | mean abs. error |
+| --- | --- | --- | --- |
+| `earliest_bound` | **8/15 = 53%** | 11/15 | 3.9 |
+| constant 10 | 5/15 = 33% | 9/15 | 5.0 |
+| `first_commitment` | 4/15 = 27% | 7/15 | 33.3 |
+| `align-v1` | 1/15 = 7% | 4/15 | 39.5 |
+
+53% against 54% in-sample: the headline figure survives contact with fresh data,
+which is the one thing the in-sample number could not establish. Fifteen pairs
+is a wide interval (27% to 80% bootstrapped), so this bounds the damage rather
+than measuring the method precisely.
+
+Two things stand out. `first_commitment` collapses here, 27% against its 51%
+in-sample, and its mean error is 33 steps against 3.9 — on this slice the
+repetition and novelty bounds are doing nearly all the work, where on the
+earlier sets they were worth 3 points. And `silent-long`, the class that was 21%
+accurate across the earlier pairs, is 4/4 here. Both are single-digit
+observations and neither should be read as a finding.
+
+The remaining fifteen packets are exported but unlabelled, and the other 49 pool
+pairs have never been rendered. That is the next honest measurement.
+
 ## Reliability
 
 The largest effect is not a better rule but knowing when the rule works. Two
@@ -174,6 +218,15 @@ pairs. All of these lost, and are recorded so they are not tried again:
   ≤26% on RootSE.
 * **Reference length** as an a priori bound, `min(first_commitment, len(good))`:
   net +3 of 178. Noise.
+* **CodeTraceBench** (4,316 coding-agent trajectories, human-verified
+  step-level annotations, MIT). Assessed and not adopted. Its labels mark which
+  steps were *incorrect or unuseful*, not which step made recovery impossible:
+  successful runs carry incorrect steps too, a failed run carries three to six
+  of them scattered through the trace, and there is no decisive-step flag. It is
+  a different question. Adapting it would also need four framework formats,
+  with OpenHands trajectories split across roughly 36 per-model-call files whose
+  mapping to the annotation's `step_id` is not stated — a silent misalignment
+  there would corrupt every label without failing anything.
 * **Reasoning-text repetition**, median-of-five ensembles, and per-scaffold
   fallback constants. All worse or within noise.
 * **Tail slack on the periodicity test** (letting the cycle end k steps early):

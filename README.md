@@ -216,6 +216,8 @@ Within ±2 steps of the label, on all 178 pairs:
 
 Read the columns rather than the pooled total. The sets are not equivalent evidence, and the pool is dominated by whichever one happens to be largest.
 
+These four sets were all used to select the rule, so the figures above are in-sample. Scored once afterwards on fifteen freshly labelled pairs that nothing had rendered or seen, `earliest_bound` gets 8/15, against 5/15 for a fitted constant and 4/15 for the commitment rule alone. Fifteen pairs is a wide interval, but 53% against 54% in-sample means the headline is not a selection artefact.
+
 Two label-free facts sort the pairs into classes ranging from 87% to 21% accurate: whether the run committed at all, and whether the trace exceeds 18 steps. The ordering holds inside each dataset, not only in the pool:
 
 | Answering | Coverage | Accuracy |
