@@ -137,6 +137,26 @@ def main(argv: list[str] | None = None) -> int:
         help="Grow the existing sheet to --n, keeping filled labels and packet ids.",
     )
 
+    dv = sub.add_parser(
+        "diverge-eval",
+        help="Score the divergence rules and baselines on the partitioned set.",
+    )
+    dv.add_argument(
+        "--fit",
+        action="store_true",
+        help="Fit and freeze the competing constants on the development half.",
+    )
+    dv.add_argument(
+        "--final",
+        action="store_true",
+        help="Spend the held-out half. Do this once, for one already-selected method.",
+    )
+
+    sub.add_parser(
+        "rootse-eval",
+        help="Score the profiles against RootSE's external failure-step labels.",
+    )
+
     cfd = sub.add_parser(
         "fork-diff", help="Align a forked run against the run it was forked from."
     )
@@ -241,6 +261,16 @@ def main(argv: list[str] | None = None) -> int:
                 shard = Path(source)
                 model = args.model or "claude-3-5-sonnet-20241022"
                 print(external.report_swesmith(shard, model=model))
+        case "diverge-eval":
+            from . import divergeeval
+
+            if args.fit:
+                print(f"froze the development-fitted constants at {divergeeval.write_fitted()}")
+            print(divergeeval.evaluate(final=args.final))
+        case "rootse-eval":
+            from . import rootse
+
+            print(rootse.evaluate())
         case "fork-diff":
             print(counterfactual.fork_diff(args.run, lexical=args.lexical))
     return 0
