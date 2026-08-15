@@ -18,6 +18,29 @@ func (f *failingNotifier) Publish(context.Context, []byte) error {
 	return errors.New("queue is unavailable")
 }
 
+type discardNotifier struct{}
+
+func (discardNotifier) Publish(context.Context, []byte) error { return nil }
+
+// drainOutbox empties the backlog so the row a test creates next is the only
+// one in flight. Nothing but these tests publishes, so unpublished rows
+// accumulate across packages and across runs against a persistent database.
+// Past a hundred of them a LIMIT-100 batch stops reaching the row under test,
+// and the failure reads as a lost or duplicated notification rather than as a
+// full batch of someone else's.
+func drainOutbox(ctx context.Context, t *testing.T, service *controlplane.Service) {
+	t.Helper()
+	for {
+		published, err := service.PublishOutbox(ctx, discardNotifier{}, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if published == 0 {
+			return
+		}
+	}
+}
+
 func TestOutboxPublishesToQueueAndSurvivesFailure(t *testing.T) {
 	service, pool, workspace := newTestService(t)
 	ctx := context.Background()
@@ -27,6 +50,7 @@ func TestOutboxPublishesToQueueAndSurvivesFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	drainOutbox(ctx, t, service)
 	runA, runB := readyRun(t, pool, workspace), readyRun(t, pool, workspace)
 	principal := controlplane.Principal{WorkspaceID: workspace, Scopes: map[string]bool{"jobs:write": true}}
 	profile := "align-v1"
@@ -108,6 +132,7 @@ func TestDuplicateDeliveryCreatesOneAttempt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	drainOutbox(ctx, t, service)
 	runA, runB := readyRun(t, pool, workspace), readyRun(t, pool, workspace)
 	principal := controlplane.Principal{WorkspaceID: workspace, Scopes: map[string]bool{"jobs:write": true}}
 	profile := "align-v1"
