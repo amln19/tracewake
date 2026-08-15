@@ -182,12 +182,30 @@ amount of tuning changes it. Measured on the development halves:
 of what is reachable. The remaining headroom is 17 points, and over half the
 missing mass sits behind labels a write-based rule cannot see at all.
 
-RootSE is where this bites. Its annotators mark decisions -- opening the wrong
-file, misreading the issue -- that happen well before any code is written, a
-median of 9 steps before and up to 28. That is not a threshold to tune; it is
-information the action sequence does not carry. Reaching those labels needs a
-signal over intent rather than over effects, which is what the LLM methods in
-the comparison above are buying with their tokens.
+RootSE is where this bites, and the ceiling above is stated too strongly: only
+the commitment bound depends on writes. `terminal_repeat` and
+`novelty_exhausted` can fire at any step. They simply do not fire usefully on a
+population that neither loops nor exhausts its vocabulary.
+
+Characterising the 21 development cases the commitment bound cannot reach: the
+label sits at a median step 13, the first write at 26, in traces of 52. The
+prefix is `view`, `cd`, `grep` and `find` -- reading and navigating.
+
+One property of those cases is measurable and surprising. **Eight of the 21 sit
+on a step with no action at all**, a turn where the agent only reasoned.
+Reasoning-only steps are 2.9% of RootSE steps but carry 17% of its labels, an
+enrichment of 5.8. The point of no return really does concentrate where the
+agent stops acting and thinks.
+
+That did not convert into accuracy. As a bound the signal is inert, because most
+labels are still not on such a step. Snapping the answer to a nearby
+reasoning-only step is worth one pair in 113 and needs a fitted radius, which is
+the kind of knob this file exists to refuse.
+
+So the limit is sharper than "the actions do not carry it". The residual errors
+concentrate on steps whose entire content is prose. Reaching them means reading
+language, which is a different modality rather than a tighter threshold, and is
+what the LLM methods in the comparison above spend their tokens on.
 
 ## How much of the trace you have to read
 
