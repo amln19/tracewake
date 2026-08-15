@@ -24,4 +24,8 @@ def test_the_demo_records_replays_and_reports_a_real_divergence() -> None:
     )
     assert result.returncode == 0, result.stderr
     assert "3 matched, 0 degraded, 0 missed" in result.stdout
-    assert "divergence at BAD" in result.stdout
+    # `diff` leads with the single-trace localization and its reliability, then
+    # reports the alignment underneath.
+    assert "went wrong at step" in result.stdout
+    assert "within two steps]" in result.stdout
+    assert "stop agreeing at BAD" in result.stdout

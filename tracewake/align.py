@@ -778,9 +778,9 @@ def diff_runs(
 
 def format_diff(result: DiffResult, *, good_label: str = "GOOD", bad_label: str = "BAD") -> str:
     if result.divergence is None:
-        head = f"no standing divergence — traces re-align through the end ({bad_label})"
+        head = f"the runs agree through the end ({bad_label}); no alignment divergence"
     else:
-        head = f"divergence at {bad_label} step {result.divergence}"
+        head = f"the runs stop agreeing at {bad_label} step {result.divergence}"
     lines = [
         head,
         f"alignment score {result.score:.3f}  length ratio {result.length_ratio:.2f}",

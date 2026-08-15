@@ -452,13 +452,33 @@ def diff_(
     store_b: StoreBOption = None,
     lexical: LexicalOption = False,
 ) -> None:
-    """Align two runs and print the step where they stopped agreeing."""
+    """Align two runs, and locate where the failing one went wrong."""
+    from .diverge import RELIABILITY_ACCURACY, localize
+
     db = Store(store)
     db_b = Store(store_b) if store_b else db
     good_header, _, bad_header, _, result = _align_pair(db, db_b, good, bad, lexical)
     if db_b is not db:
         db_b.close()
     db.close()
+
+    # Two different questions, and only one of them is "where did it go wrong".
+    # The alignment reports where the runs stopped agreeing, which lands within
+    # two steps of a human label about a quarter of the time; the single-trace
+    # rule reaches 60% held out. Lead with the one that answers the question.
+    if result.bad_steps:
+        step, klass = localize(result.bad_steps)
+        typer.echo(
+            f"{bad_header.run_id[:8]} went wrong at step {step} of "
+            f"{len(result.bad_steps)}  [{klass}, ~{RELIABILITY_ACCURACY[klass]:.0%} "
+            f"within two steps]"
+        )
+        if klass == "silent-long":
+            typer.echo(
+                "  this run changed nothing it had not created, over a long trace; "
+                "treat that step as unreliable"
+            )
+        typer.echo("")
 
     typer.echo(
         format_diff(

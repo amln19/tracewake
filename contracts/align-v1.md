@@ -4,7 +4,13 @@
 it; other languages carry its name and results without recreating its
 semantics. Any behavior change requires another profile name.
 
-**Frozen.** The parameters and readout below do not change. A stored diff names
+**Frozen, and not the localizer.** The parameters and readout below do not
+change. Note what the readout answers: where two runs stopped agreeing. That is
+not where the failing run went wrong, and it is far weaker at the second
+question, landing within two steps of a human label on 45 of 178 pairs against
+96 for the single-trace rule. `tracewake diff` therefore reports both, leading
+with `contracts/divergence.md`'s answer. The profile itself is unchanged, since
+the hosted plane and every stored artifact name it. A stored diff names
 the profile that produced it, so altering `align-v1` would silently reinterpret
 results already committed under that name. A better method gets a new name
 instead; `contracts/divergence.md` describes the local rule that replaced this

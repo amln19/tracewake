@@ -89,7 +89,7 @@ uv run tracewake diff good bad --store .tracewake --lexical
 uv run tracewake view good bad --store .tracewake --lexical -o comparison.html
 ```
 
-`diff` prints the alignment and selected divergence; `view` writes a self-contained side-by-side HTML report. `--lexical` uses the dependency-free profile. The richer local embedding path is optional: install it with `uv sync --extra embeddings`.
+`diff` leads with where the failing run went irrecoverably wrong, then prints the alignment and where the two runs stopped agreeing, which is a different and much weaker question. `view` writes a self-contained side-by-side HTML report. `--lexical` uses the dependency-free profile. The richer local embedding path is optional: install it with `uv sync --extra embeddings`.
 
 ## What Tracewake records and replays
 

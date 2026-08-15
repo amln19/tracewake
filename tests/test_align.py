@@ -437,7 +437,9 @@ def test_diff_runs_and_format():
     result = diff_runs(good, bad, embed=LexicalEmbedder())
     assert result.divergence == 2
     text = format_diff(result)
-    assert "divergence at BAD step 2" in text
+    # The alignment answers "where did they stop agreeing", which is a different
+    # question from "where did it go wrong", and is named as such.
+    assert "stop agreeing at BAD step 2" in text
     assert ">>>" in text
 
 
