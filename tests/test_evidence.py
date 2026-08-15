@@ -188,7 +188,7 @@ def test_every_published_number_comes_from_this_run(measurements: dict[str, Any]
         f"{scenarios['analysis_load']['jobs']} diff analyses",
     ]
     readme = Path("README.md").read_text(encoding="utf-8")
-    section = readme.split("### Measured behaviour", 1)[-1].split("## Persistent formats", 1)[0]
+    section = readme.split("### Measured behaviour", 1)[-1].split("## Versioned formats", 1)[0]
     for value in published:
         assert value.lower() in section.lower(), f"the README does not restate {value!r} from the retained run"
 
@@ -197,7 +197,7 @@ def test_the_demonstration_recorded_every_step(measurements: dict[str, Any]) -> 
     """Each step the README maps must be present and satisfying in the run."""
     scenarios = measurements["scenarios"]
     readme = Path("README.md").read_text(encoding="utf-8")
-    section = readme.split("### The demonstration", 1)[-1].split("## Persistent formats", 1)[0]
+    section = readme.split("### Lifecycle coverage", 1)[-1].split("## Versioned formats", 1)[0]
     rows = [line for line in section.splitlines() if line.startswith("|")]
     for reference in re.findall(r"`([a-z_]+(?:\.[a-z_]+)?)`", "\n".join(rows)):
         name, _, field = reference.partition(".")
@@ -298,7 +298,7 @@ def test_no_cost_number_is_published(deployed: dict[str, Any]) -> None:
     # Cost Explorer had not ingested the window. Nothing may claim otherwise.
     assert "cost" not in json.dumps(deployed["metrics"]).lower()
     readme = Path("README.md").read_text(encoding="utf-8")
-    section = readme.split("### On a deployed environment", 1)[-1].split("### The demonstration", 1)[0]
+    section = readme.split("### On a deployed environment", 1)[-1].split("### Lifecycle coverage", 1)[0]
     assert "cost remain unmeasured" in section or "cost remains unmeasured" in section
 
 
@@ -322,6 +322,6 @@ def test_deployed_numbers_come_from_the_deployed_run(deployed: dict[str, Any]) -
     )
     assert fenced == int(metrics["attempts_fenced_lease_expired"]["Sum"])
     readme = Path("README.md").read_text(encoding="utf-8")
-    section = readme.split("### On a deployed environment", 1)[-1].split("### The demonstration", 1)[0]
+    section = readme.split("### On a deployed environment", 1)[-1].split("### Lifecycle coverage", 1)[0]
     for value in published:
         assert value in section, f"the README does not restate {value!r} from the deployed run"

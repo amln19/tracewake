@@ -17,6 +17,12 @@ Version 1 contains:
 * `compatibility-v1.md`: version evolution and shared-fixture workflow;
 * `schemas/v1`: canonical Pydantic-generated JSON Schemas.
 
+`divergence.md` sits alongside these but is not one of them. It documents the
+local rule that locates where a failing run went irrecoverably wrong, which no
+external party depends on and which is expected to change as evidence changes.
+It carries no version and promises no compatibility. The hosted plane accepts
+`lexical-v1` only.
+
 Regenerate or check schemas without an additional dependency:
 
 ```bash

@@ -2,9 +2,11 @@
 
 **Record. Replay. Find the divergence.**
 
-Tracewake is a local-first Python tool for making agent behavior inspectable and repeatable. It records the nondeterministic inputs an agent consumes through its supported adapters—model responses, tool results, files, time, randomness, UUIDs, and environment reads—then replays those inputs from a cassette with network access blocked. Given a successful and failing run, it aligns their tool-use trajectories and reports the first meaningful divergence.
+Tracewake is a local-first Python tool for making agent behavior inspectable and repeatable. It records the nondeterministic inputs an agent consumes through its supported adapters—model responses, tool results, files, time, randomness, UUIDs, and environment reads—then replays those inputs from a cassette with network access blocked. Given a failing run, it locates the step where that run went irrecoverably wrong, using only that run and no model call, and says how much to trust the answer. Given a passing run as well, it aligns both trajectories and shows them side by side.
 
 The name is deliberate: a run leaves an execution *wake* of model calls, tool interactions, state changes, and decisions. Tracewake captures that wake so you can trace behavior back to what happened.
+
+The divergence engine and its evaluation against externally labelled benchmarks are the substantive part of this project. See [Evaluation](#evaluation).
 
 ```sh
 git clone https://github.com/amln19/tracewake.git
@@ -21,6 +23,7 @@ Common CLI commands:
 tracewake record -- python agent.py
 tracewake replay <run>
 tracewake diff <good-run> <bad-run>
+tracewake localize <bad-run>
 tracewake view <good-run> <bad-run>
 ```
 
@@ -35,7 +38,7 @@ flowchart LR
     A["Run your agent"] --> B["Record supported nondeterministic inputs"]
     B --> C["Local SQLite run store"]
     C --> D["Replay offline"]
-    C --> E["Align a good and bad trajectory"]
+    C --> E["Localize a failure, or align two runs"]
     C --> F["Export, validate, or submit a bundle"]
 ```
 
@@ -110,12 +113,13 @@ The record modes are deliberately small:
 
 Redaction is on by default. It redacts configured secret values, known credential headers and environment names, and home paths. That is useful hygiene, not a guarantee that arbitrary source, binary data, private repositories, or unknown secrets are safe to distribute. `tracewake record --no-redact` disables it and records that choice in the cassette.
 
-## Analyze the trajectory, not just the final answer
+## Analyzing a recorded run
 
-Tracewake aligns good and bad runs even when they have insertions, deletions, or repeated actions. The result identifies a candidate divergence and provides context rather than claiming to prove the root cause. It can also:
+`localize` needs only the failing run and reports a step with a reliability class. `diff` and `view` need a passing run too, and align the two even when they have insertions, deletions, or repeated actions. Both give a debugging lead with context, rather than claiming to prove a root cause. Tracewake can also:
 
 | Task | Command |
 | --- | --- |
+| Locate where a failing run went wrong | `tracewake localize <bad>` |
 | Compare two trajectories | `tracewake diff <good> <bad> --lexical` |
 | Produce an HTML comparison | `tracewake view <good> <bad> --lexical -o out.html` |
 | Export OTLP/JSON GenAI spans | `tracewake otel <run> -o trace.json` |
@@ -143,7 +147,7 @@ Two distinct digests matter:
 
 `tracewake.bundle` can package a validated cassette as deterministic, uncompressed USTAR bundle v1 for the hosted path. The format, size limits, and validation rules are documented in [`contracts/bundle-v1.md`](contracts/bundle-v1.md).
 
-## Hosted analysis is optional
+## Hosted analysis
 
 Tracewake's local recording, replay, comparison, verification, import, and export do not require a hosted service. The repository also includes a Go control plane and Python worker for analyzing already-recorded bundles. It does not execute arbitrary uploaded agent code.
 
@@ -182,19 +186,54 @@ Docker is an alternative: run `docker compose up --build`, then read `/run/trace
 
 The AWS Terraform environment is optional and requires an account, state backend, certificate, and cost decision. Its deployment, retention, recovery, and threat boundaries are described in [`deploy/aws/README.md`](deploy/aws/README.md).
 
-## Evaluation: promising, bounded evidence
+## Evaluation
 
-The alignment evaluation is intentionally small and should not be read as a claim that Tracewake diagnoses arbitrary agent failures. It measures whether the selected divergence lands within two steps of a blinded, hand-applied label on recorded trajectory pairs.
+Tracewake locates where a failing run went irrecoverably wrong using only that run. There is no reference run and no model call. `tracewake localize <run>` reports a step and a reliability class. The full definition, every measurement, and the limits are in [`contracts/divergence.md`](contracts/divergence.md).
 
-| Dataset | Result | Important context |
+Reading a file is recoverable; writing one is not. Three facts each bound the point of no return from above: the run changed something it did not create, its actions became exactly periodic to the end, or it stopped doing anything it does not also repeat. The earliest of the three is the tightest bound, so that is what gets reported. Nothing here is weighted or fitted.
+
+The four labelled sets differ in who wrote the labels, which agent framework produced the runs, and how long the failures are:
+
+| Set | Pairs | Labelled by | Agent framework | Median failing trace |
+| --- | --- | --- | --- | --- |
+| OpenHands dev | 40 | Tracewake | OpenHands | 18 steps |
+| OpenHands held-out | 40 | Tracewake | OpenHands | 18 steps |
+| RootSE | 58 | TrajAudit authors | four scaffolds | 51 steps |
+| nebius | 40 | Tracewake | SWE-agent | 56 steps |
+
+The two OpenHands halves come from one 80-pair set, split with a fixed seed before any design work and never re-split. The development half was open during design; the held-out half was scored at the end. Both are shown because the comparison between them is the check: a method fitted to its development data would score lower on the half it never saw.
+
+RootSE is the only set labelled by people outside this project, and the only one spanning several agent frameworks. Its failures and nebius's run about three times longer than the OpenHands ones, which is the regime where every method here is weakest.
+
+Within ±2 steps of the label, on all 178 pairs:
+
+| Rule | OpenHands dev | OpenHands held-out | RootSE | nebius | pooled |
+| --- | --- | --- | --- | --- | --- |
+| `earliest_bound` | 25/40 | 25/40 | 27/58 | 19/40 | **96/178 = 54%** |
+| `first_commitment` | 25/40 | 23/40 | 27/58 | 15/40 | 90/178 = 51% |
+| `lexical-v1` (alignment readout) | 18/40 | 18/40 | 5/58 | 4/40 | 45/178 = 25% |
+| constant 10, fitted on development data | 22/40 | 21/40 | 9/58 | 5/40 | 57/178 = 32% |
+
+Read the columns rather than the pooled total. The sets are not equivalent evidence, and the pool is dominated by whichever one happens to be largest.
+
+Two label-free facts sort the pairs into classes ranging from 87% to 21% accurate: whether the run committed at all, and whether the trace exceeds 18 steps. The ordering holds inside each dataset, not only in the pool:
+
+| Answering | Coverage | Accuracy |
 | --- | --- | --- |
-| 41 synthetic injected-bug pairs | 33/41 within ±2 steps | Single annotator; the named first-difference and last-common-prefix baselines scored 12/41 and 6/41. A constant step-6 guess scored 32/41. |
-| Same 41, 29 pairs where first-difference was outside ±2 | 21/29 | First-difference scored 0/29, but the best constant scored 23/29. |
-| 80 hand-labeled OpenHands transfer pairs | 36/80 | The positional baselines scored 29/80 and 26/80; the best constant scored 34/80, so this is not a broad whole-set win. |
-| 40 OpenHands pairs under 18 steps | 31/40 | Best constant: 26/40; last-common-prefix comparison p=0.031. |
-| 40 OpenHands pairs over 18 steps | 5/40 | A constant scored 15/40. Long traces often repeat the same failed action after the recoverability point. |
+| everything | 100% | 54% |
+| drop `silent-long` | 89% | 58% |
+| also drop `commit-long-many` | 42% | **80%** |
+| `commit-short` only | 17% | 87% |
 
-The main conclusion is narrow: trajectory alignment beats the named positional baselines on these labeled packets, but label clustering and long-run thrashing make constant baselines surprisingly strong. The external labels, blinded packets, task manifests, predictions, and ablations are in [`corpus/`](corpus/README.txt); the benchmark commands live in [`bench/`](bench/).
+A long run that never changed anything pre-existing is right about a fifth of the time. Tracewake reports that class as unreliable instead of dressing it up as an answer.
+
+### Compared with published methods
+
+The literature reports *exact* step match. On RootSE that is 21% here, against 56.6% for [TrajAudit](https://arxiv.org/abs/2605.26563) at roughly 122k tokens per instance, 31.9% for all-at-once prompting, and 15.8% for binary search over steps. That puts it between the field's search baselines and its weaker prompting baselines, at zero marginal cost, and well behind the state of the art.
+
+The accuracy is not what stands out. No published work reports a purely non-LLM baseline for this task at all. A reference-based variant was built, measured, and withdrawn once it turned out to win only on the scaffold it was tuned against; a prediction registered in advance to explain those wins was then falsified on fresh data. Around thirty other candidate signals were tried and lost. [`contracts/divergence.md`](contracts/divergence.md) records each one and why.
+
+[`corpus/`](corpus/README.txt) describes the labelled packets, the seeded development and held-out partition, and the per-pair prediction sheets. The benchmark commands live in [`bench/`](bench/). Running `python -m bench.pooled` reproduces both tables above.
 
 ## Operational evidence
 
@@ -239,7 +278,7 @@ One deployment of the same release and fault workflow is retained in [`evidence/
 
 Three real-fault alarms entered `ALARM`: an attempt-lease loss under worker partition, a reconciler failure during a database reboot, and worker capacity reduced to zero. Both partitioned jobs recovered on their second attempt and committed one authoritative result. SQS long-polling gave a 38 ms best notification latency, unlike the local polling floor. Scaling behavior and cost remain unmeasured.
 
-### The demonstration
+### Lifecycle coverage
 
 The local evidence run exercises this complete lifecycle; the named observations are retained in `evidence/results/measurements.json`.
 
@@ -257,7 +296,7 @@ The local evidence run exercises this complete lifecycle; the named observations
 | Attempt a cross-workspace read | `tenant_isolation` |
 | Record and replay with no service running | `local_independence` |
 
-## Persistent formats and deeper documentation
+## Versioned formats and further reading
 
 Event schema 3, SQLite store schema 3, cassette directory format 1, bundle format 1, result schemas, and hosted APIs are separate versioned contracts. Unsupported versions are rejected rather than silently reinterpreted. Start with:
 
@@ -283,7 +322,7 @@ uv build
 
 ## Limits
 
-Tracewake is intentionally not a universal recorder or a security sandbox. It does not claim complete syscall, native-code, subprocess, or arbitrary filesystem interception. It cannot prove redaction removed every sensitive value. A divergence report is an alignment-based debugging lead, not a causal diagnosis. Hosted analysis currently accepts recorded bundles only, and the hosted profile is `lexical-v1`; it does not remotely execute untrusted agent code.
+Tracewake is intentionally not a universal recorder or a security sandbox. It does not claim complete syscall, native-code, subprocess, or arbitrary filesystem interception. It cannot prove redaction removed every sensitive value. A divergence report is a debugging lead, not a causal diagnosis: `localize` lands within two steps of a human label about half the time, and reports which cases it cannot localise at all. Hosted analysis currently accepts recorded bundles only, and the hosted profile is `lexical-v1`; it does not remotely execute untrusted agent code.
 
 ## License
 

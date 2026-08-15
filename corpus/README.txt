@@ -22,6 +22,33 @@ neither large nor regenerable. The recorded stores are git-excluded.
                       packets); fill labels.jsonl then `bench external score`.
                       `bench external export --extend --n N` grows it without
                       disturbing packet ids that already carry a label.
+                      labels/nebius/ is the SWE-agent transfer set (40 packets,
+                      labelled and spent). Its labels were written from the
+                      packets alone with no method's prediction visible, which
+                      makes comparisons between rules fair without making the
+                      labels independent of them — the same author decided both.
+                      Scored by `bench.nebius.score_packets`.
   alignment/          prediction sheets and external_scout.json (source inventory).
+                      partition.json splits the 80 external packets into a
+                      development half and a held-out half; dev-fitted.json holds
+                      the constants fitted on the development half. Both are
+                      written once and refuse to be rewritten — re-splitting or
+                      refitting after seeing held-out results would turn a
+                      prediction into a fit. predictions-dev.jsonl and
+                      predictions-final.jsonl are the two halves, scored by
+                      `python -m bench diverge-eval [--final]`.
+
+                      predictions-rootse.jsonl scores the profiles against
+                      RootSE's external labels. That data is a ~200MB
+                      third-party checkout and is not vendored:
+                        git clone https://github.com/LogAnalysisTech/TrajAudit \
+                          corpus/external/TrajAudit
+                      then `python -m bench rootse-eval` (or set ROOTSE_ROOT).
+
+                      Known defect: three of the 129 loadable OpenHands pairs
+                      (E10, E36, E76) are byte-identical on both sides — the same
+                      action and observation sequence graded both resolved and
+                      unresolved. No action-based method can localise those, and
+                      their labels are noise.
   archive-prefix11/   superseded runs from earlier agent versions. Never merge
                       these with store/ — its own README says why.
