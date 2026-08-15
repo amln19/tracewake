@@ -142,6 +142,19 @@ def has_model_prose(messages: list[dict]) -> bool:
     return any((m.get("content") or "").strip() for m in messages if m.get("role") == "assistant")
 
 
+def learned_something(steps: list[Step]) -> bool:
+    """Did the environment ever tell the run two different things?
+
+    The prose check above catches a run that said nothing. This catches its
+    near neighbour: a run that narrates while every observation comes back
+    identical, because the tool it keeps calling returns an empty listing. It
+    reasons, so it looks labellable, but it never acquired a fact, and the step
+    at which it became doomed is a property of the broken tool rather than of
+    anything it decided. 2.1% of the rollouts that pass the prose check.
+    """
+    return len({(step.observation or "").strip() for step in steps}) > 1
+
+
 def _openhands_candidates(excluded: set[str], model: str) -> dict[str, list[str]]:
     """Eligible failing run ids for one model, grouped by instance.
 
@@ -151,7 +164,7 @@ def _openhands_candidates(excluded: set[str], model: str) -> dict[str, list[str]
     """
     import pyarrow.parquet as pq
 
-    from .external import model_of_run_id
+    from .external import model_of_run_id, strip_terminal, to_steps
 
     grouped: dict[str, list[str]] = defaultdict(list)
     for shard in sorted(_openhands_snapshot().glob("*.parquet")):
@@ -166,6 +179,8 @@ def _openhands_candidates(excluded: set[str], model: str) -> dict[str, list[str]
             if resolved or instance in excluded or model_of_run_id(run) != model:
                 continue
             if not has_model_prose(messages):
+                continue
+            if not learned_something(strip_terminal(to_steps(messages, shell_verbs=True))):
                 continue
             grouped[instance].append(run)
     return dict(grouped)

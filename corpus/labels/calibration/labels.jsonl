@@ -1,0 +1,11 @@
+{"packet_id": "C001", "label": 11, "confident": false, "note": "installs isinstance(dft,int) ahead of the IntEnum branch, converting bool defaults; step 9's edit was rejected so the defect enters at 11"}
+{"packet_id": "C002", "label": null, "exclusion": "E2", "confident": true, "note": "empty directory listing, no model prose, no patch"}
+{"packet_id": "C003", "label": null, "exclusion": "E2", "confident": true, "note": "no model prose in any turn"}
+{"packet_id": "C009", "label": 8, "confident": true, "note": "str_replace with contradictory args edits workflows.py instead of the test script, inserting an import inside a method body"}
+{"packet_id": "C013", "label": null, "exclusion": "E2", "confident": true, "note": "empty directory listing, no model prose, no patch"}
+{"packet_id": "C018", "label": null, "exclusion": "E2", "confident": false, "note": "same broken listing; one line of prose acknowledges it and retries identically, never trying the available bash tool"}
+{"packet_id": "C020", "label": null, "exclusion": "E2", "confident": true, "note": "empty directory listing, no model prose, no patch"}
+{"packet_id": "C024", "label": 4, "confident": true, "note": "only edit to pre-existing source; indexes a global-only backend by region; the remaining five steps test boto3 client region, not moto"}
+{"packet_id": "C032", "label": 6, "confident": false, "note": "edits cppstd_flags on the basis of a repro that printed an empty flag both before and after; run ends unexplained at 7"}
+{"packet_id": "C039", "label": null, "exclusion": "E2", "confident": true, "note": "no model prose in any turn"}
+{"packet_id": "C055", "label": null, "exclusion": "E2", "confident": true, "note": "no model prose in any turn"}
