@@ -168,3 +168,20 @@ def test_published_reliability_ordering_stays_monotone():
 
 def test_localize_reports_a_step_and_how_much_to_trust_it():
     assert localize([read("a.py"), edit("a.py")]) == (2, "commit-short")
+
+
+def test_observations_do_not_enter_the_bounds():
+    """`Step.observation` is carried for adapters and future signals only.
+
+    Measured on the development halves, observation-based bounds added nothing,
+    so nothing in `diverge` reads the field. This pins that: attaching an
+    observation must not move an answer.
+    """
+    plain = [read("a.py"), edit("a.py")] + [read("z.py")] * 4
+    noisy = [
+        Step(name=s.name, args=s.args, target=s.target, writes=s.writes,
+             observation="Traceback (most recent call last): boom")
+        for s in plain
+    ]
+    assert earliest_bound(noisy) == earliest_bound(plain)
+    assert reliability(noisy) == reliability(plain)

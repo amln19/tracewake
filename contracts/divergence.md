@@ -281,6 +281,36 @@ pairs. All of these lost, and are recorded so they are not tried again:
 * **Tail slack on the periodicity test** (letting the cycle end k steps early):
   RootSE firing goes 0→6 of 58 at k=5. A knob for nothing.
 
+### Observations carry no usable bound
+
+Every adapter discarded what the environment said back, so each signal above
+reasons about what the run *did* and never about whether it worked. That looked
+like the gap: an observation can show a step was wrong before any write, which
+is exactly where the write-based ceiling below bites.
+
+`Step.observation` now carries it (96% of RootSE steps, 98% of nebius; the
+OpenHands adapter is not wired). Measured on the development halves, six ways of
+using it all tie or lose against `earliest_bound` at 55/113:
+
+| Bound added to `earliest_bound` | DEV |
+| --- | --- |
+| terminal repetition over observations | 55/113, unchanged |
+| novelty exhaustion over observations | 55/113, unchanged |
+| first rejected edit | 55/113 (RootSE +1, nebius −1) |
+| first repeated observation | 54/113 |
+| first empty search result | 52/113 |
+| first error in an observation | 40/113 |
+
+The repetition and novelty variants never produce a tighter bound than the
+action-based ones, which says observations here are largely redundant with
+actions: when the action repeats the observation repeats, and the extra cases
+the observation catches do not fall earlier. Errors are worse than useless,
+because normal exploration produces them constantly.
+
+The field is kept because the plumbing is small, the rejected-edit correction
+below depends on it, and this result rules out only one use of it -- as an upper
+bound combined by minimum. Nothing in `diverge` reads it, and a test pins that.
+
 ### RootSE does not loop, and that is a real limit
 
 Terminal repetition fires on **0 of 58** RootSE failures. Their mean
@@ -297,7 +327,11 @@ that the rule previously had nothing to say about — while pooled ±2 moved 89 
 90 of 178. An earlier pass removed 351 invented writes from shell parsing and
 left ±2 accuracy identical.
 
-Three correctness fixes, no accuracy. That is itself evidence about how much of
+A fourth followed from observations: the nebius adapter counted edits the
+editor had rejected, which `bench.rootse` had always filtered. Removing them
+drops 13 phantom writes across the development half and changes no answer.
+
+Four correctness fixes, no accuracy. That is itself evidence about how much of
 the commitment signal is noise. They are kept because the old behaviour was
 wrong, not because they helped.
 

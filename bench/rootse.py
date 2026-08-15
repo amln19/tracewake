@@ -192,6 +192,7 @@ def to_steps(trajectory, *, strip_terminal: bool = False) -> list[Step]:
                 target=target,
                 reasoning=" ".join(reasoning.split()),
                 writes=frozenset(writes),
+                observation=str(raw.get("observation") or ""),
             )
         )
     if strip_terminal:

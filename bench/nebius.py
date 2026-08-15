@@ -83,11 +83,21 @@ def to_steps(trajectory) -> list[Step]:
     forms; the ACI's stateful editor needs the extra tracking below, because
     `edit` names no path — it writes to whatever `open` last selected.
     """
-    from .rootse import decode_action
+    from .rootse import decode_action, wrote_nothing
+
+    def _reply(at: int) -> str:
+        """The environment turn answering the model turn at `at`, if any."""
+        for later in trajectory[at + 1 :]:
+            if not isinstance(later, dict):
+                continue
+            if later.get("role") in AGENT_ROLES:
+                return ""
+            return str(later.get("text") or later.get("content") or "")
+        return ""
 
     steps: list[Step] = []
     open_file = ""
-    for message in trajectory:
+    for position, message in enumerate(trajectory):
         if not isinstance(message, dict) or message.get("role") not in AGENT_ROLES:
             continue
         text = message.get("text") or message.get("content") or ""
@@ -113,6 +123,11 @@ def to_steps(trajectory) -> list[Step]:
                 continue
 
         name, args, target, writes = decoded
+        observation = _reply(position)
+        if writes and wrote_nothing(observation):
+            # The editor rejected it, so nothing was committed to. `bench.rootse`
+            # has always applied this; the ACI reports the same way.
+            writes = set()
         steps.append(
             Step(
                 name=name,
@@ -120,6 +135,7 @@ def to_steps(trajectory) -> list[Step]:
                 target=target,
                 reasoning=" ".join(text.split("```")[0].split()),
                 writes=frozenset(writes),
+                observation=observation,
             )
         )
     return steps

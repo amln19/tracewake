@@ -128,6 +128,10 @@ class Step:
     # which step did the writing, and its second element means different things
     # to different adapters. No `align-v1` component reads this field.
     writes: frozenset[str] = field(default_factory=frozenset)
+    # What the environment said back. Actions say what the run tried; only this
+    # says whether it worked. No `align-v1` component reads it, so the frozen
+    # profile is unaffected.
+    observation: str = ""
 
     @property
     def names(self) -> frozenset[str]:
