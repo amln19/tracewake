@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import warnings
 from collections.abc import Callable, Generator, Iterator
 from dataclasses import dataclass
@@ -358,7 +359,8 @@ class Tools:
             else self._session._tool_calls.get((parent_call_id, request.id))
         )
         if recorded is not None and args_hash == recorded.args_hash:
-            self._session.report.tool_calls_replayed += 1
+            with self._session._replay_lock:
+                self._session.report.tool_calls_replayed += 1
             content = self._session._store.blobs.get(recorded.result.digest).decode("utf-8")
             return ToolOutcome(
                 content=content, status=recorded.status, error=recorded.error
@@ -466,6 +468,13 @@ class Session:
         self._env_cursor: dict[tuple[str, str | None], int] = {}
         self._fs: dict[tuple[str, str], list[FsReadEvent | FsWriteEvent]] = {}
         self._fs_cursor: dict[tuple[str, str], int] = {}
+        # Consuming a recorded value is a read of a cursor followed by a write of
+        # it, and a tool in a parallel batch runs in its own thread. Two of them
+        # reading between another's read and write would hand back the same
+        # recorded value twice and leave the next one to be reported as a miss.
+        # Only the cursors need this: the indexes they walk are built once in
+        # `_index` before any tool runs, and never written again.
+        self._replay_lock = threading.Lock()
         self._outcome: OutcomeEvent | None = None
         self._matcher: CallMatcher | None = None
         if replay_events is not None:
@@ -588,10 +597,11 @@ class Session:
         values = self._env.get((source, key))
         if not values:
             return (False, None)
-        index = self._env_cursor.get((source, key), 0)
-        if index < len(values):
-            self._env_cursor[(source, key)] = index + 1
-            return (True, values[index])
+        with self._replay_lock:
+            index = self._env_cursor.get((source, key), 0)
+            if index < len(values):
+                self._env_cursor[(source, key)] = index + 1
+                return (True, values[index])
         # A variable is looked up by name, not consumed from a sequence, and how
         # many times library code reads one varies between runs. Re-reading a
         # variable the run did record is not divergence; reading one it never
@@ -606,10 +616,11 @@ class Session:
         if not self.can_replay or self.forked:
             return None
         entries = self._fs.get((kind, path))
-        index = self._fs_cursor.get((kind, path), 0)
-        if entries and index < len(entries):
-            self._fs_cursor[(kind, path)] = index + 1
-            return entries[index]
+        with self._replay_lock:
+            index = self._fs_cursor.get((kind, path), 0)
+            if entries and index < len(entries):
+                self._fs_cursor[(kind, path)] = index + 1
+                return entries[index]
         # Both ways of running out are divergence, and a replay that cannot record
         # has to say so rather than fall through: falling through would read the
         # live filesystem and hand the agent content the cassette never held.

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import shutil
+import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -124,6 +126,47 @@ def test_reading_more_often_than_the_recorded_run_is_divergence(
         with tracewake.replay(run_id, store=tmp_path / "store") as rep:
             rep.fs.read_text(repo / "src" / "window.py")
             rep.fs.read_text(repo / "src" / "window.py")
+
+
+def test_parallel_reads_each_consume_their_own_recorded_entry(
+    tmp_path: Path, repo: Path
+) -> None:
+    """The same invariant as above, in the place it can actually break.
+
+    A tool in a parallel batch reads from its own thread, and consuming a
+    recorded entry is a read of the cursor followed by a write of it. A thread
+    landing between another's read and write consumes one entry twice and leaves
+    one behind, so the read past the end wrongly succeeds instead of reporting
+    divergence.
+
+    That window is two bytecodes wide, so the interpreter has to be told to
+    switch aggressively for it to be reachable at all; at the default interval
+    this passes whether the cursor is guarded or not.
+    """
+    threads, per_thread = 16, 64
+    source = repo / "src" / "window.py"
+    run_id = _record(
+        tmp_path / "store",
+        repo,
+        lambda s: [s.fs.exists(source) for _ in range(threads * per_thread)],
+    )
+
+    original = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        with tracewake.replay(run_id, store=tmp_path / "store") as rep:
+
+            def burst(_: int) -> None:
+                for _ in range(per_thread):
+                    rep.fs.exists(source)
+
+            with ThreadPoolExecutor(max_workers=threads) as pool:
+                list(pool.map(burst, range(threads)))
+
+            with pytest.raises(tracewake.ReplayMiss, match="more times than"):
+                rep.fs.exists(source)
+    finally:
+        sys.setswitchinterval(original)
 
 
 def test_a_read_inside_a_tool_is_attributed_to_that_tool(tmp_path: Path, repo: Path) -> None:
