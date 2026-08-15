@@ -365,18 +365,18 @@ reasons about what the run *did* and never about whether it worked. That looked
 like the gap: an observation can show a step was wrong before any write, which
 is exactly where the write-based ceiling below bites.
 
-`Step.observation` now carries it (96% of RootSE steps, 98% of nebius; the
-OpenHands adapter is not wired). Measured on the development halves, six ways of
-using it all tie or lose against `earliest_bound` at 55/113:
+`Step.observation` now carries it across all three adapters: 96% of RootSE
+steps, 97% of OpenHands, 98% of nebius. Measured on the development halves, six
+ways of using it all tie or lose against `earliest_bound` at 55/113:
 
 | Bound added to `earliest_bound` | DEV |
 | --- | --- |
 | terminal repetition over observations | 55/113, unchanged |
 | novelty exhaustion over observations | 55/113, unchanged |
 | first rejected edit | 55/113 (RootSE +1, nebius −1) |
-| first repeated observation | 54/113 |
+| first repeated observation | 46/113 |
 | first empty search result | 52/113 |
-| first error in an observation | 40/113 |
+| first error in an observation | 32/113 |
 
 The repetition and novelty variants never produce a tighter bound than the
 action-based ones, which says observations here are largely redundant with

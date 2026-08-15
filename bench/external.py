@@ -154,9 +154,19 @@ def to_steps(
     It changes what counts as the same action, so both settings are reported
     rather than one being assumed.
     """
+    def _reply(at: int) -> str:
+        """The tool turns answering the assistant turn at `at`."""
+        out = []
+        for later in messages[at + 1 :]:
+            if later.get("role") == "assistant":
+                break
+            if later.get("role") in ("tool", "user"):
+                out.append(_text_of(later.get("content")))
+        return "\n".join(t for t in out if t)
+
     steps: list[Step] = []
     changed: set[tuple[str, str]] = set()
-    for message in messages:
+    for position, message in enumerate(messages):
         if message.get("role") != "assistant":
             continue
         content = _text_of(message.get("content"))
@@ -194,6 +204,7 @@ def to_steps(
                 target=targets[0],
                 reasoning=reasoning,
                 changed_files=frozenset(changed),
+                observation=_reply(position),
                 batch_names=tuple(names) if len(names) > 1 else (),
                 batch_targets=tuple(targets) if len(targets) > 1 else (),
                 writes=frozenset(written),
