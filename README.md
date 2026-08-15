@@ -216,7 +216,12 @@ Within ±2 steps of the label, on all 178 pairs:
 
 Read the columns rather than the pooled total. The sets are not equivalent evidence, and the pool is dominated by whichever one happens to be largest.
 
-These four sets were all used to select the rule, so the figures above are in-sample. Scored once afterwards on fifteen freshly labelled pairs that nothing had rendered or seen, `earliest_bound` gets 8/15, against 5/15 for a fitted constant and 4/15 for the commitment rule alone. Fifteen pairs is a wide interval, but 53% against 54% in-sample means the headline is not a selection artefact.
+These four sets were all used to select the rule, so the figures above are in-sample. Two later measurements checked that, both scored once with the rule frozen:
+
+* **44 RootSE failures labelled by the TrajAudit authors and never used**, because they ship no passing reference run and only a single-trace rule can attempt them: 21/44 = 48%, against 47% on the 58 that were used.
+* **15 freshly labelled nebius pairs** drawn from pool entries nothing had rendered: 8/15 = 53%, against 54% in-sample.
+
+Neither is precise on its own, but both land on the in-sample figure, so the headline is not a selection artefact.
 
 Two label-free facts sort the pairs into classes ranging from 87% to 21% accurate: whether the run committed at all, and whether the trace exceeds 18 steps. The ordering holds inside each dataset, not only in the pool:
 

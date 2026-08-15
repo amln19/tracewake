@@ -112,6 +112,31 @@ between `earliest_bound` and `first_commitment` is not demonstrated at all. The
 honest claim for `earliest_bound` is that it is never worse, is a bound rather
 than a fit, and costs nothing.
 
+### The 44 external labels that were never used
+
+RootSE annotates 102 failing runs. Only 58 ship a passing reference, so
+`load_pairs` returned those and the other 44 went unused — not because they are
+worse, but because a reference-based rule cannot attempt them. A single-trace
+rule can. `load_failures` returns all 102.
+
+Those 44 are the best held-out set this project has: the labels were written by
+the TrajAudit authors, and nothing here had scored them.
+
+| Slice | `earliest_bound` | `first_commitment` | constant 10 |
+| --- | --- | --- | --- |
+| all 102 annotated failures | 48/102 = 47% | 48/102 = 47% | 17/102 = 17% |
+| the 58 used for selection | 27/58 = 47% | 27/58 = 47% | 9/58 = 16% |
+| **the 44 never scored** | **21/44 = 48%** | 21/44 = 48% | 8/44 = 18% |
+
+48% held out against 47% in-sample, with a 34–61% interval. Together with the
+fresh nebius slice below, that is two independent checks saying the reported
+figure is not a selection artefact.
+
+Note that `earliest_bound` and `first_commitment` are identical on every RootSE
+slice. The repetition and novelty bounds never fire here, which is the same fact
+recorded under "RootSE does not loop": those bounds buy their margin on the
+populations where agents thrash, and nothing at all where they do not.
+
 ### Scored once on data nothing had seen
 
 The nebius pool holds 119 pairs and only 40 were ever exported. Thirty were

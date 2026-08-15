@@ -220,6 +220,47 @@ def _reference_dirs(root: Path, instance_id: str) -> list[Path]:
     ]
 
 
+@dataclass(frozen=True)
+class RootSEFailure:
+    """One annotated failing run, with no reference. What a single-trace rule needs."""
+
+    instance_id: str
+    agent: str
+    model: str
+    label: int
+    bad: list[Step]
+
+
+def load_failures(root: Path = ROOTSE_ROOT) -> list[RootSEFailure]:
+    """Every annotated failing run, whether or not a passing reference exists.
+
+    `load_pairs` keeps only the 58 instances that ship a passing run, because a
+    reference-based rule cannot attempt the rest. A single-trace rule can, and
+    the other 44 carry the same external annotation. They are the scarcest thing
+    this project has -- labels written by other people -- and they had been
+    going unused because the pair loader was the only way in.
+    """
+    if not (root / "RootSE").is_dir():
+        raise FileNotFoundError(f"no RootSE checkout at {root}")
+    out: list[RootSEFailure] = []
+    for path in sorted((root / "RootSE").glob("*/*/*.json")):
+        row = json.loads(path.read_text(encoding="utf-8"))
+        bad = to_steps(row["original_traj"])
+        marker = str(row.get("failure_id", "")).strip()
+        if not bad or not marker:
+            continue
+        out.append(
+            RootSEFailure(
+                instance_id=row["instance_id"],
+                agent=str(row.get("agent") or ""),
+                model=str(row.get("model") or ""),
+                label=int(marker) + 1,
+                bad=bad,
+            )
+        )
+    return out
+
+
 def load_pairs(root: Path = ROOTSE_ROOT) -> list[RootSEPair]:
     """Every RootSE instance that has at least one passing reference run.
 
