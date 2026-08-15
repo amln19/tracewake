@@ -165,6 +165,30 @@ observations and neither should be read as a finding.
 The remaining fifteen packets are exported but unlabelled, and the other 49 pool
 pairs have never been rendered. That is the next honest measurement.
 
+## The ceiling on a write-based rule
+
+A bound built on writes cannot report a step earlier than the run's first write.
+Where the label precedes that write, the rule is wrong by construction, and no
+amount of tuning changes it. Measured on the development halves:
+
+| Set | Label precedes the first write | Never writes | Reachable ceiling |
+| --- | --- | --- | --- |
+| OpenHands dev | 3/40 | 14/40 | 33/40 = 82% |
+| RootSE dev | **21/53**, median gap 9 steps | 4/53 | 28/53 = 53% |
+| nebius dev | 0/20 | 6/20 | 14/20 = 70% |
+| pooled | | | 75/113 = 66% |
+
+`earliest_bound` scores 55/113 on those same halves, so it already captures 73%
+of what is reachable. The remaining headroom is 17 points, and over half the
+missing mass sits behind labels a write-based rule cannot see at all.
+
+RootSE is where this bites. Its annotators mark decisions -- opening the wrong
+file, misreading the issue -- that happen well before any code is written, a
+median of 9 steps before and up to 28. That is not a threshold to tune; it is
+information the action sequence does not carry. Reaching those labels needs a
+signal over intent rather than over effects, which is what the LLM methods in
+the comparison above are buying with their tokens.
+
 ## Reliability
 
 The largest effect is not a better rule but knowing when the rule works. Two
