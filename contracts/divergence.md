@@ -162,8 +162,11 @@ earlier sets they were worth 3 points. And `silent-long`, the class that was 21%
 accurate across the earlier pairs, is 4/4 here. Both are single-digit
 observations and neither should be read as a finding.
 
-The remaining fifteen packets are exported but unlabelled, and the other 49 pool
-pairs have never been rendered. That is the next honest measurement.
+The remaining fifteen packets were labelled from the packets alone, then the
+fully labelled 30-packet set was scored once. `earliest_bound` is **18/30 =
+60%** within ±2 (21/30 within ±5; 24/30 within ±10); `first_commitment` is
+13/30 within ±2. On the second 15 alone, the corresponding results are 10/15,
+10/15, 12/15, and 9/15. The other 49 pool pairs have never been rendered.
 
 ## The ceiling on a write-based rule
 

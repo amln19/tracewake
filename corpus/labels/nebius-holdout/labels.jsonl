@@ -13,18 +13,18 @@
 {"label": 11, "note": "writes print statements into sqllineage/core.py lines 11-13, the import region, because the ACI still had that file open; never repaired, and the run moves to its test script immediately after", "packet_id": "H13"}
 {"label": 7, "note": "first library edit is at line 1551 and the run then works around 1534-1535; the resolved fix is at 1574 and 2981, which it never reaches", "packet_id": "H14"}
 {"label": 30, "note": "locks into a 3-step cycle (goto 195 / edit 183:194 / python) repeated to the end; its earlier edit at the right line 195 used a different expression from the resolved fix and was never restored", "packet_id": "H15"}
-{"label": null, "note": "", "packet_id": "H16"}
-{"label": null, "note": "", "packet_id": "H17"}
-{"label": null, "note": "", "packet_id": "H18"}
-{"label": null, "note": "", "packet_id": "H19"}
-{"label": null, "note": "", "packet_id": "H20"}
-{"label": null, "note": "", "packet_id": "H21"}
-{"label": null, "note": "", "packet_id": "H22"}
-{"label": null, "note": "", "packet_id": "H23"}
-{"label": null, "note": "", "packet_id": "H24"}
-{"label": null, "note": "", "packet_id": "H25"}
-{"label": null, "note": "", "packet_id": "H26"}
-{"label": null, "note": "", "packet_id": "H27"}
-{"label": null, "note": "", "packet_id": "H28"}
-{"label": null, "note": "", "packet_id": "H29"}
-{"label": null, "note": "", "packet_id": "H30"}
+{"label": 2, "note": "changes ModelReference.__repr__ to use model_id rather than the needed project_id, then spends the remaining steps on dummy credentials and a fixed test-script edit cycle", "packet_id": "H16"}
+{"label": 9, "note": "edits pydantic/env_settings.py's unrelated Config.prepare_field rather than the alias-generation path, then enters the reproduce/env_settings/goto navigation cycle", "packet_id": "H17"}
+{"label": 26, "note": "starts the terminal six-action search/open cycle over ModelOrDc (alternating pydantic/types.py and main.py) and never edits the library", "packet_id": "H18"}
+{"label": 11, "note": "replaces BaseModel.construct without the required @classmethod form; the later edit leaves that change in place and the run eventually loops inserting a debug print elsewhere", "packet_id": "H19"}
+{"label": 35, "note": "starts the terminal five-action .gitconfig thrash (write, cat, echo, malformed cat, ls) instead of returning to the experiment code", "packet_id": "H20"}
+{"label": 10, "note": "starts the terminal six-step find/open/search/goto/edit/python cycle around schema.Or, repeatedly reapplying the same unsuccessful change", "packet_id": "H21"}
+{"label": 15, "note": "starts the terminal six-step station-info cycle (goto, open, goto, print, create, python) without editing station_data.py", "packet_id": "H22"}
+{"label": 34, "note": "starts the terminal four-step cycle opening the reproduce script and env_settings.py, running the script, and listing files; no further corrective edit is attempted", "packet_id": "H23"}
+{"label": 2, "note": "replaces the tree.py line with a new size property rather than the needed guarded size update; the corrupting edit is never undone", "packet_id": "H24"}
+{"label": 6, "note": "writes OpenAPI(spec) into openapi3/openapi.py when it meant to change the reproduction script; that stray library edit remains through submission", "packet_id": "H25"}
+{"label": 10, "note": "replaces the light_cone block with the per-gate parameter scheme after the first approach fails, then only navigates/searches gate modules and never repairs it", "packet_id": "H26"}
+{"label": 13, "note": "moves the existing easy_ptvsd.py module into a newly invented package layout, after which it only reissues package-import edits and egg-info checks", "packet_id": "H27"}
+{"label": 33, "note": "submits after configuration and reproduction-script experimentation without ever editing djmoney/money.py, where the resolved run removes __rsub__", "packet_id": "H28"}
+{"label": 17, "note": "writes a mock side_effect statement into pydatajson/federation.py because the editor still has the library file open; it is never repaired", "packet_id": "H29"}
+{"label": 5, "note": "replaces the notebookDocumentSync object with the wrong outer array structure; all later steps are dependency and test-run attempts, with no source revision", "packet_id": "H30"}
