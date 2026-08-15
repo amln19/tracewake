@@ -66,7 +66,7 @@ def _embedder() -> LexicalEmbedder:
     return LexicalEmbedder()
 
 
-def m_lexical_v1(good: Sequence[Step], bad: Sequence[Step]) -> int:
+def m_align_v1(good: Sequence[Step], bad: Sequence[Step]) -> int:
     _, aligned, _ = align(list(good), list(bad), embed=_embedder())
     found = divergence_step(aligned, good, bad)
     return found if found is not None else len(bad)
@@ -208,7 +208,7 @@ def methods(fitted: dict) -> dict[str, Method]:
     return {
         "earliest_bound": m_earliest_bound,
         "first_commitment": m_first_commitment,
-        "lexical-v1": m_lexical_v1,
+        "align-v1": m_align_v1,
         "first-difference": m_first_difference,
         "last-common-prefix": m_last_common_prefix,
         f"constant-{fitted['constant_k']}": constant_method(fitted["constant_k"]),
@@ -336,7 +336,7 @@ def report(preds: Sequence[Prediction], fitted: dict, title: str) -> str:
             f"{statistics.mean(abs(p.values[primary] - p.label) for p in group):.2f}"
         )
     lines.append("")
-    for other in ("lexical-v1", "first-difference"):
+    for other in ("align-v1", "first-difference"):
         lo, hi = bootstrap_gap(preds, primary, other)
         lines.append(
             f"bootstrap 95% interval for the ±2 gap over {other}: "

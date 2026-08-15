@@ -109,7 +109,7 @@ def main() -> int:
         results["hosted_matches_local"] = scenarios.hosted_matches_local(client, otlp_job, good, work)
 
         original = results["analysis_load"]["first_request"]
-        repeated = client.analyze("diff", original["run_ids"], original["idempotency_key"], "lexical-v1")
+        repeated = client.analyze("diff", original["run_ids"], original["idempotency_key"], "align-v1")
         results["idempotent_replay"] = {
             "original_job_id": results["analysis_load"]["job_ids"][0],
             "replayed_job_id": repeated["job_id"],
@@ -129,7 +129,7 @@ def main() -> int:
             results["outbox_backlog"] = scenarios.outbox_backlog(stack, client, run_ids[0], "outbox-backlog", 150)
         stack.start_worker()
         first, second = next(pairs)
-        drained = client.analyze("diff", [first, second], "after-faults", "lexical-v1")
+        drained = client.analyze("diff", [first, second], "after-faults", "align-v1")
         results["service_resumes"] = {"state": scenarios.wait_for_job(client, drained["job_id"], 240)["state"]}
 
         results["reconciler_failure"] = scenarios.reconciler_failure(stack, 20)

@@ -123,7 +123,7 @@ CREATE TABLE job_inputs (
     FOREIGN KEY (run_b_id, workspace_id) REFERENCES runs(id, workspace_id),
     CHECK (
         (operation = 'diff' AND run_b_id IS NOT NULL AND run_b_id <> run_a_id
-            AND analysis_profile = 'lexical-v1')
+            AND analysis_profile = 'align-v1')
         OR
         (operation IN ('otlp', 'pprof') AND run_b_id IS NULL
             AND analysis_profile IS NULL)

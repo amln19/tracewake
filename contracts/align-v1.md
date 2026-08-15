@@ -1,8 +1,21 @@
-# `lexical-v1`
+# `align-v1`
 
-`lexical-v1` is the sole initial hosted alignment profile. Python implements
+`align-v1` is the sole initial hosted alignment profile. Python implements
 it; other languages carry its name and results without recreating its
 semantics. Any behavior change requires another profile name.
+
+**Frozen.** The parameters and readout below do not change. A stored diff names
+the profile that produced it, so altering `align-v1` would silently reinterpret
+results already committed under that name. A better method gets a new name
+instead; `contracts/divergence.md` describes the local rule that replaced this
+one for locating failures, and it deliberately carries no version because it is
+not a compatibility boundary. `tests/test_profiles.py` pins these parameters and
+a golden alignment against regression.
+
+This profile was called `lexical-v1` before first release. The old name
+described its similarity function rather than what it produces, and collided
+with the unrelated `--lexical` embedder flag. Nothing had been published under
+it, so the name was corrected rather than aliased.
 
 ## Steps
 

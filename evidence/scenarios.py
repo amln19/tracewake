@@ -75,7 +75,7 @@ def analysis_load(client: Client, pairs: Iterator[tuple[str, str]], count: int, 
     """
     requests = [(next(pairs), f"{prefix}-{index}") for index in range(count)]
     started = time.perf_counter()
-    jobs = [client.analyze("diff", [a, b], key, "lexical-v1")["job_id"] for (a, b), key in requests]
+    jobs = [client.analyze("diff", [a, b], key, "align-v1")["job_id"] for (a, b), key in requests]
     submitted = time.perf_counter()
     latencies: list[float] = []
     outcomes: dict[str, int] = {}
@@ -103,7 +103,7 @@ def soak(client: Client, pairs: Iterator[tuple[str, str]], seconds: float, inter
     index = 0
     while time.monotonic() < deadline:
         first, second = next(pairs)
-        job = client.analyze("diff", [first, second], f"{prefix}-{index}", "lexical-v1")
+        job = client.analyze("diff", [first, second], f"{prefix}-{index}", "align-v1")
         submitted.append((job["job_id"], time.perf_counter()))
         index += 1
         time.sleep(interval)
@@ -131,7 +131,7 @@ def worker_recovery(stack: Stack, client: Client, runs: tuple[str, str], key: st
     The runs analysed here are deliberately large: the kill has to land while
     the attempt is genuinely in flight, not after it has already committed.
     """
-    job_id = client.analyze("diff", [runs[0], runs[1]], key, "lexical-v1")["job_id"]
+    job_id = client.analyze("diff", [runs[0], runs[1]], key, "align-v1")["job_id"]
     # The database answers far faster than the API, which matters when the
     # window between claim and commit is what is being interrupted.
     wait_for(
@@ -202,7 +202,7 @@ def _claim(stack: Stack, worker: WorkerClient, job_id: str, operation: str, time
 def late_completion(stack: Stack, client: Client, runs: tuple[str, str], key: str) -> dict[str, Any]:
     """Take an attempt, stop heartbeating, and try to commit after fencing."""
     worker = _worker_client(stack)
-    job_id = client.analyze("diff", [runs[0], runs[1]], key, "lexical-v1")["job_id"]
+    job_id = client.analyze("diff", [runs[0], runs[1]], key, "align-v1")["job_id"]
     token = _claim(stack, worker, job_id, "diff")["attempt_token"]
     wait_for(
         lambda: any(a["attempt_number"] == 1 and a["state"] == "fenced" for a in client.job(job_id)["attempts"]),
@@ -234,7 +234,7 @@ def late_completion(stack: Stack, client: Client, runs: tuple[str, str], key: st
 def retry_exhaustion(stack: Stack, client: Client, runs: tuple[str, str], key: str) -> dict[str, Any]:
     """Fail every allowed attempt retryably and watch the job go terminal."""
     worker = _worker_client(stack)
-    job_id = client.analyze("diff", [runs[0], runs[1]], key, "lexical-v1")["job_id"]
+    job_id = client.analyze("diff", [runs[0], runs[1]], key, "align-v1")["job_id"]
     states = []
     for _ in range(3):
         claim = _claim(stack, worker, job_id, "diff", timeout=180)

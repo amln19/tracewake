@@ -1,6 +1,6 @@
 """Locate where a failing run went irrecoverably wrong, from that run alone.
 
-`lexical-v1` reads the divergence off the *last* aligned column that agreed, so
+`align-v1` reads the divergence off the *last* aligned column that agreed, so
 one coincidental late agreement -- two long runs that both view the same file
 again at step 44 -- drags the answer to the end of the trace. On externally
 labelled RootSE failures that readout lands within two steps of the label on 5
@@ -213,7 +213,7 @@ def reliability(bad: Sequence[Step]) -> Reliability:
     changed anything pre-existing — is right about a fifth of the time and
     should be treated as "cannot localise" rather than as an answer.
 
-    The 18-step boundary is `lexical-v1`'s existing long/short split, reused
+    The 18-step boundary is `align-v1`'s existing long/short split, reused
     rather than refitted.
     """
     commitments = commitment_steps(bad)

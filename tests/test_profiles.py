@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from tracewake.align import Step
-from tracewake.profiles import LEXICAL_V1, lexical_v1_align
+from tracewake.profiles import ALIGN_V1, align_v1
 
 
-def test_lexical_v1_parameters_are_frozen() -> None:
-    assert LEXICAL_V1.model_dump(mode="json") == {
-        "name": "lexical-v1",
+def test_align_v1_parameters_are_frozen() -> None:
+    assert ALIGN_V1.model_dump(mode="json") == {
+        "name": "align-v1",
         "version": 1,
         "token_pattern": "[A-Za-z0-9_./-]+",
         "case": "lower",
@@ -21,7 +21,7 @@ def test_lexical_v1_parameters_are_frozen() -> None:
     }
 
 
-def test_lexical_v1_alignment_has_a_frozen_golden_result() -> None:
+def test_align_v1ment_has_a_frozen_golden_result() -> None:
     good = [
         Step(name="read", args={"path": "src/a.py"}, target="src/a.py", reasoning="inspect guard"),
         Step(name="edit", args={"path": "src/a.py", "new": "fixed"}, target="src/a.py", reasoning="apply fix"),
@@ -33,7 +33,7 @@ def test_lexical_v1_alignment_has_a_frozen_golden_result() -> None:
         Step(name="test", args={"path": "tests/test_a.py"}, target="tests/test_a.py", reasoning="run tests"),
     ]
 
-    result = lexical_v1_align(good, bad)
+    result = align_v1(good, bad)
 
     assert result.alignment == [(0, 0), (1, 1), (2, 2)]
     assert result.divergence is None

@@ -8,7 +8,7 @@ authorization and lifecycle transitions.
 Version 1 contains:
 
 * `bundle-v1.md`: deterministic transport bytes and validation limits;
-* `lexical-v1.md`: the dependency-free hosted alignment profile;
+* `align-v1.md`: the dependency-free hosted alignment profile;
 * `public-api-v1.md`: tenant-facing HTTP resources and errors;
 * `worker-protocol-v1.md`: attempt-scoped worker messages and authentication;
 * `lifecycle-v1.json` and `lifecycle-v1.md`: executable state-machine rules;
@@ -21,7 +21,7 @@ Version 1 contains:
 local rule that locates where a failing run went irrecoverably wrong, which no
 external party depends on and which is expected to change as evidence changes.
 It carries no version and promises no compatibility. The hosted plane accepts
-`lexical-v1` only.
+`align-v1` only.
 
 Regenerate or check schemas without an additional dependency:
 

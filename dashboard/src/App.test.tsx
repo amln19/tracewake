@@ -144,7 +144,7 @@ describe("authoritative job rendering", () => {
       operation: "diff",
       state: "succeeded",
       run_ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"],
-      profile: "lexical-v1",
+      profile: "align-v1",
       current_attempt_number: 1,
       attempts: [{ attempt_number: 1, state: "succeeded", started_at: "2026-08-06T23:00:00Z", finished_at: "2026-08-06T23:01:00Z", failure: null }],
       progress: null,
@@ -182,7 +182,7 @@ describe("authoritative job rendering", () => {
       operation: "diff",
       state: "running",
       run_ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"],
-      profile: "lexical-v1",
+      profile: "align-v1",
       current_attempt_number: 2,
       attempts: [
         { attempt_number: 1, state: "fenced", started_at: "2026-08-06T23:00:00Z", finished_at: "2026-08-06T23:01:00Z", failure: { schema_version: 1, code: "lease_lost", message: "lease expired", retryable: true } },

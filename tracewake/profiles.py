@@ -13,8 +13,8 @@ from .align import (
 )
 from .contracts import AnalysisProfile
 
-LEXICAL_V1 = AnalysisProfile(
-    name="lexical-v1",
+ALIGN_V1 = AnalysisProfile(
+    name="align-v1",
     version=1,
     token_pattern=r"[A-Za-z0-9_./-]+",
     case="lower",
@@ -30,21 +30,21 @@ LEXICAL_V1 = AnalysisProfile(
 
 
 @dataclass(frozen=True)
-class LexicalAlignment:
+class ProfileAlignment:
     alignment: Aligned
     score: float
     divergence: int | None
     scores: list[list[float]]
 
 
-def lexical_v1_align(good: Sequence[Step], bad: Sequence[Step]) -> LexicalAlignment:
+def align_v1(good: Sequence[Step], bad: Sequence[Step]) -> ProfileAlignment:
     total, pairs, scores = align(
         good,
         bad,
         embed=LexicalEmbedder(),
         config=DEFAULT_CONFIG,
     )
-    return LexicalAlignment(
+    return ProfileAlignment(
         alignment=pairs,
         score=total,
         divergence=divergence_step(pairs, good, bad),

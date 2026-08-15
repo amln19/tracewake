@@ -312,7 +312,7 @@ func validateClaim(data []byte) string {
 			return "invalid_message"
 		}
 	}
-	if value.Operation == "diff" && (value.Profile == nil || *value.Profile != "lexical-v1") {
+	if value.Operation == "diff" && (value.Profile == nil || *value.Profile != "align-v1") {
 		return "invalid_message"
 	}
 	return ""
@@ -339,7 +339,7 @@ func validatePublicJob(data []byte) string {
 		}
 		seen[id] = true
 	}
-	if value.Operation == "diff" && (value.Profile == nil || *value.Profile != "lexical-v1") {
+	if value.Operation == "diff" && (value.Profile == nil || *value.Profile != "align-v1") {
 		return "invalid_request"
 	}
 	if value.Operation != "diff" && value.Profile != nil {
@@ -405,7 +405,7 @@ func validateValidationResult(data []byte) string {
 
 func validateDiffResult(data []byte) string {
 	var result diffResult
-	if decodeStrict(data, &result) != nil || result.SchemaVersion != 1 || result.Profile != "lexical-v1" ||
+	if decodeStrict(data, &result) != nil || result.SchemaVersion != 1 || result.Profile != "align-v1" ||
 		result.GoodStepCount < 0 || result.BadStepCount < 1 || !validProvenance(result.Provenance, 2) ||
 		!validArtifactRef(result.HTML) {
 		return "invalid_message"

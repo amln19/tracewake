@@ -23,7 +23,7 @@ them would measure a different system than the one that gets deployed.
 | Scenario | What it does | What it establishes |
 | --- | --- | --- |
 | `ingestion` | Uploads bundles and waits for mandatory validation | A run is not analysable until Python has validated its bytes |
-| `analysis_load` | Submits a batch of `lexical-v1` diffs over distinct run pairs | Throughput and end-to-end job latency under a burst |
+| `analysis_load` | Submits a batch of `align-v1` diffs over distinct run pairs | Throughput and end-to-end job latency under a burst |
 | `soak` | Holds a steady submission rate | Latency does not drift between the first and second half |
 | `hosted_matches_local` | Compares a hosted OTLP artifact with a local export | Hosted analysis agrees byte-for-byte with local Tracewake |
 | `idempotent_replay` | Repeats one request with its original key | The same logical job comes back, not a second one |
@@ -65,3 +65,12 @@ environment and are not measured or published.
 Local notification delivery polls the outbox once a second, so queue latency
 measured here is dominated by that interval rather than by the work. A hosted
 deployment uses SQS long-polling instead.
+
+## A note on the profile name
+
+The retained run in `results/` records its analysis profile as `lexical-v1`.
+That profile was later renamed `align-v1`, because the old name described the
+similarity function rather than what the profile produces, and collided with
+the unrelated `--lexical` embedder flag. The measurement is not edited to match:
+it records what ran. Reproducing the harness today writes `align-v1` instead,
+along with fresh timings.

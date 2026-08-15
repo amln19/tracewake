@@ -372,7 +372,7 @@ def score_packets(root: Path = LABEL_ROOT, *, tolerance: int = 2) -> dict:
         predictions = {
             "earliest_bound": earliest_bound(bad),
             "first_commitment": commitment if commitment is not None else len(bad),
-            "lexical-v1": lexical if lexical is not None else len(bad),
+            "align-v1": lexical if lexical is not None else len(bad),
             # Fitted on OpenHands development data; carried over unchanged.
             "dev-constant-10": min(10, len(bad)),
             "dev-proportional-.66": max(1, round(0.66 * len(bad))),

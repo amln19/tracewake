@@ -6,7 +6,7 @@ Tracewake answers this from the failing run alone. No reference run, no
 alignment, no inference, no model call. `tracewake localize <run>` reports a
 step and how much to trust it.
 
-`lexical-v1` — the frozen alignment profile — answers a different question,
+`align-v1` — the frozen alignment profile — answers a different question,
 namely where two runs stopped agreeing, and is much weaker at this one. It is
 kept for compatibility and for visualising an alignment, not for localization.
 
@@ -55,7 +55,7 @@ Four labelled sets, 178 pairs, within ±2 steps of the label. Reproduce with
 | --- | --- | --- | --- | --- | --- |
 | `earliest_bound` | 25/40 | 25/40 | 27/58 | 19/40 | **96/178 = 54%** |
 | `first_commitment` | 25/40 | 23/40 | 27/58 | 15/40 | 90/178 = 51% |
-| `lexical-v1` | 18/40 | 18/40 | 5/58 | 4/40 | 45/178 = 25% |
+| `align-v1` | 18/40 | 18/40 | 5/58 | 4/40 | 45/178 = 25% |
 | constant 10, fitted on development data | 22/40 | 21/40 | 9/58 | 5/40 | 57/178 = 32% |
 
 Against `first_commitment` alone, `earliest_bound` gains 8 and loses 2
@@ -100,7 +100,7 @@ purely non-LLM baseline for this task, which is the gap this fills.
 
 The largest effect is not a better rule but knowing when the rule works. Two
 label-free facts — whether the run committed at all, and whether the trace
-exceeds 18 steps (`lexical-v1`'s existing split, reused not refitted) — sort
+exceeds 18 steps (`align-v1`'s existing split, reused not refitted) — sort
 pairs into classes whose accuracy ranges from 87% to 21%:
 
 | Class | OH dev | OH held-out | RootSE | nebius | pooled |
@@ -132,7 +132,7 @@ The middle rows rest on single digits per set and should not be read finely.
 
 ## Withdrawn: the reference-based variant
 
-An earlier profile, `commit-v1`, kept `lexical-v1`'s alignment and reported the
+An earlier profile, `commit-v1`, kept `align-v1`'s alignment and reported the
 first commitment the *successful* run did not also make. It was withdrawn.
 
 | Set | Reference model | `commit-v1` | single-trace rule |
@@ -202,7 +202,7 @@ wrong, not because they helped.
 ## Limits
 
 * **Absolute accuracy is low.** 21% exact, 47% within ±2 on external labels.
-  The claim is that a structural method degrades gracefully where `lexical-v1`
+  The claim is that a structural method degrades gracefully where `align-v1`
   collapses, not that it localises long traces well.
 * **It is uneven across scaffolds**, and weakest on the one it was developed
   against, so the ordering is not explained by familiarity.

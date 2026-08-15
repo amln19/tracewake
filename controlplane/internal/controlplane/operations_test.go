@@ -107,7 +107,7 @@ func (f *fixture) job(t *testing.T, operation, key string) (string, string) {
 	}
 	request := controlplane.JobRequest{Operation: operation, RunIDs: []string{f.readyRun(t)}}
 	if operation == "diff" {
-		profile := "lexical-v1"
+		profile := "align-v1"
 		request.RunIDs = append(request.RunIDs, f.readyRun(t))
 		request.Profile = &profile
 	}
@@ -350,7 +350,7 @@ func TestRepeatedRequestsProduceOneJobPerOperation(t *testing.T) {
 			runs := []string{f.readyRun(t)}
 			request := controlplane.JobRequest{Operation: operation.name, RunIDs: runs}
 			if operation.name == "diff" {
-				profile := "lexical-v1"
+				profile := "align-v1"
 				request.RunIDs = append(request.RunIDs, f.readyRun(t))
 				request.Profile = &profile
 			}
@@ -378,7 +378,7 @@ func TestRepeatedRequestsProduceOneJobPerOperation(t *testing.T) {
 func TestDistinctIdempotencyKeysCreateDistinctJobsForTheSameInput(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
-	profile := "lexical-v1"
+	profile := "align-v1"
 	request := controlplane.JobRequest{
 		Operation: "diff",
 		RunIDs:    []string{f.readyRun(t), f.readyRun(t)},
@@ -522,7 +522,7 @@ func TestRunAndAuditListsReturnStableCursorPages(t *testing.T) {
 	for range 4 {
 		f.readyRun(t)
 	}
-	profile := "lexical-v1"
+	profile := "align-v1"
 	request := controlplane.JobRequest{
 		Operation: "diff",
 		RunIDs:    []string{f.readyRun(t), f.readyRun(t)},

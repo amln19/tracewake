@@ -68,7 +68,7 @@ func TestPostgresLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	profile := "lexical-v1"
+	profile := "align-v1"
 	request := controlplane.JobRequest{Operation: "diff", RunIDs: []string{runA, runB}, Profile: &profile}
 	job, reused, err := service.CreateJob(ctx, principal, "retry-test", request)
 	if err != nil || reused {

@@ -87,7 +87,7 @@ def rules(embed=None) -> dict[str, Rule]:
     return {
         "earliest_bound": lambda good, bad: earliest_bound(bad),
         "first_commitment": commitment,
-        "lexical-v1": lexical,
+        "align-v1": lexical,
         "constant-10": lambda good, bad: min(10, len(bad)),
     }
 

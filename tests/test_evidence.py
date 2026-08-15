@@ -211,6 +211,11 @@ def test_the_demonstration_recorded_every_step(measurements: dict[str, Any]) -> 
     assert provenance["artifact_kinds"] == ["diff_html", "diff_json"]
     assert provenance["downloads_match_recorded_identity"]
     assert provenance["html_is_self_contained"]
+    # The retained run predates the rename of the hosted profile to `align-v1`,
+    # so it records the name that was in force when it executed. Rewriting the
+    # measurement to match today's code would falsify what ran, and re-running
+    # would replace every latency figure the README quotes with numbers from a
+    # different machine. The record keeps its own history.
     assert provenance["analysis_profile"] == "lexical-v1"
     assert provenance["result_schema"] == {"name": "result-envelope", "version": 1}
     assert len(provenance["input_digests"]) == 2

@@ -165,7 +165,7 @@
           "type": "string"
         },
         "profile": {
-          "const": "lexical-v1",
+          "const": "align-v1",
           "title": "Profile",
           "type": "string"
         },

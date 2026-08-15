@@ -45,7 +45,7 @@
       "type": "number"
     },
     "name": {
-      "const": "lexical-v1",
+      "const": "align-v1",
       "title": "Name",
       "type": "string"
     },

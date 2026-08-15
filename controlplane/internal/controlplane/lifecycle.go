@@ -168,8 +168,8 @@ func normalizedDigest(request JobRequest) (string, error) {
 	expected := 1
 	if request.Operation == "diff" {
 		expected = 2
-		if request.Profile == nil || *request.Profile != "lexical-v1" {
-			return "", fmt.Errorf("%w: diff requires analysis profile lexical-v1", ErrUnsupported)
+		if request.Profile == nil || *request.Profile != "align-v1" {
+			return "", fmt.Errorf("%w: diff requires analysis profile align-v1", ErrUnsupported)
 		}
 	} else if request.Profile != nil {
 		return "", fmt.Errorf("%w: only diff accepts an analysis profile", ErrUnsupported)

@@ -417,7 +417,7 @@ func TestSingleRunAnalysisCommitsItsResultAndCompanion(t *testing.T) {
 	// An analysis profile this deployment does not implement is refused
 	// outright rather than quietly replaced with the one it does.
 	for _, request := range []map[string]any{
-		{"operation": "otlp", "run_ids": []string{run}, "profile": "lexical-v1"},
+		{"operation": "otlp", "run_ids": []string{run}, "profile": "align-v1"},
 		{"operation": "diff", "run_ids": []string{run, run}, "profile": "mlx-community/bge-small-en-v1.5-bf16"},
 		{"operation": "flamegraph", "run_ids": []string{run}},
 	} {

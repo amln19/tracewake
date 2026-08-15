@@ -98,7 +98,7 @@ def analyze(
 ) -> None:
     """Queue an analysis of ready remote runs."""
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json", "Idempotency-Key": idempotency_key}
-    value = {"operation": operation, "run_ids": run_ids, "profile": "lexical-v1" if operation == "diff" else None}
+    value = {"operation": operation, "run_ids": run_ids, "profile": "align-v1" if operation == "diff" else None}
     request = urllib.request.Request(url.rstrip("/") + "/v1/jobs", data=json.dumps(value).encode(), headers=headers, method="POST")
     try:
         with urllib.request.urlopen(request, timeout=30) as response:

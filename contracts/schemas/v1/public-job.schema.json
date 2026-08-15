@@ -311,7 +311,7 @@
     "profile": {
       "anyOf": [
         {
-          "const": "lexical-v1",
+          "const": "align-v1",
           "type": "string"
         },
         {

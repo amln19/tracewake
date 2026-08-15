@@ -126,7 +126,7 @@ class Step:
     batch_targets: tuple[str, ...] = ()
     # Paths this step alone wrote. `changed_files` accumulates, so it cannot say
     # which step did the writing, and its second element means different things
-    # to different adapters. No `lexical-v1` component reads this field.
+    # to different adapters. No `align-v1` component reads this field.
     writes: frozenset[str] = field(default_factory=frozenset)
 
     @property

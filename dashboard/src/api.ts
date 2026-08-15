@@ -95,7 +95,7 @@ export async function createDiff(runIDs: [string, string]): Promise<string> {
   const result = await request<{ job_id: string }>("/v1/jobs", {
     method: "POST",
     headers: { "Idempotency-Key": crypto.randomUUID() },
-    body: JSON.stringify({ operation: "diff", run_ids: runIDs, profile: "lexical-v1" }),
+    body: JSON.stringify({ operation: "diff", run_ids: runIDs, profile: "align-v1" }),
   });
   return result.job_id;
 }

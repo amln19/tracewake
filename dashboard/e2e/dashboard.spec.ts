@@ -49,7 +49,7 @@ test("refresh reconstructs attempts and cancellation displays the database winne
   await commonRoutes(page);
   const jobID = "11111111-1111-4111-8111-111111111111";
   const running = {
-    job_id: jobID, operation: "diff", state: "running", run_ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"], profile: "lexical-v1", current_attempt_number: 2,
+    job_id: jobID, operation: "diff", state: "running", run_ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"], profile: "align-v1", current_attempt_number: 2,
     attempts: [
       { attempt_number: 1, state: "fenced", started_at: "2026-08-06T23:00:00Z", finished_at: "2026-08-06T23:01:00Z", failure: { schema_version: 1, code: "lease_lost", message: "lease expired", retryable: true } },
       { attempt_number: 2, state: "running", started_at: "2026-08-06T23:02:00Z", finished_at: null, failure: null },
@@ -119,7 +119,7 @@ test("runs the self-contained report renderer without same-origin authority", as
   const resultID = "33333333-3333-4333-8333-333333333333";
   const reportID = "44444444-4444-4444-8444-444444444444";
   await page.route(`**/v1/jobs/${jobID}`, (route) => fulfillJSON(route, {
-    job_id: jobID, operation: "diff", state: "succeeded", run_ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"], profile: "lexical-v1", current_attempt_number: 1,
+    job_id: jobID, operation: "diff", state: "succeeded", run_ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"], profile: "align-v1", current_attempt_number: 1,
     attempts: [{ attempt_number: 1, state: "succeeded", started_at: "2026-08-06T23:00:00Z", finished_at: "2026-08-06T23:01:00Z", failure: null }],
     progress: null, cancel_requested_at: null, failure: null, created_at: "2026-08-06T23:00:00Z", updated_at: "2026-08-06T23:01:00Z", terminal_at: "2026-08-06T23:01:00Z",
     artifacts: [

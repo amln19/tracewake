@@ -213,7 +213,7 @@ def fixture_bytes() -> tuple[dict[str, bytes], list[dict[str, object]]]:
                 PublicJobRequest(
                     operation="diff",
                     run_ids=[RUN_ID, SECOND_RUN_ID],
-                    profile="lexical-v1",
+                    profile="align-v1",
                 )
             ),
         ),
@@ -243,7 +243,7 @@ def fixture_bytes() -> tuple[dict[str, bytes], list[dict[str, object]]]:
                     status="succeeded",
                     result=DiffResult(
                         schema_version=1,
-                        profile="lexical-v1",
+                        profile="align-v1",
                         score=0.75,
                         divergence=2,
                         good_step_count=3,
@@ -253,7 +253,7 @@ def fixture_bytes() -> tuple[dict[str, bytes], list[dict[str, object]]]:
                             AlignmentColumn(good_index=1, bad_index=None, similarity=None),
                         ],
                         provenance=_provenance(
-                            bundle_digest, logical_digest, profile="lexical-v1", inputs=2
+                            bundle_digest, logical_digest, profile="align-v1", inputs=2
                         ),
                         html=companion("diff_html", "text/html; charset=utf-8"),
                     ),
@@ -357,7 +357,7 @@ def fixture_bytes() -> tuple[dict[str, bytes], list[dict[str, object]]]:
                 {
                     "operation": "diff",
                     "run_ids": [RUN_ID, RUN_ID],
-                    "profile": "lexical-v1",
+                    "profile": "align-v1",
                 }
             ),
         ),

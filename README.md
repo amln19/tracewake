@@ -155,7 +155,7 @@ The hosted workflow is:
 
 1. Upload a deterministic bundle directly to artifact storage using a short-lived grant.
 2. A mandatory Python validation job checks it before the run becomes usable.
-3. Submit `diff`, `otlp`, or `pprof` work for a ready run. `diff` uses the dependency-free, versioned `lexical-v1` profile.
+3. Submit `diff`, `otlp`, or `pprof` work for a ready run. `diff` uses the dependency-free, versioned `align-v1` profile.
 4. A worker produces immutable, attempt-scoped artifacts. The control plane registers exactly one result only if the current lease remains valid.
 
 PostgreSQL is authoritative for hosted lifecycle state; object storage holds immutable bundles and artifacts; queue delivery is at-least-once notification, not authority. Jobs use workspace-scoped idempotency, database leases, retries, cancellation, transactional outbox publication, reconciliation, and stale-attempt fencing. The complete contract set is in [`contracts/`](contracts/README.md).
@@ -211,7 +211,7 @@ Within ±2 steps of the label, on all 178 pairs:
 | --- | --- | --- | --- | --- | --- |
 | `earliest_bound` | 25/40 | 25/40 | 27/58 | 19/40 | **96/178 = 54%** |
 | `first_commitment` | 25/40 | 23/40 | 27/58 | 15/40 | 90/178 = 51% |
-| `lexical-v1` (alignment readout) | 18/40 | 18/40 | 5/58 | 4/40 | 45/178 = 25% |
+| `align-v1` (alignment readout) | 18/40 | 18/40 | 5/58 | 4/40 | 45/178 = 25% |
 | constant 10, fitted on development data | 22/40 | 21/40 | 9/58 | 5/40 | 57/178 = 32% |
 
 Read the columns rather than the pooled total. The sets are not equivalent evidence, and the pool is dominated by whichever one happens to be largest.
@@ -286,7 +286,7 @@ The local evidence run exercises this complete lifecycle; the named observations
 | --- | --- |
 | Upload a deterministic bundle | `ingestion` |
 | Observe mandatory validation before it is usable | `ingestion` |
-| Submit an idempotent `lexical-v1` diff | `analysis_load` |
+| Submit an idempotent `align-v1` diff | `analysis_load` |
 | Observe a claimed attempt reporting progress | `worker_recovery.progress_while_running` |
 | Kill the active worker and wait for fencing | `worker_recovery.kill_to_fence_seconds` |
 | Observe retry and the replacement result | `worker_recovery.succeeded_attempts` |
@@ -301,7 +301,7 @@ The local evidence run exercises this complete lifecycle; the named observations
 Event schema 3, SQLite store schema 3, cassette directory format 1, bundle format 1, result schemas, and hosted APIs are separate versioned contracts. Unsupported versions are rejected rather than silently reinterpreted. Start with:
 
 * [`contracts/README.md`](contracts/README.md) — bundle, public API, worker, lifecycle, persistence, and threat-model contracts.
-* [`contracts/lexical-v1.md`](contracts/lexical-v1.md) — exact hosted alignment profile.
+* [`contracts/align-v1.md`](contracts/align-v1.md) — exact hosted alignment profile.
 * [`evidence/README.md`](evidence/README.md) — reproducible operational harness and what it does not measure.
 * [`deploy/aws/README.md`](deploy/aws/README.md) — operator requirements, deployment, retention, deletion, and recovery.
 * [`examples/openai_agent.py`](examples/openai_agent.py) and [`examples/demo.py`](examples/demo.py) — runnable integration and end-to-end demo.
@@ -322,7 +322,7 @@ uv build
 
 ## Limits
 
-Tracewake is intentionally not a universal recorder or a security sandbox. It does not claim complete syscall, native-code, subprocess, or arbitrary filesystem interception. It cannot prove redaction removed every sensitive value. A divergence report is a debugging lead, not a causal diagnosis: `localize` lands within two steps of a human label about half the time, and reports which cases it cannot localise at all. Hosted analysis currently accepts recorded bundles only, and the hosted profile is `lexical-v1`; it does not remotely execute untrusted agent code.
+Tracewake is intentionally not a universal recorder or a security sandbox. It does not claim complete syscall, native-code, subprocess, or arbitrary filesystem interception. It cannot prove redaction removed every sensitive value. A divergence report is a debugging lead, not a causal diagnosis: `localize` lands within two steps of a human label about half the time, and reports which cases it cannot localise at all. Hosted analysis currently accepts recorded bundles only, and the hosted profile is `align-v1`; it does not remotely execute untrusted agent code.
 
 ## License
 

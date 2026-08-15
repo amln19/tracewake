@@ -192,7 +192,7 @@ def claim_for(operation: str, runs: list[Recorded], *, profile: str | None = Non
         "attempt_number": 1,
         "attempt_token": "attempt",
         "operation": operation,
-        "profile": profile if profile is not None else ("lexical-v1" if operation == "diff" else None),
+        "profile": profile if profile is not None else ("align-v1" if operation == "diff" else None),
         "input_artifacts": [
             {
                 "artifact_id": RUN_IDS[index],
@@ -267,7 +267,7 @@ def test_hosted_diff_matches_a_local_comparison(tmp_path: Path, objects, good: R
     client = deploy(objects, [good, bad])
     output = worker._diff(client, claim_for("diff", [good, bad]), tmp_path)
 
-    local = diff_runs(good.events, bad.events, embed=LexicalEmbedder(), embedding_model="lexical-v1")
+    local = diff_runs(good.events, bad.events, embed=LexicalEmbedder(), embedding_model="align-v1")
     result = result_of(output)
     assert result["score"] == local.score
     assert result["divergence"] == local.divergence
@@ -309,7 +309,7 @@ def test_analyses_are_deterministic_from_normalized_inputs(
         ("diff", "mlx-community/bge-small-en-v1.5-bf16"),
         ("diff", None),
         ("otlp", "mlx-community/bge-small-en-v1.5-bf16"),
-        ("pprof", "lexical-v1"),
+        ("pprof", "align-v1"),
         ("verify", None),
     ],
 )

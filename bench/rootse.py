@@ -10,7 +10,7 @@ The value and the risks both need stating plainly.
 
 Value: the labels are free and were made by annotators who never saw Tracewake;
 the failing traces are long (median 51 steps against 18 in the OpenHands set),
-which is exactly where `lexical-v1` collapses; and four different agent
+which is exactly where `align-v1` collapses; and four different agent
 scaffolds are represented, so it tests whether a profile travels.
 
 Risks: the passing reference for an instance generally comes from a *different
@@ -293,7 +293,7 @@ def _predict(good, bad):
     n = len(bad)
     values = {
         "earliest_bound": earliest_bound(bad),
-        "lexical-v1": lexical if lexical is not None else n,
+        "align-v1": lexical if lexical is not None else n,
         "first-difference": first_target_difference(good, bad),
         "last-common-prefix": last_common_prefix(good, bad),
         f"constant-{DEV_CONSTANT_K}": max(1, min(n, DEV_CONSTANT_K)),

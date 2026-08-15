@@ -36,7 +36,7 @@ CANCELLATION_SECONDS = 1
 # One attempt output. Analyses summarise a bundle instead of copying it, so a
 # larger output means a defect rather than a large run.
 MAX_ARTIFACT_BYTES = 64 * 1024 * 1024
-HOSTED_PROFILE = "lexical-v1"
+HOSTED_PROFILE = "align-v1"
 
 log = logging.getLogger("tracewake.worker")
 

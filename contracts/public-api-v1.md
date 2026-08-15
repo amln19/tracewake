@@ -98,7 +98,7 @@ unknown IDs both return `not_found`.
 
 `POST /v1/jobs` requires `jobs:write` and `Idempotency-Key` of 1–255 visible
 ASCII characters. The body is the generated `public-job-request` schema.
-`diff` requires exactly two distinct `ready` run IDs and `lexical-v1`; `otlp`
+`diff` requires exactly two distinct `ready` run IDs and `align-v1`; `otlp`
 and `pprof` require exactly one `ready` run and no profile. An operation or
 analysis profile this deployment does not implement returns HTTP 422
 `unsupported_version` and is never replaced by a supported one; a malformed
