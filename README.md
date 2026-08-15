@@ -246,7 +246,7 @@ The residual errors are now located rather than guessed at. On RootSE, 21 develo
 
 That is a limit of modality rather than of tuning: what remains needs language, which is what the LLM methods above spend their tokens on. [`contracts/divergence.md`](contracts/divergence.md) records every failed signal and why.
 
-[`corpus/`](corpus/README.txt) holds the labelled packets, the seeded splits and the per-pair predictions. The benchmark commands live in [`bench/`](bench/); `python -m bench.pooled` reproduces the rule comparison.
+[`corpus/`](corpus/README.txt) holds the labelled packets, the seeded splits and the per-pair predictions. The benchmark commands live in [`bench/`](bench/). `python -m bench.pooled` reproduces the rule comparison; `python -m bench.heldout` reproduces the two held-out measurements above.
 
 ## Operational evidence
 

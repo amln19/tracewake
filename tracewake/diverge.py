@@ -192,9 +192,10 @@ Reliability = Literal[
 ]
 
 # Within-±2 accuracy of `earliest_bound` per class, pooled over 178 pairs from
-# OpenHands (both halves), RootSE and nebius. Unlike `CommitDivergence.support`
-# this *is* ordered by measured accuracy, and the ordering holds inside every
-# one of the four sets separately rather than only in the pool.
+# OpenHands (both halves), RootSE and nebius. This is ordered by measured
+# accuracy, and the ordering holds inside every one of the four sets separately
+# rather than only in the pool, which is what makes abstaining on the tail
+# meaningful rather than a guess.
 RELIABILITY_ACCURACY: dict[str, float] = {
     "commit-short": 0.87,        # 26/30
     "silent-short": 0.82,        # 18/22
