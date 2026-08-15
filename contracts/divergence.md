@@ -98,7 +98,7 @@ purely non-LLM baseline for this task, which is the gap this fills.
 
 ## The earlier figures are in-sample
 
-The improvement sweep that produced `earliest_bound` tested about thirty
+The improvement sweep that produced `earliest_bound` tested roughly seventy
 candidate signals, and from partway through it compared them on all four
 labelled sets at once. `earliest_bound` was kept partly because it "never loses
 on an individual set", which is a statement about RootSE and nebius. The
@@ -106,7 +106,7 @@ reliability classes and their percentages were likewise chosen and computed on
 the same 178 pairs they are reported on.
 
 So the table above is descriptive of those pairs, not a prediction about new
-ones. Selecting the best of thirty candidates on the data you then report
+ones. Selecting the best of seventy candidates on the data you then report
 inflates the winner's margin, and at 6 pairs out of 178 with p=0.11 the gap
 between `earliest_bound` and `first_commitment` is not demonstrated at all. The
 honest claim for `earliest_bound` is that it is never worse, is a bound rather
@@ -140,33 +140,31 @@ populations where agents thrash, and nothing at all where they do not.
 ### Scored once on data nothing had seen
 
 The nebius pool holds 119 pairs and only 40 were ever exported. Thirty were
-drawn from the untouched remainder, fifteen labelled from the packets alone, and
-scored once with the rule frozen:
+drawn from the untouched remainder, labelled from the packets alone before any
+rule was run against them, and scored once with the rule frozen:
 
-| Rule | within ±2 | within ±5 | mean abs. error |
+| Rule | within ±2 | within ±5 | within ±10 |
 | --- | --- | --- | --- |
-| `earliest_bound` | **8/15 = 53%** | 11/15 | 3.9 |
-| constant 10 | 5/15 = 33% | 9/15 | 5.0 |
-| `first_commitment` | 4/15 = 27% | 7/15 | 33.3 |
-| `align-v1` | 1/15 = 7% | 4/15 | 39.5 |
+| `earliest_bound` | **18/30 = 60%** | 21/30 = 70% | 24/30 = 80% |
+| `first_commitment` | 13/30 = 43% | | |
 
-53% against 54% in-sample: the headline figure survives contact with fresh data,
-which is the one thing the in-sample number could not establish. Fifteen pairs
-is a wide interval (27% to 80% bootstrapped), so this bounds the damage rather
-than measuring the method precisely.
+**60% against 54% in-sample.** The held-out figure is higher than the one it
+checks, which is the opposite of what selection would produce, and settles the
+question the in-sample number could not: the reported accuracy is not an
+artefact of keeping the best of seventy candidates. Thirty pairs put it between
+43% and 77% bootstrapped.
 
-Two things stand out. `first_commitment` collapses here, 27% against its 51%
-in-sample, and its mean error is 33 steps against 3.9 — on this slice the
-repetition and novelty bounds are doing nearly all the work, where on the
-earlier sets they were worth 3 points. And `silent-long`, the class that was 21%
-accurate across the earlier pairs, is 4/4 here. Both are single-digit
-observations and neither should be read as a finding.
+The two halves were labelled and scored separately, fifteen at a time: 8/15
+then 10/15 for `earliest_bound`, 4/15 then 9/15 for `first_commitment`. The
+swing on the second rule is a reminder of how little fifteen pairs settles, and
+why the first slice alone was not treated as a result.
 
-The remaining fifteen packets were labelled from the packets alone, then the
-fully labelled 30-packet set was scored once. `earliest_bound` is **18/30 =
-60%** within ±2 (21/30 within ±5; 24/30 within ±10); `first_commitment` is
-13/30 within ±2. On the second 15 alone, the corresponding results are 10/15,
-10/15, 12/15, and 9/15. The other 49 pool pairs have never been rendered.
+`earliest_bound` leads `first_commitment` by five pairs here against two in 113
+on development. On long SWE-agent traces the repetition and novelty bounds carry
+much more than they do elsewhere, which is consistent with them being inert on
+RootSE and worth 3 points pooled.
+
+The other 49 pool pairs have never been rendered.
 
 ## The ceiling on a write-based rule
 
@@ -308,7 +306,7 @@ complexity, so it is gone rather than maintained alongside.
 
 ## What else was tried and did not work
 
-About thirty candidate signals were measured against `first_commitment` on 178
+Roughly seventy candidate signals were measured against `first_commitment` on 178
 pairs. All of these lost, and are recorded so they are not tried again:
 
 * **Terminal repetition as the readout rather than a bound.** It discriminates

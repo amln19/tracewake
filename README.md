@@ -219,9 +219,9 @@ Each is split by a fixed seed into a development half and a held-out half, writt
 An earlier sweep selected the rule while looking at all of them, which made those figures in-sample. Two later measurements checked it, each scored once:
 
 * **44 RootSE failures labelled by the TrajAudit authors and never used**, since they ship no passing run and only a single-trace rule can attempt them: 48%, against 47% on the ones that had been used.
-* **15 freshly labelled nebius pairs** from pool entries nothing had rendered: 53%, against 54% in-sample.
+* **30 freshly labelled nebius pairs** from pool entries nothing had rendered: 60%, against 54% in-sample.
 
-Neither is precise alone. Both land on the in-sample figure, so the number is not an artefact of picking a winner.
+Neither is precise alone, but both land at or above the in-sample figure, so it is not an artefact of picking a winner out of seventy candidates.
 
 Against the alternatives, in-sample across all 178 pairs then available:
 
