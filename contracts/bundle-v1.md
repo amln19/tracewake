@@ -90,3 +90,8 @@ and declared versions; then validates events, derived model-request and
 tool-argument hashes, logical digest, references, blob bytes, digests, and
 sizes. An invalid or unsupported bundle never becomes a
 usable hosted run.
+
+Both derived hashes cover the stored form of what they identify. A producer that
+scrubs secrets or local paths out of messages or tool arguments hashes the
+scrubbed form; hashing what it replaced leaves a bundle whose recorded hash
+disagrees with its own recorded content, and validation rejects it.
