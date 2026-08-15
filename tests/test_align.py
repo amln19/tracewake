@@ -376,6 +376,22 @@ def test_extract_steps_accumulates_writes_under_the_tool():
     assert steps[1].changed_files == frozenset(
         {("a.py", digest_a), ("b.py", digest_b)}
     )
+    # `changed_files` accumulates; `writes` names what each step alone wrote.
+    assert steps[0].writes == frozenset({"a.py"})
+    assert steps[1].writes == frozenset({"b.py"})
+
+
+def test_writes_do_not_enter_the_frozen_lexical_distance():
+    plain = Step(name="edit", args={"path": "a.py"}, target="a.py")
+    annotated = Step(
+        name="edit", args={"path": "a.py"}, target="a.py", writes=frozenset({"a.py"})
+    )
+    other = Step(name="edit", args={"path": "b.py"}, target="b.py")
+
+    assert step_similarity(plain, other, reasoning_vectors=None) == step_similarity(
+        annotated, other, reasoning_vectors=None
+    )
+    assert target_agree(plain, annotated)
 
 
 def test_diff_runs_and_format():

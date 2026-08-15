@@ -124,6 +124,10 @@ class Step:
     # Parallel batches are one step; names/targets are then multi-valued.
     batch_names: tuple[str, ...] = ()
     batch_targets: tuple[str, ...] = ()
+    # Paths this step alone wrote. `changed_files` accumulates, so it cannot say
+    # which step did the writing, and its second element means different things
+    # to different adapters. No `lexical-v1` component reads this field.
+    writes: frozenset[str] = field(default_factory=frozenset)
 
     @property
     def names(self) -> frozenset[str]:
@@ -203,8 +207,11 @@ def extract_traces(
     out: list[StepTrace] = []
     for parent_id in group_order:
         tools = sorted(tool_groups[parent_id], key=lambda t: t.batch_index)
+        written: set[str] = set()
         for tool in tools:
-            changed.update(writes_by_tool.get(tool.tool_call_id, ()))
+            step_writes = writes_by_tool.get(tool.tool_call_id, ())
+            changed.update(step_writes)
+            written.update(path for path, _ in step_writes)
         parent = models.get(parent_id)
         reason = ""
         if parent is not None and parent.response.text:
@@ -219,6 +226,7 @@ def extract_traces(
                 target=target_of(args),
                 reasoning=reason,
                 changed_files=files,
+                writes=frozenset(written),
             )
         else:
             names = tuple(t.name for t in tools)
@@ -231,6 +239,7 @@ def extract_traces(
                 changed_files=files,
                 batch_names=names,
                 batch_targets=targets,
+                writes=frozenset(written),
             )
         out.append(StepTrace(step=step, parent_call_id=parent_id, tools=tuple(tools)))
 
@@ -747,12 +756,15 @@ def diff_runs(
     good = extract_steps(good_events, append_submit=append_submit_good)
     bad = extract_steps(bad_events, append_submit=append_submit_bad)
     total, pairs, scores = align(good, bad, embed=embed)
+
+    divergence = divergence_step(pairs, good, bad)
+
     return DiffResult(
         good_steps=good,
         bad_steps=bad,
         alignment=pairs,
         score=total,
-        divergence=divergence_step(pairs, good, bad),
+        divergence=divergence,
         length_ratio=length_ratio(good, bad),
         embedding_model=embedding_model,
         embedding_revision=embedding_revision,
