@@ -341,6 +341,13 @@ class Tools:
             tool_scope.reset(token)
 
     def _call(self, parent_call_id: str, request: ToolCallRequest) -> ToolOutcome:
+        # Hash the form that will be stored, exactly as the model call path does.
+        # Redaction rewrites argument values on their way to disk, so a hash taken
+        # before it and one taken after it would never agree — and a cassette
+        # scrubbed on one machine has to match on another, where the raw home
+        # paths behind those arguments differ.
+        stored_args = self._session._redactor.args(request.args)
+        args_hash = hash_args(stored_args)
         # Keyed by (parent, tool id) rather than sequence, so a parallel batch
         # replays correctly no matter what order its calls complete in. A forked
         # session takes none of them: it re-executes so the world reaches the
@@ -350,7 +357,7 @@ class Tools:
             if self._session.forked
             else self._session._tool_calls.get((parent_call_id, request.id))
         )
-        if recorded is not None and hash_args(request.args) == recorded.args_hash:
+        if recorded is not None and args_hash == recorded.args_hash:
             self._session.report.tool_calls_replayed += 1
             content = self._session._store.blobs.get(recorded.result.digest).decode("utf-8")
             return ToolOutcome(
@@ -364,7 +371,7 @@ class Tools:
                 )
             raise ReplayMiss(
                 f"tool {request.name!r} (id {request.id}) was called with different "
-                f"arguments than recorded: {hash_args(request.args)[:12]} now vs "
+                f"arguments than recorded: {args_hash[:12]} now vs "
                 f"{recorded.args_hash[:12]} in run {self._session.run_id}. The replayed "
                 f"agent diverged."
             )
@@ -383,8 +390,8 @@ class Tools:
                 tool_call_id=request.id,
                 batch_index=request.batch_index,
                 name=request.name,
-                args=request.args,
-                args_hash=hash_args(request.args),
+                args=stored_args,
+                args_hash=args_hash,
                 result=self._session._put_blob(outcome.content.encode("utf-8")),
                 status=outcome.status,
                 error=outcome.error,

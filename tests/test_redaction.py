@@ -14,7 +14,10 @@ from tracewake import (
     ToolCallRequest,
     ToolOutcome,
     Usage,
+    export_cassette,
+    import_cassette,
 )
+from tracewake.cassette import _validate_cassette
 
 SECRET = "sk-test-0123456789-super-secret"
 
@@ -116,6 +119,76 @@ def test_a_cassette_replays_where_the_same_variable_holds_a_different_secret(
         )
         assert completion.response.text == "done"
         assert rep.report.matched == 1
+
+
+def test_a_redacted_run_survives_export_verify_and_import(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Redaction rewrites tool arguments, so the hash that identifies the call has
+    to be taken over the scrubbed form. Hashing the raw arguments instead left
+    every cassette carrying a home path or a credential in a tool argument
+    exporting cleanly and then failing its own validation."""
+    monkeypatch.setenv("DEMO_API_KEY", SECRET)
+    store = tmp_path / "store"
+    run_id = _record(store)
+
+    db = Store(store)
+    export_cassette(db, run_id, tmp_path / "cassette")
+    db.close()
+
+    _validate_cassette(tmp_path / "cassette")
+    into = Store(tmp_path / "into")
+    assert import_cassette(tmp_path / "cassette", into).run_id == run_id
+    into.close()
+
+
+def test_a_tool_call_replays_where_home_is_somewhere_else(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The tool path is portable for the same reason the model path is: both
+    machines scrub their own home to the same placeholder, so the recorded and
+    the replayed arguments hash alike even though the raw paths cannot."""
+    store = tmp_path / "store"
+    recorded_home = tmp_path / "home-a"
+    replayed_home = tmp_path / "home-b"
+
+    monkeypatch.setenv("HOME", str(recorded_home))
+    with tracewake.record("tool-home", store=store) as rec:
+        model = rec.model(provider="p", model_id="m", create_fn=_create)
+        completion = model.create(messages=[Message(role="user", content="go")])
+        rec.tools(_dispatch).call(
+            completion.call_id,
+            ToolCallRequest(
+                id="t0",
+                name="read_file",
+                args={"path": f"{recorded_home}/notes.txt"},
+                batch_index=0,
+            ),
+        )
+        rec.outcome(status="ok")
+        run_id = rec.run_id
+
+    db = Store(store)
+    (tool,) = [e.event for e in db.events(run_id) if e.event.type == "tool_call"]
+    db.close()
+    assert tool.args["path"] == "<HOME>/notes.txt"
+
+    monkeypatch.setenv("HOME", str(replayed_home))
+    with tracewake.replay(run_id, store=store) as rep:
+        model = rep.model(provider="p", model_id="m")
+        completion = model.create(messages=[Message(role="user", content="go")])
+        outcome = rep.tools().call(
+            completion.call_id,
+            ToolCallRequest(
+                id="t0",
+                name="read_file",
+                args={"path": f"{replayed_home}/notes.txt"},
+                batch_index=0,
+            ),
+        )
+        assert outcome.status == "ok"
+        assert rep.report.tool_calls_replayed == 1
+        rep.outcome(status="ok")
 
 
 def test_a_secret_too_short_to_be_one_is_left_alone(

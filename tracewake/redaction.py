@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from pydantic import JsonValue
+
 from .config import Config
 from .events import EVENT_ADAPTER, AnyEvent, Message
 
@@ -117,6 +119,19 @@ class Redactor:
         if not self.enabled:
             return list(messages)
         return [Message.model_validate(self._walk(m.model_dump(mode="json"))) for m in messages]
+
+    def args(self, args: dict[str, JsonValue]) -> dict[str, JsonValue]:
+        """Tool arguments as they will be stored, for hashing before they are.
+
+        The counterpart to `messages` on the tool side: an argument value carries
+        home paths and credentials just as message content does, so the hash that
+        identifies a call has to be taken over the scrubbed form on both the
+        record and the replay path.
+        """
+        if not self.enabled:
+            return dict(args)
+        walked: dict[str, JsonValue] = self._walk(args)
+        return walked
 
     def event(self, event: AnyEvent) -> AnyEvent | None:
         if self.enabled:
