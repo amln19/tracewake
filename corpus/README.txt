@@ -14,20 +14,48 @@ neither large nor regenerable. The recorded stores are git-excluded.
   fidelity/           measurement output, written by `python -m bench divergence`.
                       pairs.jsonl is one line per compared pair. Derived from
                       store/ and rebuildable from it, so it is not precious.
-  labels/             blinded divergence-labeling packets for the alignment set.
-                      key.jsonl maps packet ids back to runs — do not open it
-                      during a labeling pass. Rebuild with
-                      `python -m bench export-labels`.
-                      labels/external/ is the OpenHands transfer sheet (80
-                      packets); fill labels.jsonl then `bench external score`.
-                      `bench external export --extend --n N` grows it without
-                      disturbing packet ids that already carry a label.
-                      labels/nebius/ is the SWE-agent transfer set (40 packets,
-                      labelled and spent). Its labels were written from the
-                      packets alone with no method's prediction visible, which
-                      makes comparisons between rules fair without making the
-                      labels independent of them — the same author decided both.
-                      Scored by `bench.nebius.score_packets`.
+  labels/             blinded divergence-labeling packets. Every set has the
+                      same shape: packets/ to read, key.jsonl mapping packet ids
+                      back to runs (do not open during a labeling pass), and
+                      labels.jsonl holding 1-based FAILURE step indices, append
+                      only. Each set past the first carries its own README.txt
+                      saying how it was drawn and what it scored.
+
+                      FIRST PASS — all spent. The rule was selected while
+                      looking at all of these, so none can give an unbiased
+                      estimate of anything built afterwards.
+                        packets/          the original alignment set.
+                        external/         OpenHands transfer sheet, 80 packets.
+                                          `bench external score`. Roughly a fifth
+                                          of these sit on rollouts where the
+                                          model emitted nothing at all; see
+                                          contracts/divergence.md.
+                        nebius/           SWE-agent transfer set, 40 packets.
+                                          `bench.nebius.score_packets`.
+                        nebius-holdout/   30 packets drawn from pool entries
+                                          nothing had rendered, scored once.
+
+                      SECOND PASS — drawn by bench/relabel.py after the rule was
+                      frozen, protocol registered first.
+                        PROTOCOL.md       what was committed to before the first
+                                          label existed. Do not edit it; its
+                                          value is that git shows it predates
+                                          every label it governs.
+                        calibration/      60 first-pass items relabelled blind,
+                                          to measure whether the two passes mean
+                                          the same thing. They agree well above
+                                          chance, but the rule's own score moves
+                                          18 points at exact match depending on
+                                          which pass scores it.
+                        holdout-2/        140 fresh trajectories, instance
+                                          disjoint from everything above and from
+                                          RootSE. Scored once by
+                                          `python -m bench.score_holdout2`.
+
+                      The labels in every Tracewake-written set sit on a step
+                      that writes far more often than RootSE's external labels
+                      do, and the rule reads writes. Absolute percentages from
+                      these sets are partly a measure of that agreement.
   alignment/          prediction sheets and external_scout.json (source inventory).
                       partition.json splits the 80 external packets into a
                       development half and a held-out half; dev-fitted.json holds
@@ -50,5 +78,9 @@ neither large nor regenerable. The recorded stores are git-excluded.
                       action and observation sequence graded both resolved and
                       unresolved. No action-based method can localise those, and
                       their labels are noise.
+  external/           third-party checkouts that are not vendored, chiefly
+                      TrajAudit for RootSE (~600MB). Clone it yourself; see the
+                      alignment/ note above.
+  counterfactual/     output from the intervention experiments.
   archive-prefix11/   superseded runs from earlier agent versions. Never merge
                       these with store/ — its own README says why.
