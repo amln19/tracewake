@@ -238,9 +238,35 @@ story by model size — 405b and 8b score within a few points of each other —
 but n per stratum is small enough that this should be read as "no evidence
 of a strong effect" rather than "no effect."
 
-**Confidence is inverted, not just uninformative.** `confident=True` scores
-*worse* than `confident=False`: exact 28% (17/61) against 46% (34/74); ±2 48%
-against 64%. This is the same direction as the single confidence flip found
-in the duplicate-label check above, now on 135 items instead of 15. Do not
-read `confident` as a quality filter for anything downstream; if it is kept
-at all, the honest use is the opposite of the one it was designed for.
+**Confidence is inverted, and the reason is the most useful thing here.**
+`confident=True` scores *worse* than `confident=False`: exact 28% (17/61)
+against 46% (34/74); ±2 48% against 64%. Chased down, it is not a fact about
+labelling at all.
+
+`confident=True` labels sit at a median of **19%** through their trace;
+`confident=False` at **71%**. The flag was never recording "this label is
+reliable" — it was recording "this run was obviously doomed early," which is
+a different property that happens to feel like certainty while labelling. It
+carries the class mix to match: 14 of 61 confident items are `silent-long`
+against 2 of 74 unconfident ones.
+
+And where the label sits is what actually drives accuracy, confidence aside:
+
+| label position | n | exact | ±2 | direction of error |
+|---|---|---|---|---|
+| early (<0.33) | 57 | 26% | 42% | predicts **later** than truth 32/57, median +2 |
+| mid (0.33–0.66) | 26 | 38% | 69% | predicts earlier 15/26, median −1 |
+| late (>0.66) | 52 | 50% | 65% | predicts earlier 25/52, median 0 |
+
+That is an upper-bound rule behaving exactly like one. All three of
+`earliest_bound`'s components assert "no later than X"; when the truth is
+step 1 of a forty-step flail, every one of them lands too late and the
+minimum of three too-late bounds is still too late. The residual error is
+concentrated on runs that were doomed before they generated anything for a
+bound to attach to — which is a structural limit of bounding from above, not
+a threshold that wants tuning.
+
+**Do not use `confident` as a quality filter anywhere downstream.** The
+recorded values stay — they are what produced the finding above — but the
+field measured trace shape, not label quality, and a future pass should not
+collect it under this name or for this purpose.
