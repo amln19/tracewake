@@ -27,7 +27,7 @@ def _nebius_holdout() -> list[tuple[str, int, list]]:
     from .nebius import _snapshot, to_steps
     from .repos import CORPUS_ROOT
 
-    root = CORPUS_ROOT / "labels" / "nebius-holdout"
+    root = CORPUS_ROOT / "labels" / "nebius-2"
     key = {
         json.loads(line)["packet_id"]: json.loads(line)
         for line in (root / "key.jsonl").read_text(encoding="utf-8").splitlines()

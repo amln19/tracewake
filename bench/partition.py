@@ -19,7 +19,7 @@ import random
 from dataclasses import dataclass
 from pathlib import Path
 
-from .external import EXTERNAL_LABEL_ROOT
+from .external import OPENHANDS_LABEL_ROOT
 from .repos import CORPUS_ROOT
 
 PARTITION_PATH = CORPUS_ROOT / "alignment" / "partition.json"
@@ -35,7 +35,7 @@ class Split:
 
 
 def build_partition(
-    key_path: Path = EXTERNAL_LABEL_ROOT / "key.jsonl",
+    key_path: Path = OPENHANDS_LABEL_ROOT / "key.jsonl",
     seed: int = PARTITION_SEED,
 ) -> Split:
     """Half dev, half final, stratified by failure-side length.
@@ -74,7 +74,7 @@ def write_partition(path: Path = PARTITION_PATH, seed: int = PARTITION_SEED) -> 
             {
                 "seed": seed,
                 "strata": STRATA,
-                "source": "corpus/labels/external/key.jsonl",
+                "source": "corpus/labels/openhands/key.jsonl",
                 "dev": list(split.dev),
                 "final": list(split.final),
             },
@@ -95,7 +95,7 @@ def read_partition(path: Path = PARTITION_PATH) -> Split:
 def load_split(
     *,
     final: bool = False,
-    labels_path: Path = EXTERNAL_LABEL_ROOT / "labels.jsonl",
+    labels_path: Path = OPENHANDS_LABEL_ROOT / "labels.jsonl",
     partition_path: Path = PARTITION_PATH,
 ) -> dict[str, int]:
     """packet_id → label for one side of the partition.

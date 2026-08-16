@@ -25,14 +25,14 @@ neither large nor regenerable. The recorded stores are git-excluded.
                       looking at all of these, so none can give an unbiased
                       estimate of anything built afterwards.
                         packets/          the original alignment set.
-                        external/         OpenHands transfer sheet, 80 packets.
+                        openhands/        OpenHands transfer sheet, 80 packets.
                                           `bench external score`. Roughly a fifth
                                           of these sit on rollouts where the
                                           model emitted nothing at all; see
                                           contracts/divergence.md.
                         nebius/           SWE-agent transfer set, 40 packets.
                                           `bench.nebius.score_packets`.
-                        nebius-holdout/   30 packets drawn from pool entries
+                        nebius-2/         30 packets drawn from pool entries
                                           nothing had rendered, scored once.
 
                       SECOND PASS — drawn by bench/relabel.py after the rule was

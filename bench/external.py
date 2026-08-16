@@ -50,7 +50,7 @@ _TERMINAL_ACTIONS = frozenset({"submit", "finish"})
 OPENHANDS_DATASET = "SWE-Gym/OpenHands-Sampled-Trajectories"
 OPENHANDS_SPLIT = "train.raw"
 SELECT_SEED = 20260805
-EXTERNAL_LABEL_ROOT = CORPUS_ROOT / "labels" / "external"
+OPENHANDS_LABEL_ROOT = CORPUS_ROOT / "labels" / "openhands"
 EXTERNAL_PRED = CORPUS_ROOT / "alignment" / "predictions-external.jsonl"
 SCOUT_PATH = CORPUS_ROOT / "alignment" / "external_scout.json"
 
@@ -494,7 +494,7 @@ def report_openhands(
         ]
     lines.append(
         "Structural only until hand labels exist under "
-        f"{EXTERNAL_LABEL_ROOT}. Scout inventory: {SCOUT_PATH}."
+        f"{OPENHANDS_LABEL_ROOT}. Scout inventory: {SCOUT_PATH}."
     )
     return "\n".join(lines)
 
@@ -634,7 +634,7 @@ def export_openhands_packets(
     *,
     n: int = 30,
     seed: int = SELECT_SEED,
-    dest: Path = EXTERNAL_LABEL_ROOT,
+    dest: Path = OPENHANDS_LABEL_ROOT,
     model: str | None = "gpt-4o-2024-08-06",
     extend: bool = False,
     pairs: Sequence[ExternalPair] | None = None,
@@ -727,8 +727,8 @@ def export_openhands_packets(
 
 def score_openhands_labels(
     *,
-    labels_path: Path = EXTERNAL_LABEL_ROOT / "labels.jsonl",
-    key_path: Path = EXTERNAL_LABEL_ROOT / "key.jsonl",
+    labels_path: Path = OPENHANDS_LABEL_ROOT / "labels.jsonl",
+    key_path: Path = OPENHANDS_LABEL_ROOT / "key.jsonl",
     model: str | None = "gpt-4o-2024-08-06",
     out: Path = EXTERNAL_PRED,
     rows: Sequence[dict[str, Any]] | None = None,
@@ -760,7 +760,7 @@ def score_openhands_labels(
     if not filled:
         return (
             f"no filled labels in {labels_path}. Label packets under "
-            f"{EXTERNAL_LABEL_ROOT / 'packets'}, then re-run score."
+            f"{OPENHANDS_LABEL_ROOT / 'packets'}, then re-run score."
         )
 
     # Score the exact runs the key sheet named — not a re-derived "best" pair,

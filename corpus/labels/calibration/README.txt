@@ -10,7 +10,7 @@ without the old label visible.
                wrong later gets a superseding line, never a silent edit.
 
 Drawn by bench.relabel.draw_calibration, seed 20260816, proportionally across
-the three first-pass sets (external 32, nebius 16, nebius-holdout 12). All 60
+the three first-pass sets (openhands 32, nebius 16, nebius-2 12). All 60
 origin packets carry an integer first-pass label; none were excluded then.
 
 WHY IT EXISTS
@@ -60,7 +60,7 @@ first-pass label set, not of this rubric.
 BLINDING, AND ONE DISCLOSURE
 
 The first-pass labels files and the origin_packet field were not opened while
-labelling. One exception: an earlier analysis loaded external/labels.jsonl
+labelling. One exception: an earlier analysis loaded openhands/labels.jsonl
 programmatically to compare accuracy on degenerate rollouts and printed only
 aggregates across 16 and 64 packets. No individual label was displayed. One
 aggregate, "label==1 in 0/16", is a weak fact about the old labels; every

@@ -62,9 +62,9 @@ TEST_STRATA: tuple[tuple[str, str, int], ...] = (
 # Proportional to how many labels each existing set holds, so agreement is
 # measured against all three rather than against whichever is largest.
 CALIBRATION_QUOTA: tuple[tuple[str, int], ...] = (
-    ("external", 32),
+    ("openhands", 32),
     ("nebius", 16),
-    ("nebius-holdout", 12),
+    ("nebius-2", 12),
 )
 
 
@@ -242,7 +242,7 @@ def draw_calibration() -> list[Draw]:
         if len(rows) < quota:
             raise RuntimeError(f"{name} holds {len(rows)} packets for a quota of {quota}")
         for row in rng.sample(sorted(rows, key=lambda r: r["packet_id"]), quota):
-            source = "openhands" if name == "external" else "nebius"
+            source = "openhands" if name == "openhands" else "nebius"
             drawn.append(
                 Draw(
                     packet_id="",

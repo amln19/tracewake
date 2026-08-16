@@ -35,7 +35,7 @@ from tracewake.diverge import (
 
 from .aligneval import mcnemar, median_abs_error, oracle_constant, within_tol
 from .external import (
-    EXTERNAL_LABEL_ROOT,
+    OPENHANDS_LABEL_ROOT,
     OPENHANDS_DATASET,
     iter_openhands_rows,
     strip_terminal,
@@ -118,7 +118,7 @@ def proportional_method(c: float) -> Method:
 def load_pairs(packet_ids: Sequence[str], *, rows=None) -> list[tuple[dict, list[Step], list[Step]]]:
     keys = [
         json.loads(line)
-        for line in (EXTERNAL_LABEL_ROOT / "key.jsonl").read_text(encoding="utf-8").splitlines()
+        for line in (OPENHANDS_LABEL_ROOT / "key.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
     wanted = {k["packet_id"]: k for k in keys if k["packet_id"] in set(packet_ids)}
