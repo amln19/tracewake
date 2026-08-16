@@ -207,17 +207,24 @@ Reliability = Literal[
     "commit-long-many", "silent-long",
 ]
 
-# Within-±2 accuracy of `earliest_bound` per class, pooled over 178 pairs from
-# OpenHands (both halves), RootSE and nebius. This is ordered by measured
-# accuracy, and the ordering holds inside every one of the four sets separately
-# rather than only in the pool, which is what makes abstaining on the tail
-# meaningful rather than a guess.
+# Within-±2 accuracy of `earliest_bound` per class, over 313 labelled runs: the
+# 178 the classes were defined on, plus 135 scored once afterwards on data none
+# of this was fitted to. The ordering is what carries: it held inside all four
+# of the original sets separately, and again on the later set, which is what
+# makes abstaining on the tail meaningful rather than a guess.
+#
+# The figures are not precise. Relabelling the same trajectories moved this
+# rule's own score by 12 points at ±2, so treat each as a band of roughly that
+# width, and the two sparse middle classes as weaker still (27 and 30 runs).
+# The first 178 also carry short degenerate trajectories that inflate the two
+# short classes, since a trace of five steps or fewer cannot be missed at ±2.
+# `contracts/divergence.md` measures both effects.
 RELIABILITY_ACCURACY: dict[str, float] = {
-    "commit-short": 0.87,        # 26/30
-    "silent-short": 0.82,        # 18/22
-    "commit-long-single": 0.70,  # 16/23
-    "commit-long-many": 0.38,    # 32/84
-    "silent-long": 0.21,         # 4/19
+    "commit-short": 0.86,        # 68/79
+    "silent-short": 0.78,        # 21/27
+    "commit-long-single": 0.77,  # 23/30
+    "commit-long-many": 0.37,    # 53/142
+    "silent-long": 0.20,         # 7/35
 }
 LONG_TRACE = 18
 

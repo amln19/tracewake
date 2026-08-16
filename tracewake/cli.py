@@ -470,8 +470,8 @@ def diff_(
         step, klass = localize(result.bad_steps)
         typer.echo(
             f"{bad_header.run_id[:8]} went wrong at step {step} of "
-            f"{len(result.bad_steps)}  [{klass}, ~{RELIABILITY_ACCURACY[klass]:.0%} "
-            f"within two steps]"
+            f"{len(result.bad_steps)}  [{klass}, about "
+            f"{RELIABILITY_ACCURACY[klass]:.0%} within two steps]"
         )
         if klass == "silent-long":
             typer.echo(
@@ -514,7 +514,7 @@ def localize_(
 
     step, klass = localize(steps)
     typer.echo(f"first irrecoverable step: {step} of {len(steps)}")
-    typer.echo(f"reliability {klass} (~{RELIABILITY_ACCURACY[klass]:.0%} within two steps)")
+    typer.echo(f"reliability {klass} (about {RELIABILITY_ACCURACY[klass]:.0%} within two steps)")
     typer.echo(f"  {steps[step - 1].name} {steps[step - 1].target}".rstrip())
     if klass == "silent-long":
         typer.echo(
