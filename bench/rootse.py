@@ -309,9 +309,9 @@ def load_pairs(root: Path = ROOTSE_ROOT) -> list[RootSEPair]:
 # scoring
 # ---------------------------------------------------------------------------
 
-# Frozen on the OpenHands development half (corpus/alignment/dev-fitted.json).
-# Deliberately not refitted on RootSE: refitting would convert an externally
-# labelled transfer set into development data.
+# Fitted on the OpenHands development half, not RootSE: refitting on RootSE
+# would convert an externally labelled transfer set into development data.
+# Unused by the shipped rule; this scores align-v1's own readout only.
 DEV_CONSTANT_K = 10
 DEV_PROPORTIONAL_C = 0.66
 
