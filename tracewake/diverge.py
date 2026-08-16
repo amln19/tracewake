@@ -109,6 +109,17 @@ def terminal_repeat(steps: Sequence[Step]) -> int | None:
     beyond "at least two whole periods", the minimum that makes a period mean
     anything.
 
+    `earliest_bound` does not use it, because it cannot ever be the tightest of
+    the bounds. If the actions are exactly periodic from step `k` to the end
+    with at least two whole periods, then every action at or after `k` occurs
+    at least twice, so none of them is globally unique, so the last unique
+    action lies before `k` and `novelty_exhausted <= k`. Novelty dominates
+    repetition by construction. Measured over the 38 traces in this project's
+    labelled data where this fires, it was never once strictly smaller.
+
+    Kept because it measures something real about a run and says it more
+    directly than novelty does; it is a diagnostic, not a bound.
+
     `align._trailing_identical_loop_start` detects the period-1 case only, and
     uses it to discount agreements rather than to locate anything. This
     generalises it to any period: the SWE-agent failures that motivated it
@@ -152,16 +163,21 @@ def novelty_exhausted(steps: Sequence[Step]) -> int:
 def earliest_bound(bad: Sequence[Step]) -> int:
     """The tightest of the single-trace upper bounds on the point of no return.
 
-    Three independent facts each bound it from above, and none needs a
+    Two independent facts each bound it from above, and neither needs a
     reference run:
 
       * the first commitment — the run changed something it did not create,
-      * the start of a terminal cycle — the run repeats itself to the end,
       * novelty exhaustion — the run stops doing anything only once.
 
     Each says "no later than this", so the earliest is the tightest, and taking
     the minimum is the only thing to do with a set of upper bounds. It is not a
     tuned blend: there is no weight to choose.
+
+    `terminal_repeat` was a third bound here and is not one any more. It cannot
+    be the strict minimum: periodicity to the end implies novelty exhaustion no
+    later, so novelty dominates it by construction. Dropping it changed no
+    prediction on any of the 307 labelled trajectories this project holds, and
+    could not have. See its docstring for the argument.
 
     Measured within ±2 against `first_commitment` alone, over 178 labelled pairs
     from four sets, it gains 8 and loses 2 (McNemar p=0.11) and never loses on
@@ -180,9 +196,6 @@ def earliest_bound(bad: Sequence[Step]) -> int:
     commitment = first_commitment(bad)
     if commitment is not None:
         bounds.append(commitment)
-    cycle = terminal_repeat(bad)
-    if cycle is not None:
-        bounds.append(cycle)
     return min(bounds)
 
 

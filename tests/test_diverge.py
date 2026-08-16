@@ -120,10 +120,18 @@ def test_earliest_bound_takes_the_tightest_of_the_bounds():
     assert earliest_bound(bad) == 2
 
 
-def test_earliest_bound_uses_the_cycle_when_nothing_commits():
-    """The class `first_commitment` cannot speak to at all."""
+def test_earliest_bound_covers_a_loop_through_novelty_not_repetition():
+    """The class `first_commitment` cannot speak to at all.
+
+    A run that loops to the end is still bounded, but repetition is not what
+    bounds it: periodicity from step k implies every action from k on occurs
+    twice, so novelty is exhausted no later than k. This is why `earliest_bound`
+    does not consult `terminal_repeat` — it can never be the strict minimum.
+    """
     bad = [read("a.py"), read("b.py")] + [read("x.py"), read("y.py")] * 5
     assert first_commitment(bad) is None
+    assert terminal_repeat(bad) == 3
+    assert novelty_exhausted(bad) == 3
     assert earliest_bound(bad) == 3
 
 
