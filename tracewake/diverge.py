@@ -11,10 +11,8 @@ Reading a file is recoverable; writing one is not, in practice, because these
 agents rarely undo. So the run commits at the first step that writes a file it
 did not create for itself, and everything before that is finding out.
 
-It needs no reference run, no alignment and no inference, and it was built by
-an independent rebuild that saw none of this project's earlier work. The rules
-it replaced are baselines now, in `bench/baselines.py`, alongside `align-v1`
-and the fitted constant they were always measured against.
+It needs no reference run, no alignment and no inference, and it was tuned only
+on 107 labelled training trajectories, never on RootSE or on any held-out set.
 
 `reliability` reports which of five classes the run falls into, because the
 same rule is right about nine times in ten on one class and one in ten on

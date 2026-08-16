@@ -1,5 +1,5 @@
-Held-out set for the second labelling pass. 140 fresh trajectories, labelled
-under PROTOCOL.md and scored exactly once.
+Held-out set. 140 fresh trajectories, labelled under the protocol in
+../README.txt and scored exactly once.
 
   packets/     one markdown file per trajectory, failing side only, with the
                environment's observations included and the source, model and
@@ -13,14 +13,6 @@ One rollout per instance, chosen uniformly -- several rollouts of one bug are
 not independent evidence, and selecting on any property of the trajectory
 would shift the length distribution that most predicts whether a rule lands.
 
-WHY IT EXISTS
-
-Every earlier labelled set is spent: the rule was chosen while looking at all
-four, and both checks on that choice were scored once. Requiring a passing
-reference run per failure had held the usable pool to a few hundred pairs; a
-single-trace rule needs no reference, and without that constraint the sources
-hold roughly 72,000 failing trajectories over 5,800 instances.
-
 ELIGIBILITY
 
 Two filters, both fixed before the draw. A rollout with no model prose in any
@@ -30,10 +22,11 @@ environment never told anything, where every observation comes back identical
 because the tool being called returns an empty listing. Together these exclude
 about 38% of OpenHands failing rollouts and none of nebius.
 
-CHECKED BEFORE SCORING
+CHECKED
 
   * the exported key matches a fresh draw_test rerun exactly;
-  * zero instance overlap with calibration/, any first-pass set, or RootSE;
+  * zero instance overlap with calibration/, any other Tracewake-labelled set,
+    or RootSE;
   * stratification matches the plan;
   * every label lies within [1, step_count];
   * label position is not clustered at an extreme: 22% at step 1, 4% at the
@@ -42,8 +35,8 @@ CHECKED BEFORE SCORING
 
 Four packets (T090, T094, T099, T103) carry two label lines each, from an
 accidental overlap at a session boundary rather than a deliberate correction.
-All four agree on the step; T099 differs on confidence between passes. Both
-lines are kept and the last one is authoritative, per the append-only rule.
+All four agree on the step; T099 differs on confidence between the two lines.
+Both are kept and the last one is authoritative, per the append-only rule.
 
 RESULT
 
@@ -51,16 +44,11 @@ RESULT
 
   uv run --group bench python -m bench.score_cleanroom
 
-E2/E3 items are not scored: there is no location for a rule to land on.
+E2/E3 items are not scored: there is no location for a rule to land on. See
+contracts/divergence.md for the current figures.
 
-                    exact          +/-2           +/-5
-  earliest_bound    51/135 37.8%   76/135 56.3%   87/135 64.4%
-  first_commitment  50/135 37.0%   71/135 52.6%   81/135 60.0%
-
-At +/-2 every item here is missable; at +/-5, 121 of 135 are. The full
-reading, including where the rule fails and the two defects this evaluation
-found in the earlier figures, is in contracts/divergence.md under "The second
-evaluation".
+At ±2 every item here is missable; at ±5, 121 of 135 are. See
+contracts/divergence.md for the full reading, including where the rule fails.
 
 The caveat that governs these numbers: the labels are anchored to writes and
 the rule reads writes. Labels here sit on a writing step 68-78% of the time

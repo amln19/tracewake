@@ -192,63 +192,40 @@ Tracewake locates where a failing run went irrecoverably wrong using only that r
 
 Reading a file is recoverable; writing one is not. The run commits at the first step that writes a file it did not create for itself — the scratch file being the first path it writes without having read, the reproduction script it makes out of nothing. Everything before that is finding out. Nothing is weighted, and the single fitted number, a fallback for runs that never write outside their scratch file, is inert across every value it could take.
 
-That rule came from an independent rebuild given the labelled development trajectories and none of this project's earlier work. It is kept over what it replaced not because it scores higher — the two are statistically indistinguishable — but because it can be measured on 262 trajectories it has never seen, including all 102 that carry externally written labels, where its predecessor could only ever be measured on 135. The predecessor and the other candidates are evaluation baselines now; the figures below are theirs, and [`contracts/divergence.md`](contracts/divergence.md) records the comparison.
+The rule was tuned on 107 labelled training trajectories and never saw the held-out set or RootSE.
 
 ### What it scores
 
-Scored once on 109 held-out failures, with the rule frozen. Traces average 40 steps, and the window is how much of one you must read before the answer is inside it:
+Scored once, rule frozen, on 262 trajectories it has never seen:
 
-| Window | Steps to read | All 109 | The 41% it flags as reliable |
-| --- | --- | --- | --- |
-| ±2 | 5 | 57% | **82%** |
-| ±5 | 11 | 71% | **87%** |
-| ±10 | 21 | 84% | 91% |
+| Pool | n | Exact | ±2 | ±5 |
+| --- | --- | --- | --- | --- |
+| SWE-agent | 101 | 32.7% | 51.5% | 62.4% |
+| OpenHands | 59 | 44.1% | 59.3% | 69.5% |
+| **RootSE** (externally labelled) | 102 | **17.6%** | **45.1%** | **57.8%** |
+| **all** | **262** | **29.4%** | **50.8%** | **62.2%** |
 
-The single most useful line: **on the two-fifths of failures it identifies as tractable, an eleven-step window contains the point of no return 87% of the time.**
+Chance rates for the same population are 5%, 22%, and 40%.
 
-Two label-free facts decide that flag: whether the run wrote to anything it did not create, and whether the trace is longer than 18 steps. They sort failures into classes from 87% down to 21% accurate, and the ordering holds inside every dataset. A long run that changed nothing pre-existing is right about a fifth of the time, and is reported as unreliable rather than dressed up as an answer.
+Two label-free facts decide how much to trust the answer: whether the run wrote to anything it did not create, and whether the trace exceeds 18 steps. They sort failures into five classes from 88% down to 10% accurate within ±2, and the ordering holds across independent measurements even though the exact percentages do not. A long run that changed nothing pre-existing is right about a tenth of the time, and is reported as unreliable rather than dressed up as an answer.
 
 ### The data
 
-| Set | Failures | Labelled by | Agent framework | Median trace |
-| --- | --- | --- | --- | --- |
-| OpenHands | 80 | Tracewake | OpenHands | 18 steps |
-| RootSE | 102 | **TrajAudit authors** | four scaffolds | 52 steps |
-| nebius | 55 | Tracewake | SWE-agent | 56 steps |
+Held-out: 160 SWE-agent/OpenHands trajectories labelled blind inside this project, plus all 102 of RootSE, labelled by the TrajAudit authors — the only externally labelled, out-of-sample row above. Training is a further 107 trajectories, 67 nebius and 40 openhands, disjoint from every row above.
 
-Each is split by a fixed seed into a development half and a held-out half, written once and refused a rewrite. Only RootSE carries labels from outside this project, so its column is worth more than the others.
-
-An earlier sweep selected the rule while looking at all of them, which made those figures in-sample. Two later measurements checked it, each scored once:
-
-* **44 RootSE failures labelled by the TrajAudit authors and never used**, since they ship no passing run and only a single-trace rule can attempt them: 48%, against 47% on the ones that had been used.
-* **30 freshly labelled nebius pairs** from pool entries nothing had rendered: 60%, against 54% in-sample.
-
-Neither is precise alone, but both land at or above the in-sample figure, so it is not an artefact of picking a winner out of seventy candidates.
-
-Against the alternatives, in-sample across all 178 pairs then available:
-
-| Rule | pooled |
-| --- | --- |
-| `earliest_bound` | **96/178 = 54%** |
-| `first_commitment` | 90/178 = 51% |
-| constant 10, fitted on development data | 57/178 = 32% |
-| `align-v1` (the alignment readout) | 45/178 = 25% |
+The in-house labels are anchored to writes more than RootSE's are — they sit on a writing step 59–78% of the time against 42% for RootSE — because the rule reads writes and the labelling standard was written by the same person who wrote the rule. That agreement, not independent correctness, explains part of the gap between the in-house rows and RootSE. Two blind passes over the same 49 trajectories agree with each other only 40.8% exact / 49.0% within ±2 — a ceiling the reported ±2 above already sits at. [`contracts/divergence.md`](contracts/divergence.md) has the full accounting.
 
 ### Compared with published methods
 
-The literature reports *exact* step match. On RootSE that is 21% here, against 56.6% for [TrajAudit](https://arxiv.org/abs/2605.26563) at roughly 122k tokens per instance, 31.9% for all-at-once prompting and 15.8% for binary search over steps. That places it between the field's search baselines and its weaker prompting baselines, at zero marginal cost, and well behind the state of the art.
+The literature reports *exact* step match on RootSE: 56.6% for [TrajAudit](https://arxiv.org/abs/2605.26563) at roughly 122k tokens per instance, 31.9% for all-at-once prompting, 23.3% for step-by-step prompting, **17.6% here**, 15.8% for binary search over steps, and 5.4% for random attribution. That places it between the field's search baselines and its weaker prompting baselines, at zero marginal cost, and well behind the state of the art.
 
 The accuracy is not what stands out. No published work reports a purely non-LLM baseline for this task at all.
 
 ### Where it stops, and why
 
-Roughly seventy candidate signals were measured and lost, including a reference-based variant that was built, measured and withdrawn after winning only on the scaffold it was tuned against, on a prediction registered in advance and then falsified.
+The residual concentrates on runs whose point of no return precedes any write: 44% of RootSE's labels land there, and 18 of RootSE's 102 sit on a step with no action at all — a turn where the agent only reasoned. A structural rule reads actions; there is nothing there to read. That is a limit of modality rather than of tuning: what remains needs language, which is what the LLM methods above spend their tokens on.
 
-The residual errors are now located rather than guessed at. On RootSE, 21 development labels fall before the run's first write, and eight of those sit on a step with **no action at all**, a turn where the agent only reasoned. Such steps are 2.9% of RootSE but carry 17% of its labels. The point of no return concentrates where the agent stops acting and thinks, and those steps contain nothing but prose for a structural rule to read.
-
-That is a limit of modality rather than of tuning: what remains needs language, which is what the LLM methods above spend their tokens on. [`contracts/divergence.md`](contracts/divergence.md) records every failed signal and why.
-
-[`corpus/`](corpus/README.txt) holds the labelled packets and the seeded splits. `uv run --group bench python -m bench.score_cleanroom` reproduces every figure above, scoring the rule on all 262 trajectories it has never seen. RootSE needs its checkout: see [`corpus/README.txt`](corpus/README.txt).
+[`corpus/`](corpus/README.txt) holds the labelled packets and the current split. `uv run --group bench python -m bench.score_cleanroom` reproduces every figure above.
 
 ## Operational evidence
 

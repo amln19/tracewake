@@ -1,6 +1,6 @@
 Agreement set for the second labelling pass. 60 trajectories that already
-carried a first-pass label, re-rendered under PROTOCOL.md and labelled again
-without the old label visible.
+carried a first-pass label, re-rendered under the protocol in ../README.txt
+and labelled again without the old label visible.
 
   packets/     one markdown file per trajectory, failing side only.
   key.jsonl    packet_id -> instance / model / dataset row, plus origin_packet,
@@ -9,9 +9,8 @@ without the old label visible.
   labels.jsonl `label` is the 1-based FAILURE step. Append only; a label found
                wrong later gets a superseding line, never a silent edit.
 
-Drawn by bench.relabel.draw_calibration, seed 20260816, proportionally across
-the three first-pass strata (openhands 32, nebius batch nebius-1 16,
-nebius batch nebius-2 12). All 60
+Drawn by bench.relabel.draw_calibration, seed 20260816, stratified
+proportionally across the first-pass sources (openhands 32, nebius 28). All 60
 origin packets carry an integer first-pass label; none were excluded then.
 
 WHY IT EXISTS
@@ -35,13 +34,16 @@ the first pass meant by "point of no return". Two cuts of the same 49 pairs
 matter more than that table, and both are recorded in contracts/divergence.md
 because they bound what any figure in this project can claim:
 
-  * earliest_bound scores 31% exact against the first-pass labels and 45%
-    against the second, on identical trajectories. An 18-point swing from
-    relabelling alone.
-  * The confidence flag inverts. confident=True labels sit at a median 19%
-    through their trace against 71% for confident=False: the flag recorded
-    "this run was obviously doomed early", not "this label is reliable". It
-    must not be used as a quality filter.
+  * The shipped rule scores 26.5% exact against the first-pass labels and
+    44.9% against the second, on identical trajectories -- an 18.4-point swing
+    from relabelling alone (13/49 vs 22/49; ±2 swings the same 9 items, 40.8%
+    vs 59.2%).
+  * The confidence flag does not track label position the way it might seem
+    to. confident=True labels (n=15) sit at a median 44% through their trace
+    against 33% for confident=False (n=34) -- confident is not simply a proxy
+    for "obviously doomed early." Rule accuracy against confident=True is
+    80.0% versus 29.4% against confident=False, but n=15 is thin enough that
+    this should be read as suggestive, not load-bearing.
 
 ERRATUM, APPLIED
 
