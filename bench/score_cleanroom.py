@@ -180,7 +180,7 @@ def main() -> None:
     sys.path.insert(0, str(CLEANROOM))
     from predictor import predict as rebuilt
 
-    from tracewake.diverge import earliest_bound
+    from bench.baselines import earliest_bound
 
     def rebuilt_on(steps):
         return rebuilt(_as_dicts(steps))

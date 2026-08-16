@@ -100,7 +100,7 @@ def build() -> dict:
 
 
 def report() -> str:
-    from tracewake.diverge import earliest_bound
+    from bench.baselines import earliest_bound
 
     from .relabel import _bulk_rows, draw_test, load_steps
     from .rootse import load_failures

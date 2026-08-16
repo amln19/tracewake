@@ -358,7 +358,7 @@ def score_packets(root: Path = LABEL_ROOT, *, tolerance: int = 2) -> dict:
     `contracts/divergence.md`.
     """
     from tracewake.align import LexicalEmbedder, align, divergence_step
-    from tracewake.diverge import earliest_bound, first_commitment
+    from bench.baselines import earliest_bound, first_commitment
 
     key = {
         r["packet_id"]: r

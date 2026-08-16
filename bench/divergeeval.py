@@ -25,13 +25,8 @@ from tracewake.align import (
     first_target_difference,
     last_common_prefix,
 )
-from tracewake.diverge import (
-    RELIABILITY_BAND,
-    commitment_steps,
-    earliest_bound,
-    first_commitment,
-    reliability,
-)
+from tracewake.diverge import RELIABILITY_BAND, commitment_steps, reliability
+from bench.baselines import earliest_bound, first_commitment
 
 from .aligneval import mcnemar, median_abs_error, oracle_constant, within_tol
 from .external import (

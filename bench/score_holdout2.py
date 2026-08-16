@@ -7,7 +7,8 @@ import statistics
 from pathlib import Path
 
 from bench.relabel import draw_test, _bulk_rows, load_steps
-from tracewake.diverge import earliest_bound, first_commitment, reliability
+from tracewake.diverge import reliability
+from bench.baselines import earliest_bound, first_commitment
 
 ROOT = Path("corpus/labels")
 

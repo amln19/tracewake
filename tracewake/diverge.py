@@ -8,24 +8,13 @@ of 58 pairs.
 
 The rule here replaces that readout and drops the successful run entirely.
 Reading a file is recoverable; writing one is not, in practice, because these
-agents rarely undo. Two facts each bound the point of no return from above:
+agents rarely undo. So the run commits at the first step that writes a file it
+did not create for itself, and everything before that is finding out.
 
-  * the run changed something it did not create;
-  * it stopped doing anything it does not also repeat.
-
-Each says "no later than this", so the earliest is the tightest bound. On the
-same RootSE pairs that reaches 27 of 58, and it needs no reference run, no
-alignment and no inference.
-
-Terminal repetition was a third of these and is not one any more: periodicity
-to the end implies novelty exhaustion no later, so it can never be the strict
-minimum. See `terminal_repeat`.
-
-`localize` reports `first_nonscratch_write`, which came from an independent
-rebuild and supersedes `earliest_bound` on evidence rather than on accuracy:
-the two are statistically indistinguishable, but one can be measured on 262
-trajectories it has never seen and the other on 135. `earliest_bound` is kept
-unchanged, because every published figure is its.
+It needs no reference run, no alignment and no inference, and it was built by
+an independent rebuild that saw none of this project's earlier work. The rules
+it replaced are baselines now, in `bench/baselines.py`, alongside `align-v1`
+and the fitted constant they were always measured against.
 
 `reliability` reports which of five classes the run falls into, because the
 same rule is right about nine times in ten on one class and one in ten on
@@ -99,120 +88,6 @@ def commitment_steps(steps: Sequence[Step]) -> list[int]:
     return [i for i, _ in _commitments(steps)]
 
 
-def first_commitment(bad: Sequence[Step]) -> int | None:
-    """The failing run's first irreversible step.
-
-    Asking instead which commitments a *successful* run did not also make needs
-    a reference, and was measured to be worth about ten points on a same-model
-    pair and about seven points of harm against a reference from a different
-    model, because the alignment then excuses genuine commitments and invents
-    differences that are only model idiom. That variant was withdrawn; see
-    `contracts/divergence.md`.
-    """
-    steps = commitment_steps(bad)
-    return steps[0] if steps else None
-
-
-def terminal_repeat(steps: Sequence[Step]) -> int | None:
-    """1-based index where the run's terminal repeating cycle begins, or None.
-
-    A run whose action sequence becomes exactly periodic and stays periodic to
-    the end cannot recover: it is emitting the same actions forever. So the
-    start of that cycle bounds the point of no return from above. This is a
-    definition, not a fitted heuristic — which is why it takes no threshold
-    beyond "at least two whole periods", the minimum that makes a period mean
-    anything.
-
-    `earliest_bound` does not use it, because it cannot ever be the tightest of
-    the bounds. If the actions are exactly periodic from step `k` to the end
-    with at least two whole periods, then every action at or after `k` occurs
-    at least twice, so none of them is globally unique, so the last unique
-    action lies before `k` and `novelty_exhausted <= k`. Novelty dominates
-    repetition by construction. Measured over the 38 traces in this project's
-    labelled data where this fires, it was never once strictly smaller.
-
-    Kept because it measures something real about a run and says it more
-    directly than novelty does; it is a diagnostic, not a bound.
-
-    `align._trailing_identical_loop_start` detects the period-1 case only, and
-    uses it to discount agreements rather than to locate anything. This
-    generalises it to any period: the SWE-agent failures that motivated it
-    cycle over blocks of 2 to 14 steps, up to 37 times.
-    """
-    sigs = [(s.name, repr(sorted(s.args.items()))) for s in steps]
-    n = len(sigs)
-    best: int | None = None
-    for period in range(1, n // 2 + 1):
-        matched = 0
-        while (
-            n - 1 - matched - period >= 0
-            and sigs[n - 1 - matched] == sigs[n - 1 - matched - period]
-        ):
-            matched += 1
-        if matched >= period:
-            start = n - matched - period
-            if start >= 0 and (best is None or start < best):
-                best = start
-    return None if best is None else best + 1
-
-
-def novelty_exhausted(steps: Sequence[Step]) -> int:
-    """1-based index after which the run does nothing it does not also repeat.
-
-    The last step whose action is globally unique, plus one. Past it every
-    action the run takes, it takes at least twice — it has stopped trying
-    anything once. Like `terminal_repeat` this is an upper bound on the point of
-    no return, and it catches the runs that flail over rotating arguments for a
-    long time before locking into an exact cycle.
-    """
-    sigs = [(s.name, repr(sorted(s.args.items()))) for s in steps]
-    counts = Counter(sigs)
-    last = 0
-    for i, sig in enumerate(sigs, start=1):
-        if counts[sig] == 1:
-            last = i
-    return min(last + 1, len(steps)) if steps else 1
-
-
-def earliest_bound(bad: Sequence[Step]) -> int:
-    """The tightest of the single-trace upper bounds on the point of no return.
-
-    Two independent facts each bound it from above, and neither needs a
-    reference run:
-
-      * the first commitment — the run changed something it did not create,
-      * novelty exhaustion — the run stops doing anything only once.
-
-    Each says "no later than this", so the earliest is the tightest, and taking
-    the minimum is the only thing to do with a set of upper bounds. It is not a
-    tuned blend: there is no weight to choose.
-
-    `terminal_repeat` was a third bound here and is not one any more. It cannot
-    be the strict minimum: periodicity to the end implies novelty exhaustion no
-    later, so novelty dominates it by construction. Dropping it changed no
-    prediction on any of the 307 labelled trajectories this project holds, and
-    could not have. See its docstring for the argument.
-
-    Measured within ±2 against `first_commitment` alone, over 178 labelled pairs
-    from four sets, it gains 8 and loses 2 (McNemar p=0.11) and never loses on
-    any individual set: 96/178 against 90/178 pooled. That is a small,
-    unseparated improvement; the reason to prefer it is that it costs nothing
-    and is bounded by construction.
-
-    It is also the most *stable* rule measured. The withdrawn reference-based
-    variant beat it on both OpenHands halves (29/40 and 26/40 against 25/40)
-    and lost badly everywhere else (21/58 and 10/40 against 27/58 and 19/40),
-    because a reference stops paying off-scaffold. This needs none.
-    """
-    if not bad:
-        raise ValueError("the failure run has no steps to locate a divergence in")
-    bounds = [len(bad), novelty_exhausted(bad)]
-    commitment = first_commitment(bad)
-    if commitment is not None:
-        bounds.append(commitment)
-    return min(bounds)
-
-
 SCRATCH_FALLBACK = 12
 
 
@@ -232,22 +107,15 @@ def first_nonscratch_write(bad: Sequence[Step]) -> int:
     the first path written that was never read — created out of nothing — which
     costs no parameter and no scaffold knowledge.
 
-    This came from an independent rebuild that was given the labelled
-    development trajectories and none of this project's rules, documents or
-    held-out data, and it arrived at substantially the same idea as
-    `first_commitment` by a different route. It replaced `earliest_bound` as
-    what `localize` reports, not because it scores higher — the two are
-    statistically indistinguishable, and `earliest_bound` is nominally ahead —
-    but because it can be evaluated on 262 trajectories it has never seen,
-    including all 102 externally labelled ones, where `earliest_bound` is
-    in-sample on everything but 135. See `contracts/divergence.md`.
+    Measured on 262 trajectories it had never seen, including all 102 that
+    carry externally written labels: 29.4% exact and 50.8% within two steps.
+    `contracts/divergence.md` records what it replaced and why.
 
     `SCRATCH_FALLBACK` is the only fitted number, the median development label,
     and it is inert: sweeping it from 6 to 20 moves held-out exact match between
-    29.4% and 29.8%, and replacing it with `novelty_exhausted` or `len` gives
-    28.6% and 28.2%. It is kept at the submitted value rather than swapped for a
-    parameter-free one, because choosing between them on the held-out set would
-    be selecting on the evaluation.
+    29.4% and 29.8%, and parameter-free replacements give 28.6% and 28.2%. It is
+    kept at the submitted value rather than swapped, because choosing between
+    them on the held-out set would be selecting on the evaluation.
     """
     read: set[str] = set()
     scratch: str | None = None
@@ -320,9 +188,9 @@ def reliability(bad: Sequence[Step]) -> Reliability:
     """
     # Uses the inferred writes, not just the derived ones, so the class agrees
     # with the step being reported. `commitment_steps` deliberately does not:
-    # it underpins `first_commitment` and every published figure, and 130 steps
-    # in the labelled corpus carry a write the verb sees and the adapter did
-    # not derive, so widening it there would silently restate those numbers.
+    # the baselines in `bench/` share it, and 130 steps in the labelled corpus
+    # carry a write the verb sees and the adapter did not derive, so widening it
+    # there would silently restate every published figure.
     commitments = [i for i, _ in _commitments(bad, _written_paths)]
     if not commitments:
         return "silent-long" if len(bad) > LONG_TRACE else "silent-short"
@@ -338,9 +206,6 @@ def localize(bad: Sequence[Step]) -> tuple[int, Reliability]:
     Callers that want to abstain should drop `silent-long`, which is about 14%
     of observed pairs and carries most of the error.
 
-    Reports `first_nonscratch_write`. `earliest_bound` is the superseded
-    incumbent and is kept, unchanged, because every published figure in
-    `contracts/divergence.md` is its and reproducing them has to stay possible.
     """
     if not bad:
         raise ValueError("the failure run has no steps to locate a divergence in")

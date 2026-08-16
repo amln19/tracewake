@@ -18,12 +18,8 @@ import statistics
 from collections.abc import Callable, Sequence
 
 from tracewake.align import LexicalEmbedder, Step, align, divergence_step
-from tracewake.diverge import (
-    RELIABILITY_BAND,
-    earliest_bound,
-    first_commitment,
-    reliability,
-)
+from tracewake.diverge import RELIABILITY_BAND, reliability
+from bench.baselines import earliest_bound, first_commitment
 
 SETS = ("oh_dev", "oh_final", "rootse", "nebius")
 TOLERANCE = 2

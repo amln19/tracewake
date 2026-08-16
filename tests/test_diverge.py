@@ -5,17 +5,19 @@ from __future__ import annotations
 import pytest
 
 from tracewake.align import Step
+from bench.baselines import (
+    earliest_bound,
+    first_commitment,
+    novelty_exhausted,
+    terminal_repeat,
+)
 from tracewake.diverge import (
     RELIABILITY_BAND,
-    commitment_steps,
     SCRATCH_FALLBACK,
-    earliest_bound,
+    commitment_steps,
     first_nonscratch_write,
-    first_commitment,
     localize,
-    novelty_exhausted,
     reliability,
-    terminal_repeat,
 )
 
 

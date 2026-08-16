@@ -326,7 +326,8 @@ def _predict(good, bad):
         first_target_difference,
         last_common_prefix,
     )
-    from tracewake.diverge import earliest_bound, reliability
+    from bench.baselines import earliest_bound
+    from tracewake.diverge import reliability
 
     embed = LexicalEmbedder()
     _, aligned, _ = align(good, bad, embed=embed)

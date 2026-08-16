@@ -73,7 +73,7 @@ def _rootse_split() -> tuple[list, list]:
 
 
 def report() -> str:
-    from tracewake.diverge import earliest_bound, first_commitment
+    from bench.baselines import earliest_bound, first_commitment
 
     def commitment(steps):
         found = first_commitment(steps)
