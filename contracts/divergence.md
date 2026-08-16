@@ -31,22 +31,49 @@ brings a file into being; `sed -i` and `str_replace` presuppose one, whatever
 the run has bothered to open first. A run that creates a scratch script and
 edits it ten times has committed to nothing.
 
-## The three bounds
+## The two bounds
 
-Three facts each bound the point of no return from above:
+Two facts each bound the point of no return from above:
 
 | Bound | Why it bounds |
 | --- | --- |
 | `first_commitment` | the run changed something it did not create |
-| `terminal_repeat` | its actions became exactly periodic and stayed so to the end, so it is emitting the same actions forever |
 | `novelty_exhausted` | past this point it does nothing it does not also repeat |
 
 `earliest_bound` reports the minimum. Taking the minimum of a set of upper
-bounds is the only thing to do with them: there is no weight to fit, and no
-threshold beyond "at least two whole periods", which is the minimum that makes
-a period mean anything.
+bounds is the only thing to do with them: there is no weight to fit.
+
+### `terminal_repeat` was a third bound and cannot be one
+
+It said: the actions became exactly periodic and stayed so to the end, so the
+start of that cycle bounds the point of no return. That is true and useless.
+If the actions are exactly periodic from step `k` with at least two whole
+periods, every action at or after `k` occurs at least twice, so none of them is
+globally unique, so the last globally unique action lies before `k` and
+`novelty_exhausted <= k`. **Novelty dominates repetition by construction; the
+repetition bound can never be the strict minimum.**
+
+Measured over the 38 traces in this project's labelled data where it fires, it
+was never once smaller than novelty. Removing it changed no prediction on any
+of the 307 labelled trajectories available, and could not have.
+
+This supersedes the claim below under "RootSE does not loop" that the
+repetition bound "buys its margin on the populations where agents thrash". It
+buys nothing on any population. The margin `earliest_bound` holds over
+`first_commitment` is entirely `novelty_exhausted`.
+
+The function is kept in `tracewake.diverge` as a diagnostic — it describes a
+real property of a run more directly than novelty does — but nothing reads it.
 
 ## Measured
+
+> **Superseded in part.** A second evaluation, described under "The second
+> evaluation" below, found two defects in the figures in this section and
+> reports a fresh held-out number against labels drawn and written after the
+> rule was frozen. Roughly a fifth of the OpenHands column here is scored on
+> trajectories where the model produced nothing at all, and a further slice is
+> scored at a tolerance wider than the trace. Read this section with that
+> section.
 
 Four labelled sets, 178 pairs, within ±2 steps of the label. Reproduce with
 `python -m bench.pooled`.
@@ -165,6 +192,94 @@ much more than they do elsewhere, which is consistent with them being inert on
 RootSE and worth 3 points pooled.
 
 The other 49 pool pairs have never been rendered.
+
+## The second evaluation
+
+Every set above is spent: the rule was chosen while looking at all four, and
+both checks on that choice were scored once. A second pass drew fresh data,
+registered its protocol before labelling anything
+(`corpus/labels/PROTOCOL.md`, committed before the first label), and scored
+once. Requiring a passing reference run per failure is what had held the pool
+to a few hundred pairs; a single-trace rule needs no reference, and without
+that constraint the sources hold roughly 72,000 failing trajectories over
+5,800 instances. Labels, not trajectories, are the binding constraint.
+
+140 trajectories, instance-disjoint from every set above and from RootSE,
+stratified over source and model size. 135 carried a label; 5 were excluded as
+unlabellable. `bench/score_holdout2.py`, run once.
+
+| Rule | exact | ±2 | ±5 |
+| --- | --- | --- | --- |
+| `earliest_bound` | **51/135 = 37.8%** | 76/135 = 56.3% | 87/135 = 64.4% |
+| `first_commitment` | 50/135 = 37.0% | 71/135 = 52.6% | 81/135 = 60.0% |
+
+Reliability classes hold their order on data none of it was fitted to:
+`commit-short` 86% (n=49), `commit-long-many` 36% (n=58), `silent-long` 19%
+(n=16). Model size shows no clean effect — nebius 405b 52% and 8b 60% at ±2 —
+though per-stratum n is 23 to 50, so read that as no evidence of a strong
+effect rather than evidence of none.
+
+### Two defects in the first evaluation, found by the second
+
+**A fifth of the OpenHands set has no agent in it.** 36% of OpenHands failing
+rollouts emit no prose in any assistant turn: a few identical tool calls
+against an empty directory listing, no patch, `empty_generation` from the
+grader. 16 of the 80 OpenHands labels sit on such rollouts, median 4 steps.
+`earliest_bound` scores 94% within ±2 on those 16 against 55% on the other 64.
+
+That 94% is not a fact about the rule. **At ±2, a trace of five steps or fewer
+cannot be missed by any prediction inside it** — the window is wider than the
+trace. 18% of the OpenHands set is unmissable at ±2 and 39% at ±5. The 62%
+this document reports for OpenHands held-out is about seven points of trace
+too short to be wrong on.
+
+Every window figure in the second evaluation therefore ships with its missable
+subset and its chance rate. For a label at position `L` in a trace of `n`
+steps, a uniform random prediction lands within `±k` with probability
+`(min(n, L+k) − max(1, L−k) + 1) / n`. The second set is 100% missable at ±2
+and 90% at ±5, against 82% and 61% for the OpenHands set here.
+
+**Relabelling moves the rule's own score by more than the gaps this document
+treats as meaningful.** 60 trajectories carrying a first-pass label were
+re-rendered and labelled again under the registered protocol without the old
+label visible. Inter-labeller agreement: 40.8% exact, 49.0% at ±2, 69.4% at
+±5, all far above their chance floors — the rubric reproduces what the first
+pass meant. But `earliest_bound` scored on those same 49 comparable
+trajectories gets 31% exact against the first-pass labels and 45% against the
+second: **an 18-point swing at exact match and 12 at ±2, from relabelling
+alone.** No accuracy figure in this document should be read as precise to
+better than that.
+
+### The labels are anchored to writes, and the target moves with them
+
+How often the point of no return precedes the run's first write:
+
+| Set | never commits | commits, truth before it |
+| --- | --- | --- |
+| RootSE (labelled by the TrajAudit authors) | 4% | **44%** |
+| nebius, first pass (ours) | 27% | 3% |
+| nebius, second pass (ours) | 18% | 12% |
+| OpenHands, second pass (ours) | 8% | 8% |
+
+A fourteen-fold spread is not a fact about agent runs. The labels land in
+different places: ours sit on a step that writes 59% to 78% of the time,
+RootSE's 42%, and the TrajAudit annotators put **18 of 102 labels on steps
+with no action at all** — a turn where the agent only reasoned — which ours
+essentially never do. The controlled case is the two nebius passes: same pool,
+59% then 68%, the higher being the pass whose written standard told the
+labeller to find the last sound write and judge it.
+
+That instruction makes labelling consistent and points it at exactly where
+`earliest_bound` looks. So **37.8% and 56.3% are agreement with a labeller
+aimed at the rule's own anchor**, not accuracy at locating the point of no
+return. RootSE, the only externally labelled set here, remains the set the
+rule scores worst on, and that is the more trustworthy signal.
+
+The ceiling in the next section moves with the convention too: near 56% under
+RootSE's labelling, near 90% under ours. A ceiling that moves with the
+instrument is a target partly defined by it. An uncontaminated number needs a
+labelling standard written without reference to what the rule does — and will
+report lower inter-labeller agreement as the price.
 
 ## The ceiling on a write-based rule
 
@@ -397,6 +512,12 @@ OpenHands. RootSE's runs come from stronger backbones and end cleanly with
 `submit`; thrashing is a weak-model pathology. Every repetition-based signal is
 worth nothing on that population, and the pooled numbers hide it.
 
+The stronger statement, added later: the repetition *bound* is worth nothing on
+**every** population, because novelty dominates it by construction. See "The
+two bounds". What the observation here got right is that RootSE does not loop;
+what it got wrong is the implication that looping populations are where the
+repetition bound earns something. They are not. Novelty gets there first.
+
 ### Write detection has been corrected three times and never helped
 
 Ownership by verb rather than by novelty took RootSE failures registering no
@@ -430,3 +551,18 @@ wrong, not because they helped.
   fair; it does not make the labels independent of them. Absolute percentages
   from that set should not be pooled with RootSE's as if they were the same
   kind of measurement.
+* **The labels are anchored to writes and the rule reads writes.** Measured,
+  not suspected: our labels sit on a writing step 59–78% of the time against
+  42% for the only external set, and two passes over the same nebius pool
+  differ by 9 points on that measure according to how the labelling standard
+  was worded. Every accuracy figure from a Tracewake-labelled set is partly a
+  measure of that agreement.
+* **No figure here is precise to better than about 18 points at exact match**,
+  which is what relabelling alone moved the rule's own score on 49 identical
+  trajectories. Comparisons between rules separated by less than that are not
+  supported by this evidence, including `earliest_bound` over
+  `first_commitment`.
+* **What remains unreached needs language.** The residual concentrates on runs
+  whose point of no return precedes any write — 44% of RootSE — and 18 of
+  RootSE's 102 labels sit on a step with no action at all. A structural rule
+  reads actions; there is nothing there to read.

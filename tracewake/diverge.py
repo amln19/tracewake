@@ -8,15 +8,18 @@ of 58 pairs.
 
 The rule here replaces that readout and drops the successful run entirely.
 Reading a file is recoverable; writing one is not, in practice, because these
-agents rarely undo. Three facts each bound the point of no return from above:
+agents rarely undo. Two facts each bound the point of no return from above:
 
   * the run changed something it did not create;
-  * its actions became exactly periodic and stayed so to the end;
   * it stopped doing anything it does not also repeat.
 
 Each says "no later than this", so the earliest is the tightest bound. On the
 same RootSE pairs that reaches 27 of 58, and it needs no reference run, no
 alignment and no inference.
+
+Terminal repetition was a third of these and is not one any more: periodicity
+to the end implies novelty exhaustion no later, so it can never be the strict
+minimum. See `terminal_repeat`.
 
 `reliability` reports which of five classes the run falls into, because the
 same rule is right 87% of the time on one class and 21% on another.

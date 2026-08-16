@@ -190,7 +190,7 @@ The AWS Terraform environment is optional and requires an account, state backend
 
 Tracewake locates where a failing run went irrecoverably wrong using only that run. There is no reference run and no model call. `tracewake localize <run>` reports a step and a reliability class. The full definition, every measurement and every limit is in [`contracts/divergence.md`](contracts/divergence.md).
 
-Reading a file is recoverable; writing one is not. Three facts each bound the point of no return from above: the run changed something it did not create, its actions became exactly periodic to the end, or it stopped doing anything it does not also repeat. The earliest of the three is the tightest bound, so that is what gets reported. Nothing is weighted or fitted.
+Reading a file is recoverable; writing one is not. Two facts each bound the point of no return from above: the run changed something it did not create, or it stopped doing anything it does not also repeat. The earlier of the two is the tightest bound, so that is what gets reported. Nothing is weighted or fitted. A third bound on terminal repetition was removed after it turned out to be dominated by the second by construction, and to have changed no prediction on any labelled run.
 
 ### What it scores
 
