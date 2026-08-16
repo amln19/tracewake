@@ -326,7 +326,7 @@ def _predict(good, bad):
         first_target_difference,
         last_common_prefix,
     )
-    from bench.baselines import earliest_bound
+    from tracewake.diverge import first_nonscratch_write
     from tracewake.diverge import reliability
 
     embed = LexicalEmbedder()
@@ -335,7 +335,7 @@ def _predict(good, bad):
 
     n = len(bad)
     values = {
-        "earliest_bound": earliest_bound(bad),
+        "divergence-rule": first_nonscratch_write(bad),
         "align-v1": lexical if lexical is not None else n,
         "first-difference": first_target_difference(good, bad),
         "last-common-prefix": last_common_prefix(good, bad),
@@ -419,11 +419,11 @@ def evaluate(root: Path = ROOTSE_ROOT, out: Path = SHEET) -> str:
             f"   (k={k}; fitted on these labels — ceiling diagnostic)"
         )
         for name in names:
-            if name == "earliest_bound":
+            if name == "divergence-rule":
                 continue
-            b_only, a_only, p = mcnemar(hits["earliest_bound"], hits[name])
+            b_only, a_only, p = mcnemar(hits["divergence-rule"], hits[name])
             lines.append(
-                f"  McNemar earliest_bound vs {name}: +{a_only} -{b_only} "
+                f"  McNemar divergence-rule vs {name}: +{a_only} -{b_only} "
                 f"n_disc={a_only + b_only} p={f'{p:.3f}' if p is not None else 'n/a'}"
             )
         return lines

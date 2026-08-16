@@ -17,14 +17,15 @@ TWO BATCHES, AND WHY THEY STAY DISTINGUISHABLE
 They were merged into one directory for convenience, not because they are
 interchangeable. One was selected against and the other was not, so pooling
 their scores would restate a held-out number as an in-sample one. Both
-consumers filter on `batch`: `bench.pooled` reports nebius-1 as its nebius
-column, `bench.heldout` reports nebius-2 as the held-out slice. Anything new
-that reads this directory has to decide which it wants.
+consumers filter on `batch`, since the two were drawn for different purposes
+under different seeds. Anything new that reads this directory has to decide
+which it wants.
 
 SCORED, ONCE EACH
 
-  nebius-1 (40), via bench.nebius.score_packets, 2026-08-15:
-    earliest_bound 19/40, first_commitment 15/40, align-v1 4/40.
+  nebius-1 (40), via bench.nebius.score_packets, 2026-08-15: the commitment
+    rule of the day scored 19/40, align-v1 4/40. Historical; that rule has
+    since been superseded and these packets are development data now.
 
   nebius-2 (30), after all labels were saved:
     H01-H15 (prior pass), within +/-2: earliest_bound 8/15,

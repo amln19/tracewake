@@ -54,7 +54,8 @@ neither large nor regenerable. The recorded stores are git-excluded.
                         holdout-2/        140 fresh trajectories, instance
                                           disjoint from everything above and from
                                           RootSE. Scored once by
-                                          `uv run --group bench python -m bench.score_holdout2`.
+                                          scored with the rest of the held-out
+                                          data by bench.score_cleanroom.
 
                       The labels in every Tracewake-written set sit on a step
                       that writes far more often than RootSE's external labels
@@ -80,7 +81,7 @@ neither large nor regenerable. The recorded stores are git-excluded.
                       refitting after seeing held-out results would turn a
                       prediction into a fit. predictions-dev.jsonl and
                       predictions-final.jsonl are the two halves, scored by
-                      `python -m bench diverge-eval [--final]`.
+                      the evaluation that superseded them.
 
                       predictions-rootse.jsonl scores the profiles against
                       RootSE's external labels. That data is a ~200MB

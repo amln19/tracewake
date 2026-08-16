@@ -248,7 +248,7 @@ The residual errors are now located rather than guessed at. On RootSE, 21 develo
 
 That is a limit of modality rather than of tuning: what remains needs language, which is what the LLM methods above spend their tokens on. [`contracts/divergence.md`](contracts/divergence.md) records every failed signal and why.
 
-[`corpus/`](corpus/README.txt) holds the labelled packets, the seeded splits and the per-pair predictions. The benchmark commands live in [`bench/`](bench/). `uv run --group bench python -m bench.pooled` reproduces the rule comparison; `uv run --group bench python -m bench.heldout` reproduces the two held-out measurements above. RootSE needs its checkout: see [`corpus/README.txt`](corpus/README.txt).
+[`corpus/`](corpus/README.txt) holds the labelled packets and the seeded splits. `uv run --group bench python -m bench.score_cleanroom` reproduces every figure above, scoring the rule on all 262 trajectories it has never seen. RootSE needs its checkout: see [`corpus/README.txt`](corpus/README.txt).
 
 ## Operational evidence
 

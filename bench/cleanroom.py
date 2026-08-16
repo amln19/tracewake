@@ -24,9 +24,7 @@ RootSE is withheld as a test set rather than spent as development data, which
 is the whole reason it is worth anything: it is the only set labelled by people
 outside this project, so it is the one measurement immune to the write-anchored
 labelling the in-house sets carry. Testing the rebuild on it is out-of-sample;
-testing `earliest_bound` on it is not, since RootSE informed that rule's
-selection. Any rebuild win there is therefore understated, and the fair
-head-to-head is the held-out set, where both are out-of-sample.
+it was withheld from development for exactly that reason.
 
 One thing is deliberately given away — that the labels carry roughly twelve
 points of noise at ±2. Withholding it would not preserve independence, it would

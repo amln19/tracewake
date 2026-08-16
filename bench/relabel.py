@@ -1,6 +1,6 @@
 """The second labelling pass: a calibration set and a fresh held-out set.
 
-The first pass exhausted every label this project had. `earliest_bound` was
+The first pass exhausted every label this project had. The rule of the day was
 selected while looking at all four sets, the two checks on that selection were
 each scored once, and the corpus is closed. Nothing labelled remains that can
 give an unbiased estimate of anything built from here on.

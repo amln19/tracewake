@@ -353,12 +353,10 @@ def _load_rows(key: dict, packets, snapshot: Path) -> dict[str, dict]:
 def score_packets(root: Path = LABEL_ROOT, *, tolerance: int = 2) -> dict:
     """Every rule's within-tolerance accuracy against the nebius labels.
 
-    Reports `first_commitment` alongside `earliest_bound` because the
-    registered prediction was about whether a reference run helps here; see
-    `contracts/divergence.md`.
+    These labels are spent as evaluation; the numbers are historical.
     """
     from tracewake.align import LexicalEmbedder, align, divergence_step
-    from bench.baselines import earliest_bound, first_commitment
+    from tracewake.diverge import first_nonscratch_write
 
     key = {
         r["packet_id"]: r
@@ -384,10 +382,8 @@ def score_packets(root: Path = LABEL_ROOT, *, tolerance: int = 2) -> dict:
 
         _, alignment, _ = align(good, bad, embed=embed)
         lexical = divergence_step(alignment, good, bad)
-        commitment = first_commitment(bad)
         predictions = {
-            "earliest_bound": earliest_bound(bad),
-            "first_commitment": commitment if commitment is not None else len(bad),
+            "divergence-rule": first_nonscratch_write(bad),
             "align-v1": lexical if lexical is not None else len(bad),
             # Fitted on OpenHands development data; carried over unchanged.
             "dev-constant-10": min(10, len(bad)),

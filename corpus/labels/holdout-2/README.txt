@@ -49,7 +49,7 @@ RESULT
 
 135 integer labels, 2 E2, 3 E3. Scored once, deterministic on rerun, by
 
-  uv run --group bench python -m bench.score_holdout2
+  uv run --group bench python -m bench.score_cleanroom
 
 E2/E3 items are not scored: there is no location for a rule to land on.
 
