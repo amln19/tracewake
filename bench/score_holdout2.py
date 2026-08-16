@@ -29,7 +29,9 @@ def main() -> None:
     for line in (ROOT / "holdout-2/labels.jsonl").read_text().splitlines():
         if line.strip():
             row = json.loads(line)
-            final[row["packet_id"]] = row  # last line wins, per RESUME.md
+            # Append-only labels: a superseding line wins over the one it
+            # supersedes. See corpus/labels/PROTOCOL.md.
+            final[row["packet_id"]] = row
 
     steps: dict[str, list] = {}
     for source in ("nebius", "openhands"):

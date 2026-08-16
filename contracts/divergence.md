@@ -219,6 +219,35 @@ Reliability classes hold their order on data none of it was fitted to:
 though per-stratum n is 23 to 50, so read that as no evidence of a strong
 effect rather than evidence of none.
 
+### Where it fails: early truths, and the direction is systematic
+
+Accuracy against where the label sits in the trace, on the 135 held-out items:
+
+| label position | n | exact | ±2 | direction of error |
+| --- | --- | --- | --- | --- |
+| early (<0.33) | 57 | 26% | 42% | predicts **later** than truth 32/57, median +2 |
+| mid (0.33–0.66) | 26 | 38% | 69% | earlier 15/26, median −1 |
+| late (>0.66) | 52 | 50% | 65% | earlier 25/52, median 0 |
+
+The same shape appears on RootSE: 16% exact on early labels against 19% late,
+overshooting 23 of 37 times with a median of +4 steps.
+
+This is an upper-bound rule behaving as one. Both bounds assert "no later than
+X"; when the truth is step 1 of a forty-step flail, both land too late and the
+minimum of two too-late bounds is still too late. The residual concentrates on
+runs doomed before they produced anything for a bound to attach to.
+
+It is not regression to the middle. A positional baseline — predict
+`round(α × len)`, with α swept and fitted on training — scores 5% exact and
+25% at ±2 against `earliest_bound`'s 27% and 49% on the same 172 items. The
+rule beats a fitted constant fraction by 22 points; whatever it is doing, it
+is per-item and not distributional.
+
+An attempt to catch the early cases with a non-write signal (first five actions
+identical, as a proxy for "never got started") flagged 7 of 172 training runs,
+whose label positions were indistinguishable from the population and none of
+which had label 1. Nothing there.
+
 ### Two defects in the first evaluation, found by the second
 
 **A fifth of the OpenHands set has no agent in it.** 36% of OpenHands failing
