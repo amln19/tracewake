@@ -59,10 +59,15 @@ def _nebius(root) -> list[Pair]:
         r["packet_id"]: r
         for r in map(json.loads, (root / "key.jsonl").read_text().splitlines())
     }
+    # The two nebius draws live in one directory now but are not one set: this
+    # column is the 40 the rule was selected against, and the other 30 were
+    # scored once afterwards. Pooling them here would silently restate the
+    # figure this table reports.
+    first = {r["packet_id"] for r in key.values() if r.get("batch", "nebius-1") == "nebius-1"}
     labels = {
         r["packet_id"]: r["label"]
         for r in map(json.loads, (root / "labels.jsonl").read_text().splitlines())
-        if r["label"] is not None
+        if r["label"] is not None and r["packet_id"] in first
     }
     rows = _load_rows(key, sorted(labels), _snapshot())
     return [

@@ -30,10 +30,14 @@ neither large nor regenerable. The recorded stores are git-excluded.
                                           of these sit on rollouts where the
                                           model emitted nothing at all; see
                                           contracts/divergence.md.
-                        nebius/           SWE-agent transfer set, 40 packets.
-                                          `bench.nebius.score_packets`.
-                        nebius-2/         30 packets drawn from pool entries
-                                          nothing had rendered, scored once.
+                        nebius/           SWE-agent, 70 packets in two batches
+                                          that share a directory and are not one
+                                          set: `nebius-1` (40) is what the rule
+                                          was selected against, `nebius-2` (30)
+                                          was drawn later and scored once. Every
+                                          consumer filters on the `batch` field;
+                                          pooling them would restate a held-out
+                                          number as an in-sample one.
 
                       SECOND PASS — drawn by bench/relabel.py after the rule was
                       frozen, protocol registered first.
@@ -58,7 +62,8 @@ neither large nor regenerable. The recorded stores are git-excluded.
                       these sets are partly a measure of that agreement.
 
                       RENAMED. labels/external/ is now labels/openhands/, and
-                      labels/nebius-holdout/ is now labels/nebius-2/. The first
+                      labels/nebius-holdout/ became labels/nebius-2/ and then
+                      merged into labels/nebius/ as batch `nebius-2`. The first
                       name collided with RootSE, which is the set that actually
                       carries external labels; the second stopped being true the
                       moment that set was scored. Older commits, and the frozen

@@ -27,16 +27,19 @@ def _nebius_holdout() -> list[tuple[str, int, list]]:
     from .nebius import _snapshot, to_steps
     from .repos import CORPUS_ROOT
 
-    root = CORPUS_ROOT / "labels" / "nebius-2"
+    root = CORPUS_ROOT / "labels" / "nebius"
     key = {
         json.loads(line)["packet_id"]: json.loads(line)
         for line in (root / "key.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     }
+    # Only the second draw: the first 40 were selected against, these 30 were not.
+    second = {p for p, r in key.items() if r.get("batch") == "nebius-2"}
     labels = {
         json.loads(line)["packet_id"]: json.loads(line)["label"]
         for line in (root / "labels.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip() and json.loads(line)["label"] is not None
+        and json.loads(line)["packet_id"] in second
     }
     snapshot, cache = _snapshot(), {}
 

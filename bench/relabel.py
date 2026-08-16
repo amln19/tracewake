@@ -60,11 +60,14 @@ TEST_STRATA: tuple[tuple[str, str, int], ...] = (
 )
 
 # Proportional to how many labels each existing set holds, so agreement is
-# measured against all three rather than against whichever is largest.
-CALIBRATION_QUOTA: tuple[tuple[str, int], ...] = (
-    ("openhands", 32),
-    ("nebius", 16),
-    ("nebius-2", 12),
+# measured against all three rather than against whichever is largest. The two
+# nebius draws share a directory but remain separate strata: they were drawn
+# under different seeds for different purposes, and collapsing them would
+# resample the calibration set that has already been labelled and scored.
+CALIBRATION_QUOTA: tuple[tuple[str, str | None, int], ...] = (
+    ("openhands", None, 32),
+    ("nebius", "nebius-1", 16),
+    ("nebius", "nebius-2", 12),
 )
 
 
@@ -82,9 +85,12 @@ class Draw:
     origin_packet: str | None = None
 
 
-def _keyed_instances(name: str) -> list[dict]:
+def _keyed_instances(name: str, batch: str | None = None) -> list[dict]:
     path = LABEL_ROOT / name / "key.jsonl"
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    if batch is None:
+        return rows
+    return [row for row in rows if row.get("batch") == batch]
 
 
 def excluded_instances(rootse_ids: list[str]) -> set[str]:
@@ -94,7 +100,11 @@ def excluded_instances(rootse_ids: list[str]) -> set[str]:
     bug on both sides: the sources share instance identifiers, and one instance
     carries many rollouts.
     """
-    excluded = {row["instance_id"] for name, _ in CALIBRATION_QUOTA for row in _keyed_instances(name)}
+    excluded = {
+        row["instance_id"]
+        for name, batch, _ in CALIBRATION_QUOTA
+        for row in _keyed_instances(name, batch)
+    }
     return excluded | set(rootse_ids)
 
 
@@ -237,10 +247,10 @@ def draw_calibration() -> list[Draw]:
     """
     rng = random.Random(CALIBRATION_SEED)
     drawn: list[Draw] = []
-    for name, quota in CALIBRATION_QUOTA:
-        rows = _keyed_instances(name)
+    for name, batch, quota in CALIBRATION_QUOTA:
+        rows = _keyed_instances(name, batch)
         if len(rows) < quota:
-            raise RuntimeError(f"{name} holds {len(rows)} packets for a quota of {quota}")
+            raise RuntimeError(f"{name}/{batch} holds {len(rows)} packets for a quota of {quota}")
         for row in rng.sample(sorted(rows, key=lambda r: r["packet_id"]), quota):
             source = "openhands" if name == "openhands" else "nebius"
             drawn.append(

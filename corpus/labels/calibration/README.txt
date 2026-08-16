@@ -10,7 +10,8 @@ without the old label visible.
                wrong later gets a superseding line, never a silent edit.
 
 Drawn by bench.relabel.draw_calibration, seed 20260816, proportionally across
-the three first-pass sets (openhands 32, nebius 16, nebius-2 12). All 60
+the three first-pass strata (openhands 32, nebius batch nebius-1 16,
+nebius batch nebius-2 12). All 60
 origin packets carry an integer first-pass label; none were excluded then.
 
 WHY IT EXISTS
