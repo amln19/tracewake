@@ -47,9 +47,11 @@ lines are kept and the last one is authoritative, per the append-only rule.
 
 RESULT
 
-135 integer labels, 2 E2, 3 E3. Scored by bench/score_holdout2.py, run once,
-deterministic on rerun. E2/E3 items are not scored: there is no location for a
-rule to land on.
+135 integer labels, 2 E2, 3 E3. Scored once, deterministic on rerun, by
+
+  uv run --group bench python -m bench.score_holdout2
+
+E2/E3 items are not scored: there is no location for a rule to land on.
 
                     exact          +/-2           +/-5
   earliest_bound    51/135 37.8%   76/135 56.3%   87/135 64.4%

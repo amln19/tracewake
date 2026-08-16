@@ -76,7 +76,7 @@ real property of a run more directly than novelty does — but nothing reads it.
 > section.
 
 Four labelled sets, 178 pairs, within ±2 steps of the label. Reproduce with
-`python -m bench.pooled`.
+`uv run --group bench python -m bench.pooled`.
 
 | Rule | OpenHands dev | OpenHands held-out | RootSE | nebius | pooled |
 | --- | --- | --- | --- | --- | --- |
@@ -206,7 +206,7 @@ that constraint the sources hold roughly 72,000 failing trajectories over
 
 140 trajectories, instance-disjoint from every set above and from RootSE,
 stratified over source and model size. 135 carried a label; 5 were excluded as
-unlabellable. `bench/score_holdout2.py`, run once.
+unlabellable. `uv run --group bench python -m bench.score_holdout2`, run once.
 
 | Rule | exact | ±2 | ±5 |
 | --- | --- | --- | --- |

@@ -29,6 +29,14 @@ corpus = [
     "mlx-embeddings>=0.1.0",
     "mlx-lm>=0.28",
 ]
+# What `bench/` needs to read the trajectory sources. Not runtime dependencies:
+# nothing in `tracewake/` imports either, and the published package installs
+# without them. They live here so the evaluation commands the documentation
+# cites actually run on a fresh checkout.
+bench = [
+    "pyarrow>=15",
+    "datasets>=2.14",
+]
 dev = ["pytest>=8.4"]
 
 [build-system]

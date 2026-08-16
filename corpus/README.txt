@@ -50,12 +50,23 @@ neither large nor regenerable. The recorded stores are git-excluded.
                         holdout-2/        140 fresh trajectories, instance
                                           disjoint from everything above and from
                                           RootSE. Scored once by
-                                          `python -m bench.score_holdout2`.
+                                          `uv run --group bench python -m bench.score_holdout2`.
 
                       The labels in every Tracewake-written set sit on a step
                       that writes far more often than RootSE's external labels
                       do, and the rule reads writes. Absolute percentages from
                       these sets are partly a measure of that agreement.
+
+                      RENAMED. labels/external/ is now labels/openhands/, and
+                      labels/nebius-holdout/ is now labels/nebius-2/. The first
+                      name collided with RootSE, which is the set that actually
+                      carries external labels; the second stopped being true the
+                      moment that set was scored. Older commits, and the frozen
+                      alignment/partition.json, still name the old paths. Packet
+                      ids keep their original prefixes -- E for the OpenHands
+                      set, H for nebius-2 -- because they are referenced from
+                      labels.jsonl, the calibration key and contracts/, and
+                      renaming them would buy nothing.
   alignment/          prediction sheets and external_scout.json (source inventory).
                       partition.json splits the 80 external packets into a
                       development half and a held-out half; dev-fitted.json holds
