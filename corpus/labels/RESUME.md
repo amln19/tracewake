@@ -270,3 +270,57 @@ a threshold that wants tuning.
 recorded values stay — they are what produced the finding above — but the
 field measured trace shape, not label quality, and a future pass should not
 collect it under this name or for this purpose.
+
+### The labels are anchored to writes, and that inflates the held-out number
+
+How often the point of no return precedes the run's first write, by set:
+
+| set | n | never commits | commits, truth before it | truth at or after |
+|---|---|---|---|---|
+| RootSE (external labels) | 102 | 4% | **44%** | 52% |
+| nebius, first pass (ours) | 70 | 27% | 3% | 70% |
+| nebius, holdout-2 (ours) | 98 | 18% | 12% | 69% |
+| OpenHands, holdout-2 (ours) | 37 | 8% | 8% | 84% |
+
+A fourteen-fold spread between RootSE and our own first-pass nebius labels is
+not plausibly a fact about agent runs. It is a fact about labelling, and the
+mechanism is visible in where each label lands:
+
+| set | label sits on a step that writes | commonest action at the labelled step |
+|---|---|---|
+| RootSE (external) | **42%** | `str_replace` 40, **no action at all 18**, `create` 8 |
+| nebius, first pass (ours) | 59% | `edit` 44 |
+| nebius, holdout-2 (ours) | 68% | `edit` 70, `create` 21 |
+| OpenHands, holdout-2 (ours) | **78%** | `str_replace` 25, `insert` 7 |
+
+The TrajAudit annotators put 18 of 102 labels on steps with **no action at
+all** — a turn where the agent only reasoned. Ours almost never do. Our
+labels land on edits because the standard recorded above told the labeller to
+find the last sound write to pre-existing source and judge it, which is a
+sound way to label consistently and also the same place `earliest_bound`
+looks.
+
+The controlled comparison is the two nebius passes: same pool, comparable
+population, 59% against 68%, with the second pass being the one whose written
+standard emphasised writes. Population cannot explain that gap; convention
+can.
+
+**Consequence for the held-out result.** 56.3% at ±2 is measured against
+labels that agree with the rule's own anchor far more often than an
+independent annotator's do. RootSE, the only externally labelled set this
+project has, is also the set `earliest_bound` scores worst on. The honest
+reading of the held-out number is *"agreement with a labeller who was
+instructed to look where the rule looks"*, not *"accuracy at locating the
+point of no return."* `PROTOCOL.md` flagged this risk in the abstract; this
+is the measurement of it.
+
+It also means the write-anchored ceiling quoted earlier (~60% exact) is not a
+property of agent runs. Under RootSE's labelling convention the same ceiling
+is near 56%; under ours it is near 90%. The ceiling moves with the
+convention, which is the clearest possible sign that the target is partly
+defined by the instrument.
+
+A future pass that wants an uncontaminated number has to drop the
+write-anchoring instruction from the labelling standard and accept the lower
+inter-labeller agreement that will follow — or label a set blind to the
+rule's existence entirely.
