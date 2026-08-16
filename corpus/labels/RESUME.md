@@ -5,9 +5,15 @@ registered protocol and does not change; this file is the running state.
 
 ## Order, which matters
 
-1. Finish `calibration/` — 60 items, of which 11 are done.
-2. Score agreement against the first-pass labels. Only then open them.
-3. Label `holdout-2/` — 140 items, not yet exported.
+1. ~~Finish `calibration/` — 60 items.~~ Done: all 60 labelled
+   (`corpus/labels/calibration/labels.jsonl`), 48 with an integer, 10 `E2`,
+   2 `E3`.
+2. ~~Score agreement against the first-pass labels.~~ Done, see "Calibration
+   result" below.
+3. Label `holdout-2/` — 140 items, not yet exported. **Not started.** Read
+   the "Calibration result" section below before starting this — there is an
+   open erratum against two of the 60 labels that should inform how `E2` gets
+   applied to the holdout set.
 4. Score once, with the rule frozen.
 
 Calibration comes first so that a rubric which turns out not to reproduce the
@@ -76,15 +82,92 @@ it invalidates the set. Exclusions are recorded, never backfilled with redraws �
 replacing an excluded item would select for labellable cases. Confidence is
 decided when the label is written and never revised.
 
-## After calibration
+## Calibration result
 
-Agreement is reported three ways: exact, within ±2, and within ±5, each with
-the chance rate beside it per `PROTOCOL.md`, and each computed twice — over all
-60, and over the 54 that are not `E2`. The second is the number that says
-whether these labels mean what the earlier ones did. The first says how much of
-the old set was answerable at all.
+Joined via `calibration/key.jsonl`'s `origin_packet` against
+`external/labels.jsonl`, `nebius/labels.jsonl`, and `nebius-holdout/labels.jsonl`
+(all three held the first-pass label for some fraction of the 60 origin
+packets — the calibration draw pulled from all three, not just `external` and
+`nebius` as the earlier text here assumed). All 60 origin packets carry an
+integer first-pass label; none were excluded on the first pass.
 
-Export the held-out set only after that is written down:
+Of the 60 second-pass labels, 48 were integers, 10 `E2`, 2 `E3`. A follow-up
+append (below) supersedes one `E2` with an integer, bringing the comparable
+set to 49; the numbers here use that corrected set. Agreement is computed over
+the 49 with a second-pass integer (an `E2`/`E3` item has no number to compare)
+and, separately, over all 60 (treating any second-pass exclusion as a miss,
+since first-pass never excluded).
+
+| window | n comparable | exact/±2/±5 match | mean chance rate | over all 60 |
+|---|---|---|---|---|
+| exact | 49 | 40.8% (20/49) | 4.1% | 33.3% (20/60) |
+| ±2    | 49 | 49.0% (24/49) | 19.7% | 40.0% (24/60) |
+| ±5    | 49 | 69.4% (34/49) | 38.0% | 56.7% (34/60) |
+
+All three windows clear their chance floor by a wide margin, which says the
+rubric in `PROTOCOL.md` is reproducing what the first pass meant by "point of
+no return" rather than guessing near the middle of each trace. But two further
+cuts of the same 49 pairs matter more than the headline table, and both argue
+for reporting the held-out result cautiously rather than for redoing this pass:
+
+**The rule's own measured accuracy is not stable under which label set scores
+it.** `earliest_bound` run on these same 49 trajectories:
+
+| | exact | ±2 |
+|---|---|---|
+| vs first-pass label | 31% (15/49) | 49% (24/49) |
+| vs second-pass label | 45% (22/49) | 61% (30/49) |
+
+An 18-point swing at exact match and a 12-point swing at ±2, from relabelling
+alone, on identical trajectories. That is on the same order as the gaps
+`divergence.md` treats as meaningful between rules. Any accuracy number from
+holdout-2 should be read as sitting inside a band roughly this wide, not as a
+point estimate.
+
+**Confidence does not predict agreement.** Restricting to the 15 pairs marked
+`confident: true`: exact 47% (7/15), ±2 47% (7/15), ±5 73% (11/15) — no better
+than the full set at exact and ±2, worse at exact than the unrestricted mean
+would suggest. With n=15 this is not a strong claim, but it means `confident`
+should not be used as a filter to produce a cleaner headline number from
+holdout-2; report the full set.
+
+### Erratum, applied: C023 was excluded too readily
+
+Every one of the 12 second-pass exclusions maps to an origin packet that
+*did* get an integer on the first pass. For 11 of them this is not a
+disagreement: this pass's step counts match the first pass's `bad_steps`
+exactly on every one, so there is no render gap — the same trajectory was
+available to both passes, and the first pass assigned an integer to what is,
+on this rubric, an unlabellable run (an empty directory listing on repeat, or
+an infrastructure failure with no prior committing edit). That is evidence
+the first-pass label set carries known noise on short and degenerate
+trajectories, consistent with the `empty_generation` contamination found
+earlier in this project's evaluation — not evidence this pass's rubric is
+wrong.
+
+C023 is the one exception. It was excluded `E2` for repeated 503s from step 11
+onward, but step 7 landed a real, judgeable edit (`.clone()` on `ssim_value`)
+*before* the infrastructure failure started. `PROTOCOL.md`'s own standard —
+label where recovery stopped being possible — argues for labelling at that
+last sound edit and treating the subsequent 503s as where the trace ends, not
+as grounds to exclude the item. C027 in the same batch was checked against
+this identical question and holds up as `E2`: no edit landed and applied
+cleanly before its own 504/503 run began, so there is no commitment point to
+fall back to.
+
+Applied as an append, not a silent edit — `calibration/labels.jsonl` retains
+the original `C023: E2` line and a second `C023` line marked
+`"supersedes": "C023 E2"` with label `7`. The scoring above uses the
+superseding line.
+
+**For holdout-2:** do not exclude an item on an infrastructure or environment
+failure without checking whether a real, applied edit to pre-existing source
+landed before the failure began. If one did, label it there; the failure is
+where the trace ends, not grounds to exclude.
+
+## Next: holdout-2
+
+Export the held-out set only after the above is settled:
 
     from bench.relabel import draw_test, export
     export(draw_test(rootse_instance_ids), "holdout-2")
