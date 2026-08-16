@@ -10,11 +10,17 @@ registered protocol and does not change; this file is the running state.
    2 `E3`.
 2. ~~Score agreement against the first-pass labels.~~ Done, see "Calibration
    result" below.
-3. Label `holdout-2/` — 140 items, not yet exported. **Not started.** Read
-   the "Calibration result" section below before starting this — there is an
-   open erratum against two of the 60 labels that should inform how `E2` gets
-   applied to the holdout set.
-4. Score once, with the rule frozen.
+3. ~~`holdout-2/` — 140 items, exported via `draw_test`/`export`~~ Done: all
+   140 labelled (`corpus/labels/holdout-2/labels.jsonl`), packets in
+   `corpus/labels/holdout-2/packets`, key in `corpus/labels/holdout-2/key.jsonl`,
+   stratified: nebius llama-405b×25, llama-70b×50, llama-8b×25, openhands
+   gpt-4o×40; instance-disjoint from RootSE and from everything in
+   `calibration/`. The C023 lesson was applied throughout: several items got a
+   numeric label at a sound edit that preceded an environment or
+   verification obstacle (e.g. broken test credentials, corrupted download
+   data), rather than an E2 exclusion.
+4. Score once, with the rule frozen. Not started — do not begin without
+   confirming with the user first, same as step 2 waited on step 1.
 
 Calibration comes first so that a rubric which turns out not to reproduce the
 earlier labels can be fixed while the expensive half is still unspent. Do not
