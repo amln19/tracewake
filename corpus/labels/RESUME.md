@@ -171,9 +171,76 @@ failure without checking whether a real, applied edit to pre-existing source
 landed before the failure began. If one did, label it there; the failure is
 where the trace ends, not grounds to exclude.
 
-## Next: holdout-2
+## Holdout-2: labelled, checked
 
-Export the held-out set only after the above is settled:
+All 140 exported and labelled. Verified independently before scoring:
 
-    from bench.relabel import draw_test, export
-    export(draw_test(rootse_instance_ids), "holdout-2")
+* the exported `key.jsonl` matches a fresh `draw_test` re-run byte for byte —
+  the draw was not perturbed after export;
+* zero instance overlap with `calibration/`, any first-pass set, or RootSE;
+* stratification matches the plan exactly (405b×25, 70b×50, 8b×25, gpt-4o×40);
+* every label is within `[1, step_count]` for its packet;
+* label position is not clustered at an extreme: 22% at step 1 ("never got
+  started"), 4% at the last step, median at 49% of the trace;
+* the two `E2`s and three `E3`s all hold up on inspection — both `E2`s are
+  genuine tooling failures with no sound edit preceding them, consistent with
+  the C023 standard; the `E3`s are runs whose own trace shows a verified
+  working fix despite carrying a failing-run label.
+
+**Found and fixed:** four packets (T090, T094, T099, T103) had two label lines
+each, not marked as errata — an accidental overlap at a session-resume
+boundary rather than a deliberate correction. All four agree on the step
+number; T099 disagrees on confidence between the two passes (`true` then
+`false`). Resolved by the protocol's existing append-only, last-line-wins
+convention — no data was lost, both lines remain in `labels.jsonl` — and
+recorded here rather than silently relied on. The T099 confidence flip is a
+second, independent data point (after calibration's confident-subset finding)
+that `confident` should not be trusted as a filter.
+
+Final tally after resolving the duplicates: 135 integer labels, 2 `E2`, 3 `E3`.
+
+## Scored. `bench/score_holdout2.py`, run once, verified deterministic on rerun.
+
+135 of 140 items carry an integer label; 5 (`E2`×2, `E3`×3) have no location
+to score against.
+
+| | exact (primary) | ±2 | ±5 |
+|---|---|---|---|
+| `earliest_bound` | **37.8% (51/135)** | 56.3% (76/135) | 64.4% (87/135) |
+| `first_commitment` | 37.0% (50/135) | 52.6% (71/135) | 60.0% (81/135) |
+
+At ±2 every item in this set is missable (shortest trace is 7 steps, and
+2·2+1=5); at ±5, 121 of 135 are missable — 14 traces are too short to be
+wrong on at that tolerance, 10.4%, against 18–39% in the old OpenHands set.
+The sampling filters added after the calibration pass (`has_model_prose`,
+`learned_something`) appear to have done what they were for.
+
+**This lands close to the published figures** — ±2 at 56.3% against the
+in-sample pooled 54% and the first held-out check's 57%, on a set that shares
+no instance with either. That is the headline result: a same-order-of-magnitude
+replication on fresh data, fresh labels, and a materially different population
+(no RootSE at all here; nebius's 405b and 8b strata were never scored before).
+
+**Read every figure above against the calibration band.** Relabelling alone
+moved `earliest_bound`'s own accuracy by 18 points at exact match and 12 at
+±2 on identical trajectories. 37.8% and 56.3% are not exact — they are the
+center of a range roughly that wide.
+
+By reliability class (`earliest_bound`, ±2): `commit-long-single` 100% (n=7,
+noisy), `commit-short` 86% (n=49), `silent-short` 60% (n=5, noisy),
+`commit-long-many` 36% (n=58), `silent-long` 19% (n=16). Same ordering
+`divergence.md` reports (commitment and short beat long and silent), on data
+none of that ordering was fitted to.
+
+By stratum (`earliest_bound`, exact / ±2): nebius 405b 30%/52% (n=23), 70b
+30%/48% (n=50), 8b 36%/60% (n=25), openhands gpt-4o 54%/68% (n=37). No clean
+story by model size — 405b and 8b score within a few points of each other —
+but n per stratum is small enough that this should be read as "no evidence
+of a strong effect" rather than "no effect."
+
+**Confidence is inverted, not just uninformative.** `confident=True` scores
+*worse* than `confident=False`: exact 28% (17/61) against 46% (34/74); ±2 48%
+against 64%. This is the same direction as the single confidence flip found
+in the duplicate-label check above, now on 135 items instead of 15. Do not
+read `confident` as a quality filter for anything downstream; if it is kept
+at all, the honest use is the opposite of the one it was designed for.
