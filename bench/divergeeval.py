@@ -26,7 +26,7 @@ from tracewake.align import (
     last_common_prefix,
 )
 from tracewake.diverge import (
-    RELIABILITY_ACCURACY,
+    RELIABILITY_BAND,
     commitment_steps,
     earliest_bound,
     first_commitment,
@@ -348,7 +348,7 @@ def report(preds: Sequence[Prediction], fitted: dict, title: str) -> str:
     )
     lines.append("")
     lines.append("earliest_bound by the reliability class it reports:")
-    for level in RELIABILITY_ACCURACY:
+    for level in RELIABILITY_BAND:
         group = [p for p in preds if p.reliability == level]
         if not group:
             lines.append(f"  {level:<22} n=0")

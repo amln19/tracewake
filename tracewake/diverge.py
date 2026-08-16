@@ -21,8 +21,16 @@ Terminal repetition was a third of these and is not one any more: periodicity
 to the end implies novelty exhaustion no later, so it can never be the strict
 minimum. See `terminal_repeat`.
 
+`localize` reports `first_nonscratch_write`, which came from an independent
+rebuild and supersedes `earliest_bound` on evidence rather than on accuracy:
+the two are statistically indistinguishable, but one can be measured on 262
+trajectories it has never seen and the other on 135. `earliest_bound` is kept
+unchanged, because every published figure is its.
+
 `reliability` reports which of five classes the run falls into, because the
-same rule is right 87% of the time on one class and 21% on another.
+same rule is right about nine times in ten on one class and one in ten on
+another. It reports a band, not a percentage: the ordering survives being
+re-measured and the percentages do not.
 
 See `contracts/divergence.md` for the measured comparison and the limits.
 """
@@ -47,7 +55,9 @@ def creates_files(step: Step) -> bool:
     return any(m in n.lower() for n in names for m in CREATE_MARKERS)
 
 
-def _commitments(steps: Sequence[Step]) -> list[tuple[int, frozenset[str]]]:
+def _commitments(
+    steps: Sequence[Step], writes_of=lambda step: set(step.writes)
+) -> list[tuple[int, frozenset[str]]]:
     """(1-based index, paths) for each step that changes pre-existing state.
 
     Two facts are tracked, not one. `seen` is every path the run has referenced;
@@ -71,14 +81,15 @@ def _commitments(steps: Sequence[Step]) -> list[tuple[int, frozenset[str]]]:
     out: list[tuple[int, frozenset[str]]] = []
     for i, step in enumerate(steps, start=1):
         made = creates_files(step)
+        written = writes_of(step)
         changed = frozenset(
-            p for p in step.writes if p not in owned and (p in seen or not made)
+            p for p in written if p not in owned and (p in seen or not made)
         )
         if changed:
             out.append((i, changed))
         if made:
-            owned |= {p for p in step.writes if p not in seen}
-        seen |= set(step.writes)
+            owned |= {p for p in written if p not in seen}
+        seen |= set(written)
         seen |= {t for t in step.targets if t}
     return out
 
@@ -202,35 +213,102 @@ def earliest_bound(bad: Sequence[Step]) -> int:
     return min(bounds)
 
 
+SCRATCH_FALLBACK = 12
+
+
+def first_nonscratch_write(bad: Sequence[Step]) -> int:
+    """The step that first writes a file the run did not create for itself.
+
+    A run's steps divide into finding out — reading, searching, running a
+    reproduction — and acting on what it thinks it found. The first write to a
+    file that was already there is the boundary: it turns a diagnosis from a
+    hypothesis into the premise every later step inherits. When the diagnosis is
+    wrong what follows is repair, not reconsideration, and the run is already
+    lost.
+
+    The carve-out is what makes it work on more than one scaffold. Almost every
+    run creates a reproduction script early; counting that as the commitment
+    lands a median of thirteen steps early. The scratch file is identified as
+    the first path written that was never read — created out of nothing — which
+    costs no parameter and no scaffold knowledge.
+
+    This came from an independent rebuild that was given the labelled
+    development trajectories and none of this project's rules, documents or
+    held-out data, and it arrived at substantially the same idea as
+    `first_commitment` by a different route. It replaced `earliest_bound` as
+    what `localize` reports, not because it scores higher — the two are
+    statistically indistinguishable, and `earliest_bound` is nominally ahead —
+    but because it can be evaluated on 262 trajectories it has never seen,
+    including all 102 externally labelled ones, where `earliest_bound` is
+    in-sample on everything but 135. See `contracts/divergence.md`.
+
+    `SCRATCH_FALLBACK` is the only fitted number, the median development label,
+    and it is inert: sweeping it from 6 to 20 moves held-out exact match between
+    29.4% and 29.8%, and replacing it with `novelty_exhausted` or `len` gives
+    28.6% and 28.2%. It is kept at the submitted value rather than swapped for a
+    parameter-free one, because choosing between them on the held-out set would
+    be selecting on the evaluation.
+    """
+    read: set[str] = set()
+    scratch: str | None = None
+    for index, step in enumerate(bad, start=1):
+        written = _written_paths(step)
+        for path in written:
+            # Already read means it predates the run. A second file created from
+            # nothing means the first one was the scratch file and this is not.
+            if path in read or (scratch is not None and path != scratch):
+                return index
+        if written and scratch is None:
+            scratch = sorted(written)[0]
+        read |= {t for t in step.targets if t and t not in written}
+    return min(SCRATCH_FALLBACK, len(bad)) if bad else 1
+
+
+def _written_paths(step: Step) -> set[str]:
+    """Paths this step wrote, falling back to the verb when nothing is derived.
+
+    Adapters populate `Step.writes`; the fallback is insurance for one that does
+    not, so the rule stays meaningful on a scaffold this project has not seen.
+    On every labelled trajectory the two agree.
+    """
+    if step.writes:
+        return set(step.writes)
+    verbs = ("edit", "create", "write", "replace", "insert", "append",
+             "patch", "apply", "touch", "new", "save", "sed", "tee", "add")
+    out: set[str] = set()
+    for name, target in zip(
+        step.batch_names or (step.name,), step.batch_targets or (step.target,), strict=False
+    ):
+        tail = (name or "").split()[0].split(".")[-1].lower() if name else ""
+        if target and any(word.startswith(v) for word in tail.replace("-", "_").split("_") for v in verbs):
+            out.add(target)
+    return out
+
+
 Reliability = Literal[
     "commit-short", "silent-short", "commit-long-single",
     "commit-long-many", "silent-long",
 ]
 
-# Within-±2 accuracy of `earliest_bound` per class, over 313 labelled runs: the
-# 178 the classes were defined on, plus 135 scored once afterwards on data none
-# of this was fitted to. The ordering is what carries: it held inside all four
-# of the original sets separately, and again on the later set, which is what
-# makes abstaining on the tail meaningful rather than a guess.
-#
-# The figures are not precise. Relabelling the same trajectories moved this
-# rule's own score by 12 points at ±2, so treat each as a band of roughly that
-# width, and the two sparse middle classes as weaker still (27 and 30 runs).
-# The first 178 also carry short degenerate trajectories that inflate the two
-# short classes, since a trace of five steps or fewer cannot be missed at ±2.
-# `contracts/divergence.md` measures both effects.
-RELIABILITY_ACCURACY: dict[str, float] = {
-    "commit-short": 0.86,        # 68/79
-    "silent-short": 0.78,        # 21/27
-    "commit-long-single": 0.77,  # 23/30
-    "commit-long-many": 0.37,    # 53/142
-    "silent-long": 0.20,         # 7/35
+# How far to trust the answer, as a band rather than a number. The classes hold
+# their order across three independent evaluations, which is what makes
+# abstaining meaningful; the percentages do not survive being quoted. Measured
+# within ±2 on the 262 held-out trajectories: commit-short 88% (n=69),
+# commit-long-single 70% (n=23), commit-long-many 36% (n=144), silent-short 29%
+# (n=7), silent-long 11% (n=19). The two sparse classes swing by tens of points
+# between evaluations and are banded conservatively for that reason.
+RELIABILITY_BAND: dict[str, str] = {
+    "commit-short": "high",
+    "commit-long-single": "moderate",
+    "commit-long-many": "low",
+    "silent-short": "low",
+    "silent-long": "very low",
 }
 LONG_TRACE = 18
 
 
 def reliability(bad: Sequence[Step]) -> Reliability:
-    """How much to trust `earliest_bound` on this run, decided without labels.
+    """How much to trust the reported step, decided without labels.
 
     Two things predict whether the answer lands: whether the run committed at
     all, and whether the trace is long. `silent-long` — a long run that never
@@ -240,7 +318,12 @@ def reliability(bad: Sequence[Step]) -> Reliability:
     The 18-step boundary is `align-v1`'s existing long/short split, reused
     rather than refitted.
     """
-    commitments = commitment_steps(bad)
+    # Uses the inferred writes, not just the derived ones, so the class agrees
+    # with the step being reported. `commitment_steps` deliberately does not:
+    # it underpins `first_commitment` and every published figure, and 130 steps
+    # in the labelled corpus carry a write the verb sees and the adapter did
+    # not derive, so widening it there would silently restate those numbers.
+    commitments = [i for i, _ in _commitments(bad, _written_paths)]
     if not commitments:
         return "silent-long" if len(bad) > LONG_TRACE else "silent-short"
     if len(bad) <= LONG_TRACE:
@@ -254,5 +337,11 @@ def localize(bad: Sequence[Step]) -> tuple[int, Reliability]:
     The single-trace entry point: no reference run, no alignment, no inference.
     Callers that want to abstain should drop `silent-long`, which is about 14%
     of observed pairs and carries most of the error.
+
+    Reports `first_nonscratch_write`. `earliest_bound` is the superseded
+    incumbent and is kept, unchanged, because every published figure in
+    `contracts/divergence.md` is its and reproducing them has to stay possible.
     """
-    return earliest_bound(bad), reliability(bad)
+    if not bad:
+        raise ValueError("the failure run has no steps to locate a divergence in")
+    return first_nonscratch_write(bad), reliability(bad)

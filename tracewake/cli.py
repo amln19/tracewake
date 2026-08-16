@@ -453,7 +453,7 @@ def diff_(
     lexical: LexicalOption = False,
 ) -> None:
     """Align two runs, and locate where the failing one went wrong."""
-    from .diverge import RELIABILITY_ACCURACY, localize
+    from .diverge import RELIABILITY_BAND, localize
 
     db = Store(store)
     db_b = Store(store_b) if store_b else db
@@ -470,8 +470,8 @@ def diff_(
         step, klass = localize(result.bad_steps)
         typer.echo(
             f"{bad_header.run_id[:8]} went wrong at step {step} of "
-            f"{len(result.bad_steps)}  [{klass}, about "
-            f"{RELIABILITY_ACCURACY[klass]:.0%} within two steps]"
+            f"{len(result.bad_steps)}  [{klass}, "
+            f"{RELIABILITY_BAND[klass]} confidence]"
         )
         if klass == "silent-long":
             typer.echo(
@@ -502,7 +502,7 @@ def localize_(
     question -- where two runs stopped agreeing -- and is much weaker on long
     traces; see contracts/divergence.md.
     """
-    from .diverge import RELIABILITY_ACCURACY, localize
+    from .diverge import RELIABILITY_BAND, localize
 
     db = Store(store)
     header = db.resolve(run)
@@ -514,7 +514,7 @@ def localize_(
 
     step, klass = localize(steps)
     typer.echo(f"first irrecoverable step: {step} of {len(steps)}")
-    typer.echo(f"reliability {klass} (about {RELIABILITY_ACCURACY[klass]:.0%} within two steps)")
+    typer.echo(f"reliability {klass} ({RELIABILITY_BAND[klass]} confidence)")
     typer.echo(f"  {steps[step - 1].name} {steps[step - 1].target}".rstrip())
     if klass == "silent-long":
         typer.echo(

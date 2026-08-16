@@ -6,9 +6,11 @@ import pytest
 
 from tracewake.align import Step
 from tracewake.diverge import (
-    RELIABILITY_ACCURACY,
+    RELIABILITY_BAND,
     commitment_steps,
+    SCRATCH_FALLBACK,
     earliest_bound,
+    first_nonscratch_write,
     first_commitment,
     localize,
     novelty_exhausted,
@@ -168,14 +170,57 @@ def test_reliability_separates_the_class_that_cannot_be_localised():
     assert reliability(long_many) == "commit-long-many"
 
 
-def test_published_reliability_ordering_stays_monotone():
-    """Callers abstain on the tail, so the ordering is the whole point."""
-    order = list(RELIABILITY_ACCURACY.values())
-    assert order == sorted(order, reverse=True)
+def test_every_class_carries_a_confidence_band():
+    """Callers abstain on the tail, so every class has to say where it sits.
+
+    The bands replaced per-class percentages: the ordering survives being
+    re-measured on fresh data and the percentages do not, so quoting one was
+    false precision on a figure with a twelve-point interval.
+    """
+    from tracewake.diverge import Reliability
+    import typing
+    assert set(RELIABILITY_BAND) == set(typing.get_args(Reliability))
+    assert RELIABILITY_BAND["commit-short"] == "high"
+    assert RELIABILITY_BAND["silent-long"] == "very low"
 
 
 def test_localize_reports_a_step_and_how_much_to_trust_it():
     assert localize([read("a.py"), edit("a.py")]) == (2, "commit-short")
+
+
+def test_the_two_rules_decide_ownership_differently():
+    """Where the superseded bound and the reported rule actually diverge.
+
+    Both exclude a scratch file; they disagree on how one is recognised.
+    `first_commitment` asks the verb — `edit` presupposes a file that was
+    already there, so writing an unseen path counts immediately. The reported
+    rule asks the run's own history — a path it never read is one it must have
+    made, whatever verb it used.
+
+    Here the run writes its reproduction script with `edit` rather than
+    `create`. The old bound calls that the commitment at step 1; the new rule
+    waits for step 3, the write to a file it had actually looked at.
+    """
+    bad = [edit("repro.py"), read("src/a.py"), edit("src/a.py")]
+    assert first_commitment(bad) == 1
+    assert earliest_bound(bad) == 1
+    assert first_nonscratch_write(bad) == 3
+    assert localize(bad)[0] == 3
+
+
+def test_the_scratch_rule_falls_back_when_a_run_never_writes():
+    bad = [read("a.py")] * 30
+    assert first_nonscratch_write(bad) == SCRATCH_FALLBACK
+
+
+def test_the_scratch_rule_infers_writes_when_none_are_derived():
+    """Insurance for an adapter that ships no `writes`: the verb still reads."""
+    bare = [
+        Step(name="str_replace_editor.view", args={}, target="src/a.py"),
+        Step(name="str_replace_editor.str_replace", args={}, target="src/a.py"),
+    ]
+    assert not any(s.writes for s in bare)
+    assert first_nonscratch_write(bare) == 2
 
 
 def test_observations_do_not_enter_the_bounds():

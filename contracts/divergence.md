@@ -193,6 +193,41 @@ RootSE and worth 3 points pooled.
 
 The other 49 pool pairs have never been rendered.
 
+## What `localize` reports now
+
+`first_nonscratch_write`: the first step that writes a file the run did not
+create for itself, where the scratch file is the first path written that was
+never read.
+
+It came from an independent rebuild. An agent was given 107 labelled
+development trajectories and none of this project's rules, documents, evaluation
+or held-out data, and it arrived at substantially the same idea as
+`first_commitment` by a different route — the two differ only in how ownership
+is decided, by the run's own read history rather than by the action verb.
+
+It supersedes `earliest_bound` on evidence, not on accuracy:
+
+| | out-of-sample evidence | externally labelled |
+| --- | --- | --- |
+| `first_nonscratch_write` | **262 trajectories** | **102** |
+| `earliest_bound` | 135 | 0 |
+
+Paired on the 135 where both are out-of-sample, nothing separates them —
+37.0% against 37.8% exact, 53.3% against 56.3% at ±2, McNemar p = 0.22 at ±2
+on six disagreements. `earliest_bound` is nominally ahead everywhere. What it
+cannot have is a clean external number: it was selected against RootSE, so its
+20.6% there is in-sample and always will be. The rebuild's 17.6% exact and
+45.1% at ±2 on RootSE is lower, and is the first figure on externally labelled
+data in this document that means what it says.
+
+Its one fitted constant, the fallback for runs that never write outside their
+scratch file, is inert: sweeping it from 6 to 20 moves held-out exact match
+between 29.4% and 29.8%, and parameter-free replacements give 28.6% and 28.2%.
+It is kept at the submitted value rather than swapped, because choosing between
+them on the held-out set would be selecting on the evaluation.
+
+`earliest_bound` is kept unchanged and is what every figure below reports.
+
 ## The second evaluation
 
 Every set above is spent: the rule was chosen while looking at all four, and

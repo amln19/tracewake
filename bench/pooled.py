@@ -19,7 +19,7 @@ from collections.abc import Callable, Sequence
 
 from tracewake.align import LexicalEmbedder, Step, align, divergence_step
 from tracewake.diverge import (
-    RELIABILITY_ACCURACY,
+    RELIABILITY_BAND,
     earliest_bound,
     first_commitment,
     reliability,
@@ -113,7 +113,7 @@ def report(data: dict[str, list[Pair]] | None = None) -> str:
     lines += ["", "reliability of earliest_bound", ""]
     lines.append(f"{'class':<21}" + "".join(f"{s:>12}" for s in SETS) + f"{'pooled':>14}")
     totals: dict[str, tuple[int, int]] = {}
-    for klass in RELIABILITY_ACCURACY:
+    for klass in RELIABILITY_BAND:
         row, hits, total = "", 0, 0
         for s in SETS:
             sub = [(t, b) for _p, t, _g, b in data[s] if reliability(b) == klass]
@@ -127,7 +127,7 @@ def report(data: dict[str, list[Pair]] | None = None) -> str:
     lines += ["", "risk-coverage (abstain from the bottom classes)", ""]
     keep: list[str] = []
     grand = sum(n for _h, n in totals.values())
-    for klass in RELIABILITY_ACCURACY:
+    for klass in RELIABILITY_BAND:
         keep.append(klass)
         hits = sum(totals[k][0] for k in keep)
         total = sum(totals[k][1] for k in keep)
