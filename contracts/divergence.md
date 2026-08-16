@@ -82,7 +82,7 @@ Four labelled sets, 178 pairs, within ±2 steps of the label. Reproduce with
 | --- | --- | --- | --- | --- | --- |
 | `earliest_bound` | 25/40 | 25/40 | 27/58 | 19/40 | **96/178 = 54%** |
 | `first_commitment` | 25/40 | 23/40 | 27/58 | 15/40 | 90/178 = 51% |
-| `align-v1` | 18/40 | 18/40 | 5/58 | 4/40 | 45/178 = 25% |
+| `align-v1` | 20/40 | 18/40 | 5/58 | 4/40 | 47/178 = 26% |
 | constant 10, fitted on development data | 22/40 | 21/40 | 9/58 | 5/40 | 57/178 = 32% |
 
 Against `first_commitment` alone, `earliest_bound` gains 8 and loses 2

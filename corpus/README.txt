@@ -89,11 +89,18 @@ neither large nor regenerable. The recorded stores are git-excluded.
                           corpus/external/TrajAudit
                       then `python -m bench rootse-eval` (or set ROOTSE_ROOT).
 
-                      Known defect: three of the 129 loadable OpenHands pairs
-                      (E10, E36, E76) are byte-identical on both sides — the same
-                      action and observation sequence graded both resolved and
-                      unresolved. No action-based method can localise those, and
-                      their labels are noise.
+                      Fixed, 2026-08-16: E10, E36 and E76 used to load
+                      byte-identical on both sides, and were recorded here as
+                      noise. They were not. A run id names the sampling
+                      configuration rather than the rollout, so one
+                      (instance, run) pair can name several rollouts — 197 of
+                      them do — and the pair loader kept only the last, which
+                      handed the same row to both sides whenever a packet's two
+                      sides shared a configuration. Seven packets were affected
+                      (E10, E36, E43, E45, E70, E76, E79). The loader now picks
+                      with the two facts the key records, which side resolved and
+                      how many steps it had, and all seven load distinctly. The
+                      labels were always fine.
   external/           third-party checkouts that are not vendored, chiefly
                       TrajAudit for RootSE (~600MB). Clone it yourself; see the
                       alignment/ note above.

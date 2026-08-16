@@ -122,16 +122,40 @@ def load_pairs(packet_ids: Sequence[str], *, rows=None) -> list[tuple[dict, list
         if line.strip()
     ]
     wanted = {k["packet_id"]: k for k in keys if k["packet_id"] in set(packet_ids)}
-    by_id: dict[tuple[str, str], dict] = {}
+    # A run id names the sampling configuration, not the rollout, so one
+    # (instance, run) pair can name several rollouts -- 197 of them do. Keeping
+    # only the last silently made `win` and `loss` the same row whenever a
+    # packet's two sides shared a configuration, which is what left E10, E36 and
+    # E76 byte-identical on both sides. Keep every candidate and pick with the
+    # two facts the key records: which side resolved, and how long it was.
+    by_id: dict[tuple[str, str], list[dict]] = {}
     for row in rows if rows is not None else iter_openhands_rows():
-        by_id[(row["instance_id"], row["run_id"])] = row
+        by_id.setdefault((row["instance_id"], row["run_id"]), []).append(row)
+
+    def pick(packet_id: str, key: dict, side: str) -> dict:
+        candidates = by_id.get((key["instance_id"], key[f"{side}_run_id"]), [])
+        if not candidates:
+            raise KeyError(f"packet {packet_id} names runs not in {OPENHANDS_DATASET}")
+        if len(candidates) == 1:
+            return candidates[0]
+        resolved = side == "good"
+        exact = [
+            row for row in candidates
+            if bool(row["resolved"]) is resolved
+            and len(strip_terminal(to_steps(row["messages"], shell_verbs=True))) == key[f"{side}_steps"]
+        ]
+        if len(exact) != 1:
+            raise KeyError(
+                f"packet {packet_id} {side} side matches {len(exact)} of "
+                f"{len(candidates)} rollouts under one configuration"
+            )
+        return exact[0]
+
     out = []
     for packet_id in sorted(wanted):
         key = wanted[packet_id]
-        win = by_id.get((key["instance_id"], key["good_run_id"]))
-        loss = by_id.get((key["instance_id"], key["bad_run_id"]))
-        if win is None or loss is None:
-            raise KeyError(f"packet {packet_id} names runs not in {OPENHANDS_DATASET}")
+        win = pick(packet_id, key, "good")
+        loss = pick(packet_id, key, "bad")
         out.append(
             (
                 key,
