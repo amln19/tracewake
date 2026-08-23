@@ -105,7 +105,7 @@ class AlignmentColumn(ContractModel):
 class DiffResult(ContractModel):
     kind: Literal["diff"] = "diff"
     schema_version: Literal[CONTRACT_SCHEMA_VERSION]
-    profile: Literal["align-v1"]
+    profile: Literal["align-v2"]
     score: float
     divergence: int | None = Field(default=None, ge=1)
     good_step_count: int = Field(ge=0)
@@ -153,8 +153,17 @@ class ResultEnvelope(ContractModel):
 
 
 class AnalysisProfile(ContractModel):
-    name: Literal["align-v1"]
-    version: Literal[1]
+    """`align-v2`: the frozen alignment parameters, with the current readout.
+
+    The alignment itself is unchanged from `align-v1`, which was never released.
+    What changed is `divergence_rule`: the reported step now comes from the
+    single-trace rule in `tracewake.diverge` rather than from reading the last
+    aligned column that agreed. Those are different answers, so the profile
+    carries a different name.
+    """
+
+    name: Literal["align-v2"]
+    version: Literal[2]
     token_pattern: Literal[r"[A-Za-z0-9_./-]+"]
     case: Literal["lower"]
     blank_token: Literal["."]
@@ -164,7 +173,7 @@ class AnalysisProfile(ContractModel):
     gap_open: Literal[-1.0]
     gap_extend: Literal[-0.2]
     score_transform: Literal["2*s-1"]
-    divergence_rule: Literal["last-target-agreement"]
+    divergence_rule: Literal["first-nonscratch-write"]
 
 
 class JobNotification(ContractModel):
@@ -191,7 +200,7 @@ class Claim(ContractModel):
     lease_expires_at: AwareDatetime
     input_artifacts: list[ArtifactRef] = Field(min_length=1, max_length=2)
     operation: Literal["validate", "diff", "otlp", "pprof"]
-    profile: Literal["align-v1"] | None = None
+    profile: Literal["align-v2"] | None = None
 
 
 class Heartbeat(ContractModel):
@@ -225,7 +234,7 @@ class ArtifactCommit(ContractModel):
 class PublicJobRequest(ContractModel):
     operation: Literal["diff", "otlp", "pprof"]
     run_ids: list[UUID] = Field(min_length=1, max_length=2)
-    profile: Literal["align-v1"] | None = None
+    profile: Literal["align-v2"] | None = None
 
     @model_validator(mode="after")
     def _operation_shape(self) -> PublicJobRequest:
@@ -234,8 +243,8 @@ class PublicJobRequest(ContractModel):
             raise ValueError(f"{self.operation} requires {expected} run id(s)")
         if len(set(self.run_ids)) != len(self.run_ids):
             raise ValueError("run ids must be distinct")
-        if self.operation == "diff" and self.profile != "align-v1":
-            raise ValueError("diff requires profile align-v1")
+        if self.operation == "diff" and self.profile != "align-v2":
+            raise ValueError("diff requires profile align-v2")
         if self.operation != "diff" and self.profile is not None:
             raise ValueError("only diff accepts a profile")
         return self
@@ -328,7 +337,7 @@ class JobView(ContractModel):
     job_id: UUID
     operation: Literal["diff", "otlp", "pprof"]
     run_ids: list[UUID] = Field(min_length=1, max_length=2)
-    profile: Literal["align-v1"] | None = None
+    profile: Literal["align-v2"] | None = None
     state: Literal["queued", "running", "retry_wait", "succeeded", "failed", "cancelled"]
     current_attempt_number: int | None = Field(default=None, ge=1, le=3)
     attempts: list[AttemptView] = Field(max_length=3)

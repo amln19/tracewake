@@ -104,17 +104,20 @@ which is the gap this fills.
 
 ### Why not read it off the alignment
 
-`align-v1` answers a different question — where two runs stopped agreeing — and
-`tracewake diff` reports both. Reading localization off the alignment instead
-scores far worse: 26% within two steps against 54% for a commitment rule on the
-same pairs. That is why a separate rule exists rather than reusing the
-alignment the tool already computes.
+The alignment answers a different question — where two runs stopped agreeing —
+and `tracewake diff` reports both. Reading localization off the alignment
+instead scores far worse: 26% within two steps against 54% for a commitment
+rule on the same pairs. That is why a separate rule exists rather than reusing
+the alignment the tool already computes, and why the hosted `align-v2` profile
+reports this rule in its `divergence` field rather than its own readout. The
+superseded readout is retained as the `last-target-agreement` baseline in
+`bench/`.
 
 ## Reliability
 
 Two label-free facts — whether the run committed at all, and whether the trace
-exceeds 18 steps (`align-v1`'s existing long/short split, reused rather than
-refitted) — sort runs into five classes whose accuracy ranges widely. Measured
+exceeds 18 steps (the alignment profile's existing long/short split, reused
+rather than refitted) — sort runs into five classes whose accuracy ranges widely. Measured
 within ±2 on the 262:
 
 | Class | ±2 | n | Band |

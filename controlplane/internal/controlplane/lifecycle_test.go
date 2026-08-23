@@ -6,7 +6,7 @@ import (
 )
 
 func TestNormalizedDigestRejectsInvalidInputShapes(t *testing.T) {
-	profile := "align-v1"
+	profile := "align-v2"
 	valid := JobRequest{Operation: "diff", RunIDs: []string{"00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002"}, Profile: &profile}
 	if _, err := normalizedDigest(valid); err != nil {
 		t.Fatalf("valid diff rejected: %v", err)
@@ -24,7 +24,7 @@ func TestNormalizedDigestRejectsInvalidInputShapes(t *testing.T) {
 }
 
 func TestNormalizedDigestDistinguishesOrderedInputs(t *testing.T) {
-	profile := "align-v1"
+	profile := "align-v2"
 	first := "00000000-0000-4000-8000-000000000001"
 	second := "00000000-0000-4000-8000-000000000002"
 	left, err := normalizedDigest(JobRequest{Operation: "diff", RunIDs: []string{first, second}, Profile: &profile})
@@ -42,7 +42,7 @@ func TestNormalizedDigestDistinguishesOrderedInputs(t *testing.T) {
 
 func TestCreateJobRejectsInvalidTransportBeforeDatabaseAccess(t *testing.T) {
 	service := Service{}
-	profile := "align-v1"
+	profile := "align-v2"
 	validRequest := JobRequest{
 		Operation: "diff",
 		RunIDs: []string{

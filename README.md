@@ -155,7 +155,7 @@ The hosted workflow is:
 
 1. Upload a deterministic bundle directly to artifact storage using a short-lived grant.
 2. A mandatory Python validation job checks it before the run becomes usable.
-3. Submit `diff`, `otlp`, or `pprof` work for a ready run. `diff` uses the dependency-free, versioned `align-v1` profile.
+3. Submit `diff`, `otlp`, or `pprof` work for a ready run. `diff` uses the dependency-free, versioned `align-v2` profile.
 4. A worker produces immutable, attempt-scoped artifacts. The control plane registers exactly one result only if the current lease remains valid.
 
 PostgreSQL is authoritative for hosted lifecycle state; object storage holds immutable bundles and artifacts; queue delivery is at-least-once notification, not authority. Jobs use workspace-scoped idempotency, database leases, retries, cancellation, transactional outbox publication, reconciliation, and stale-attempt fencing. The complete contract set is in [`contracts/`](contracts/README.md).
@@ -278,7 +278,7 @@ The local evidence run exercises this complete lifecycle; the named observations
 | --- | --- |
 | Upload a deterministic bundle | `ingestion` |
 | Observe mandatory validation before it is usable | `ingestion` |
-| Submit an idempotent `align-v1` diff | `analysis_load` |
+| Submit an idempotent `align-v2` diff | `analysis_load` |
 | Observe a claimed attempt reporting progress | `worker_recovery.progress_while_running` |
 | Kill the active worker and wait for fencing | `worker_recovery.kill_to_fence_seconds` |
 | Observe retry and the replacement result | `worker_recovery.succeeded_attempts` |
@@ -293,7 +293,7 @@ The local evidence run exercises this complete lifecycle; the named observations
 Event schema 3, SQLite store schema 3, cassette directory format 1, bundle format 1, result schemas, and hosted APIs are separate versioned contracts. Unsupported versions are rejected rather than silently reinterpreted. Start with:
 
 * [`contracts/README.md`](contracts/README.md) — bundle, public API, worker, lifecycle, persistence, and threat-model contracts.
-* [`contracts/align-v1.md`](contracts/align-v1.md) — exact hosted alignment profile.
+* [`contracts/align-v2.md`](contracts/align-v2.md) — exact hosted alignment profile.
 * [`evidence/README.md`](evidence/README.md) — reproducible operational harness and what it does not measure.
 * [`deploy/aws/README.md`](deploy/aws/README.md) — operator requirements, deployment, retention, deletion, and recovery.
 * [`examples/openai_agent.py`](examples/openai_agent.py) and [`examples/demo.py`](examples/demo.py) — runnable integration and end-to-end demo.
@@ -320,7 +320,7 @@ The control plane's lifecycle, fencing and end-to-end tests need PostgreSQL and 
 
 ## Limits
 
-Tracewake is intentionally not a universal recorder or a security sandbox. It does not claim complete syscall, native-code, subprocess, or arbitrary filesystem interception. It cannot prove redaction removed every sensitive value. A divergence report is a debugging lead, not a causal diagnosis: `localize` lands within two steps of a human label about half the time, and reports which cases it cannot localise at all. Hosted analysis currently accepts recorded bundles only, and the hosted profile is `align-v1`; it does not remotely execute untrusted agent code.
+Tracewake is intentionally not a universal recorder or a security sandbox. It does not claim complete syscall, native-code, subprocess, or arbitrary filesystem interception. It cannot prove redaction removed every sensitive value. A divergence report is a debugging lead, not a causal diagnosis: `localize` lands within two steps of a human label about half the time, and reports which cases it cannot localise at all. Hosted analysis currently accepts recorded bundles only, and the hosted profile is `align-v2`; it does not remotely execute untrusted agent code.
 
 ## License
 

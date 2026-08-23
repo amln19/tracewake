@@ -10,8 +10,8 @@ The value and the risks both need stating plainly.
 
 Value: the labels are free and were made by annotators who never saw Tracewake;
 the failing traces are long (median 51 steps against 18 in the OpenHands set),
-which is exactly where `align-v1` collapses; and four different agent
-scaffolds are represented, so it tests whether a profile travels.
+which is exactly where the last-target-agreement readout collapses; and four
+different agent scaffolds are represented, so it tests whether a profile travels.
 
 Risks: the passing reference for an instance generally comes from a *different
 backbone model* than the failure, so more of the difference between the two
@@ -311,7 +311,11 @@ def load_pairs(root: Path = ROOTSE_ROOT) -> list[RootSEPair]:
 
 # Fitted on the OpenHands development half, not RootSE: refitting on RootSE
 # would convert an externally labelled transfer set into development data.
-# Unused by the shipped rule; this scores align-v1's own readout only.
+# Unused by the shipped rule; this scores the last-target-agreement readout
+# only. That readout is kept here as a baseline and no longer names a hosted
+# profile: the hosted alignment is `align-v2`, whose divergence comes from the
+# single-trace rule. The `align-v1` key below is the name the retained
+# prediction sheets were written under and is left alone for that reason.
 DEV_CONSTANT_K = 10
 DEV_PROPORTIONAL_C = 0.66
 

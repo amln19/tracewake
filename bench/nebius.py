@@ -384,6 +384,9 @@ def score_packets(root: Path = LABEL_ROOT, *, tolerance: int = 2) -> dict:
         lexical = divergence_step(alignment, good, bad)
         predictions = {
             "divergence-rule": first_nonscratch_write(bad),
+            # The last-target-agreement readout, kept as a baseline. The key is
+            # the name the retained prediction sheets carry; no hosted profile
+            # answers to it any more.
             "align-v1": lexical if lexical is not None else len(bad),
             # Fitted on OpenHands development data; carried over unchanged.
             "dev-constant-10": min(10, len(bad)),

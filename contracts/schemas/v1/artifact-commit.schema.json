@@ -165,7 +165,7 @@
           "type": "string"
         },
         "profile": {
-          "const": "align-v1",
+          "const": "align-v2",
           "title": "Profile",
           "type": "string"
         },

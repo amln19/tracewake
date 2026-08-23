@@ -1,0 +1,2 @@
+-- Rolling back re-admits `align-v2` diffs under the previous profile name,
+-- which no worker produces. Rollback requires an operator-approved restore.

@@ -13,7 +13,7 @@
     "profile": {
       "anyOf": [
         {
-          "const": "align-v1",
+          "const": "align-v2",
           "type": "string"
         },
         {

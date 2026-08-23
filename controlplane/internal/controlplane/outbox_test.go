@@ -53,7 +53,7 @@ func TestOutboxPublishesToQueueAndSurvivesFailure(t *testing.T) {
 	drainOutbox(ctx, t, service)
 	runA, runB := readyRun(t, pool, workspace), readyRun(t, pool, workspace)
 	principal := controlplane.Principal{WorkspaceID: workspace, Scopes: map[string]bool{"jobs:write": true}}
-	profile := "align-v1"
+	profile := "align-v2"
 	job, _, err := service.CreateJob(ctx, principal, "outbox-"+runA, controlplane.JobRequest{Operation: "diff", RunIDs: []string{runA, runB}, Profile: &profile})
 	if err != nil {
 		t.Fatal(err)
@@ -135,7 +135,7 @@ func TestDuplicateDeliveryCreatesOneAttempt(t *testing.T) {
 	drainOutbox(ctx, t, service)
 	runA, runB := readyRun(t, pool, workspace), readyRun(t, pool, workspace)
 	principal := controlplane.Principal{WorkspaceID: workspace, Scopes: map[string]bool{"jobs:write": true}}
-	profile := "align-v1"
+	profile := "align-v2"
 	job, _, err := service.CreateJob(ctx, principal, "duplicate-"+runA, controlplane.JobRequest{Operation: "diff", RunIDs: []string{runA, runB}, Profile: &profile})
 	if err != nil {
 		t.Fatal(err)
@@ -182,7 +182,7 @@ func TestRetriedAttemptReportsProgressFromItsOwnSequence(t *testing.T) {
 	ctx := context.Background()
 	runA, runB := readyRun(t, pool, workspace), readyRun(t, pool, workspace)
 	principal := controlplane.Principal{WorkspaceID: workspace, Scopes: map[string]bool{"jobs:write": true}}
-	profile := "align-v1"
+	profile := "align-v2"
 	job, _, err := service.CreateJob(ctx, principal, "progress-"+runA, controlplane.JobRequest{Operation: "diff", RunIDs: []string{runA, runB}, Profile: &profile})
 	if err != nil {
 		t.Fatal(err)
@@ -236,7 +236,7 @@ func TestOutboxPayloadsCarryNoSensitiveContent(t *testing.T) {
 	ctx := context.Background()
 	runA, runB := readyRun(t, pool, workspace), readyRun(t, pool, workspace)
 	principal := controlplane.Principal{WorkspaceID: workspace, Scopes: map[string]bool{"jobs:write": true}}
-	profile := "align-v1"
+	profile := "align-v2"
 	job, _, err := service.CreateJob(ctx, principal, "payload-"+runA, controlplane.JobRequest{Operation: "diff", RunIDs: []string{runA, runB}, Profile: &profile})
 	if err != nil {
 		t.Fatal(err)

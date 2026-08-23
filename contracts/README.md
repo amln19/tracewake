@@ -8,7 +8,7 @@ authorization and lifecycle transitions.
 Version 1 contains:
 
 * `bundle-v1.md`: deterministic transport bytes and validation limits;
-* `align-v1.md`: the dependency-free hosted alignment profile;
+* `align-v2.md`: the dependency-free hosted alignment profile;
 * `public-api-v1.md`: tenant-facing HTTP resources and errors;
 * `worker-protocol-v1.md`: attempt-scoped worker messages and authentication;
 * `lifecycle-v1.json` and `lifecycle-v1.md`: executable state-machine rules;
@@ -18,10 +18,11 @@ Version 1 contains:
 * `schemas/v1`: canonical Pydantic-generated JSON Schemas.
 
 `divergence.md` sits alongside these but is not one of them. It documents the
-local rule that locates where a failing run went irrecoverably wrong, which no
-external party depends on and which is expected to change as evidence changes.
-It carries no version and promises no compatibility. The hosted plane accepts
-`align-v1` only.
+local rule that locates where a failing run went irrecoverably wrong, which is
+expected to change as evidence changes. It carries no version and promises no
+compatibility. Where the hosted plane exposes that rule it does so under a
+version that does: the `divergence` field of `align-v2`, which is the only
+analysis profile it accepts.
 
 Regenerate or check schemas without an additional dependency:
 

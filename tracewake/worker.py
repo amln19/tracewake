@@ -24,6 +24,7 @@ from typing import Any
 from .align import LexicalEmbedder, diff_runs
 from .bundle import ValidatedBundle, bundle_header, validate_bundle
 from .contracts import AlignmentColumn, ArtifactRef, DiffResult as ContractDiffResult, OtlpResult, PprofResult, ResultEnvelope, ResultProvenance, RunProvenance, ValidationResult
+from .diverge import localize
 from .otel import encode_spans
 from .pprof import attribute_tokens, build_token_profile, gzip_profile
 from .report import write_report
@@ -36,7 +37,7 @@ CANCELLATION_SECONDS = 1
 # One attempt output. Analyses summarise a bundle instead of copying it, so a
 # larger output means a defect rather than a large run.
 MAX_ARTIFACT_BYTES = 64 * 1024 * 1024
-HOSTED_PROFILE = "align-v1"
+HOSTED_PROFILE = "align-v2"
 
 log = logging.getLogger("tracewake.worker")
 
@@ -388,8 +389,13 @@ def _diff(client: WorkerClient,claim: dict[str,Any],root: Path) -> dict[str,Any]
     html_path=root/"report.html";write_report(html_path,bundle_header(bundles[0]),list(bundles[0].events),bundle_header(bundles[1]),list(bundles[1].events),result,blobs=_BundleBlobs(bundles[0].blobs),blobs_b=_BundleBlobs(bundles[1].blobs))
     companion=_upload(client,claim,"diff_html",html_path.read_bytes(),"text/html; charset=utf-8")
     columns=[AlignmentColumn(good_index=i,bad_index=j,similarity=result.column_similarity(i,j)) for i,j in result.alignment]
-    semantic=ContractDiffResult(schema_version=1,profile=HOSTED_PROFILE,score=result.score,divergence=result.divergence,good_step_count=len(result.good_steps),bad_step_count=len(result.bad_steps),alignment=columns,provenance=_result_provenance(claim,bundles,HOSTED_PROFILE),html=_reference(companion))
+    # align-v2's divergence is the single-trace rule, not the alignment readout.
+    # The alignment still answers where the runs stopped agreeing; it is just no
+    # longer asked where the failing run went wrong.
+    divergence=localize(result.bad_steps)[0] if result.bad_steps else None
+    semantic=ContractDiffResult(schema_version=1,profile=HOSTED_PROFILE,score=result.score,divergence=divergence,good_step_count=len(result.good_steps),bad_step_count=len(result.bad_steps),alignment=columns,provenance=_result_provenance(claim,bundles,HOSTED_PROFILE),html=_reference(companion))
     return _analysis(ResultEnvelope(protocol_version=1,status="succeeded",result=semantic),"diff_json",companion)
+
 
 
 def _otlp(client: WorkerClient,claim: dict[str,Any],root: Path) -> dict[str,Any]:

@@ -1,5 +1,6 @@
 {
   "additionalProperties": false,
+  "description": "`align-v2`: the frozen alignment parameters, with the current readout.\n\nThe alignment itself is unchanged from `align-v1`, which was never released.\nWhat changed is `divergence_rule`: the reported step now comes from the\nsingle-trace rule in `tracewake.diverge` rather than from reading the last\naligned column that agreed. Those are different answers, so the profile\ncarries a different name.",
   "properties": {
     "argument_weights": {
       "additionalProperties": {
@@ -25,7 +26,7 @@
       "type": "string"
     },
     "divergence_rule": {
-      "const": "last-target-agreement",
+      "const": "first-nonscratch-write",
       "title": "Divergence Rule",
       "type": "string"
     },
@@ -45,7 +46,7 @@
       "type": "number"
     },
     "name": {
-      "const": "align-v1",
+      "const": "align-v2",
       "title": "Name",
       "type": "string"
     },
@@ -60,7 +61,7 @@
       "type": "string"
     },
     "version": {
-      "const": 1,
+      "const": 2,
       "title": "Version",
       "type": "integer"
     },

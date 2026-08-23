@@ -28,6 +28,7 @@ from tracewake import (
 )
 from tracewake.align import LexicalEmbedder, diff_runs
 from tracewake.bundle import build_bundle, bundle_header, validate_bundle
+from tracewake.diverge import localize
 from tracewake.cassette import export_cassette
 from tracewake.otel import build_spans, encode_spans
 from tracewake.pprof import (
@@ -192,7 +193,7 @@ def claim_for(operation: str, runs: list[Recorded], *, profile: str | None = Non
         "attempt_number": 1,
         "attempt_token": "attempt",
         "operation": operation,
-        "profile": profile if profile is not None else ("align-v1" if operation == "diff" else None),
+        "profile": profile if profile is not None else ("align-v2" if operation == "diff" else None),
         "input_artifacts": [
             {
                 "artifact_id": RUN_IDS[index],
@@ -267,16 +268,19 @@ def test_hosted_diff_matches_a_local_comparison(tmp_path: Path, objects, good: R
     client = deploy(objects, [good, bad])
     output = worker._diff(client, claim_for("diff", [good, bad]), tmp_path)
 
-    local = diff_runs(good.events, bad.events, embed=LexicalEmbedder(), embedding_model="align-v1")
+    local = diff_runs(good.events, bad.events, embed=LexicalEmbedder(), embedding_model="align-v2")
     result = result_of(output)
     assert result["score"] == local.score
-    assert result["divergence"] == local.divergence
     assert result["good_step_count"] == len(local.good_steps)
     assert result["bad_step_count"] == len(local.bad_steps)
+    # align-v2 reports the single-trace rule here, not the alignment's own
+    # readout. The two answer different questions and generally disagree.
+    assert result["divergence"] == localize(local.bad_steps)[0]
 
     html = companion(client, objects, output).decode("utf-8")
     assert html.startswith("<!DOCTYPE html>")
     assert "http://" not in html and "https://" not in html
+
 
 
 @pytest.mark.parametrize("operation", ["otlp", "pprof", "diff"])
@@ -309,7 +313,7 @@ def test_analyses_are_deterministic_from_normalized_inputs(
         ("diff", "mlx-community/bge-small-en-v1.5-bf16"),
         ("diff", None),
         ("otlp", "mlx-community/bge-small-en-v1.5-bf16"),
-        ("pprof", "align-v1"),
+        ("pprof", "align-v2"),
         ("verify", None),
     ],
 )

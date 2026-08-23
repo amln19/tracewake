@@ -1,12 +1,12 @@
 """Locate where a failing run went irrecoverably wrong, from that run alone.
 
-`align-v1` reads the divergence off the *last* aligned column that agreed, so
-one coincidental late agreement -- two long runs that both view the same file
-again at step 44 -- drags the answer to the end of the trace. On externally
-labelled RootSE failures that readout lands within two steps of the label on 5
-of 58 pairs.
+The readout this replaced took the divergence off the *last* aligned column
+that agreed, so one coincidental late agreement -- two long runs that both view
+the same file again at step 44 -- dragged the answer to the end of the trace. On
+externally labelled RootSE failures it landed within two steps of the label on 5
+of 58 pairs. It is retained as the `last-target-agreement` baseline in `bench/`.
 
-The rule here replaces that readout and drops the successful run entirely.
+The rule here replaced that readout and drops the successful run entirely.
 Reading a file is recoverable; writing one is not, in practice, because these
 agents rarely undo. So the run commits at the first step that writes a file it
 did not create for itself, and everything before that is finding out.
@@ -181,7 +181,7 @@ def reliability(bad: Sequence[Step]) -> Reliability:
     changed anything pre-existing — is right about a fifth of the time and
     should be treated as "cannot localise" rather than as an answer.
 
-    The 18-step boundary is `align-v1`'s existing long/short split, reused
+    The 18-step boundary is the alignment profile's existing long/short split, reused
     rather than refitted.
     """
     # Uses the inferred writes, not just the derived ones, so the class agrees
