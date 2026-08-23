@@ -22,6 +22,7 @@ from tracewake import (
     Usage,
 )
 from tracewake.align import LexicalEmbedder, Step, diff_runs
+from tracewake.diverge import RELIABILITY_BAND, reliability
 from tracewake.report import build_payload, render, write_report
 
 SYSTEM = "You are a coding agent. Read before you edit." * 12
@@ -181,6 +182,20 @@ def test_the_report_and_the_diff_name_the_same_divergence(
     assert len(payload["columns"]) == len(result.alignment)
     assert [c["g"] for c in payload["columns"]] == [i for i, _ in result.alignment]
     assert [c["b"] for c in payload["columns"]] == [j for _, j in result.alignment]
+
+
+def test_the_report_carries_the_class_with_the_step(pair: tuple[Store, str, str]) -> None:
+    """A step shown without its class invites more trust than the rule earns."""
+    db, good, bad = pair
+    result = diff_runs(db.events(good), db.events(bad), embed=LexicalEmbedder())
+    payload = _built(db, good, bad)
+
+    klass = reliability(result.bad_steps)
+    assert payload["reliability"] == klass
+    assert payload["confidence"] == RELIABILITY_BAND[klass]
+
+    html = render(payload, title="t")
+    assert klass in html and RELIABILITY_BAND[klass] in html
 
 
 def test_the_spend_panel_adds_up_to_the_recorded_usage(pair: tuple[Store, str, str]) -> None:

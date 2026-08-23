@@ -89,6 +89,14 @@ reports for the failing run alone. It does not read the alignment. An empty
 failing run has no step to report and the field is absent; the alignment is
 still meaningful without one.
 
+`reliability` and `confidence` carry that step's class and band, with the same
+values and meaning as [`localize-v1.md`](localize-v1.md) gives them. All three
+fields are present together or absent together: a step is not reportable
+without the class that says how far to trust it, since the same rule lands
+within two steps about nine times in ten on `commit-short` and one in ten on
+`silent-long`. The HTML companion shows the class beside the step and warns
+explicitly on `silent-long`.
+
 Column agreement remains defined — aligned columns agree only when tool-name
 sets and target sets are both equal — because it is what the alignment display
 uses to mark where the runs parted. It no longer selects the reported step.

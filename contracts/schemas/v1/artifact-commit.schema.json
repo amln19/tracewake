@@ -137,6 +137,24 @@
           "title": "Bad Step Count",
           "type": "integer"
         },
+        "confidence": {
+          "anyOf": [
+            {
+              "enum": [
+                "high",
+                "moderate",
+                "low",
+                "very low"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
         "divergence": {
           "anyOf": [
             {
@@ -171,6 +189,25 @@
         },
         "provenance": {
           "$ref": "#/$defs/ResultProvenance"
+        },
+        "reliability": {
+          "anyOf": [
+            {
+              "enum": [
+                "commit-short",
+                "silent-short",
+                "commit-long-single",
+                "commit-long-many",
+                "silent-long"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reliability"
         },
         "schema_version": {
           "const": 1,

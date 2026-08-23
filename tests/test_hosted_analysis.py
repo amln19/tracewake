@@ -275,8 +275,13 @@ def test_hosted_diff_matches_a_local_comparison(tmp_path: Path, objects, good: R
     assert result["good_step_count"] == len(local.good_steps)
     assert result["bad_step_count"] == len(local.bad_steps)
     # align-v2 reports the single-trace rule here, not the alignment's own
-    # readout. The two answer different questions and generally disagree.
-    assert result["divergence"] == localize(local.bad_steps)[0]
+    # readout. The two answer different questions and generally disagree. The
+    # class travels with it, because a hosted caller cannot see the warning the
+    # CLI prints and would otherwise get a bare step to trust.
+    step, klass = localize(local.bad_steps)
+    assert result["divergence"] == step
+    assert result["reliability"] == klass
+    assert result["confidence"] == RELIABILITY_BAND[klass]
 
     html = companion(client, objects, output).decode("utf-8")
     assert html.startswith("<!DOCTYPE html>")

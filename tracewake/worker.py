@@ -393,8 +393,8 @@ def _diff(client: WorkerClient,claim: dict[str,Any],root: Path) -> dict[str,Any]
     # align-v2's divergence is the single-trace rule, not the alignment readout.
     # The alignment still answers where the runs stopped agreeing; it is just no
     # longer asked where the failing run went wrong.
-    divergence=localize(result.bad_steps)[0] if result.bad_steps else None
-    semantic=ContractDiffResult(schema_version=1,profile=HOSTED_PROFILE,score=result.score,divergence=divergence,good_step_count=len(result.good_steps),bad_step_count=len(result.bad_steps),alignment=columns,provenance=_result_provenance(claim,bundles,HOSTED_PROFILE),html=_reference(companion))
+    divergence,klass=localize(result.bad_steps) if result.bad_steps else (None,None)
+    semantic=ContractDiffResult(schema_version=1,profile=HOSTED_PROFILE,score=result.score,divergence=divergence,reliability=klass,confidence=None if klass is None else RELIABILITY_BAND[klass],good_step_count=len(result.good_steps),bad_step_count=len(result.bad_steps),alignment=columns,provenance=_result_provenance(claim,bundles,HOSTED_PROFILE),html=_reference(companion))
     return _analysis(ResultEnvelope(protocol_version=1,status="succeeded",result=semantic),"diff_json",companion)
 
 

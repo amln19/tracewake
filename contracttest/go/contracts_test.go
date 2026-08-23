@@ -170,6 +170,8 @@ type diffResult struct {
 	Profile       string            `json:"profile"`
 	Score         float64           `json:"score"`
 	Divergence    *int              `json:"divergence"`
+	Reliability   *string           `json:"reliability"`
+	Confidence    *string           `json:"confidence"`
 	GoodStepCount int               `json:"good_step_count"`
 	BadStepCount  int               `json:"bad_step_count"`
 	Alignment     []alignmentColumn `json:"alignment"`
@@ -433,6 +435,17 @@ func validateDiffResult(data []byte) string {
 		return "invalid_message"
 	}
 	if result.Divergence != nil && *result.Divergence < 1 {
+		return "invalid_message"
+	}
+	// A reported step without its class invites more trust than the rule earns,
+	// so the three travel together or not at all.
+	if (result.Divergence == nil) != (result.Reliability == nil) || (result.Divergence == nil) != (result.Confidence == nil) {
+		return "invalid_message"
+	}
+	if result.Reliability != nil && !oneOf(*result.Reliability, "commit-short", "silent-short", "commit-long-single", "commit-long-many", "silent-long") {
+		return "invalid_message"
+	}
+	if result.Confidence != nil && !oneOf(*result.Confidence, "high", "moderate", "low", "very low") {
 		return "invalid_message"
 	}
 	for _, column := range result.Alignment {

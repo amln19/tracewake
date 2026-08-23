@@ -102,19 +102,6 @@ class AlignmentColumn(ContractModel):
         return self
 
 
-class DiffResult(ContractModel):
-    kind: Literal["diff"] = "diff"
-    schema_version: Literal[CONTRACT_SCHEMA_VERSION]
-    profile: Literal["align-v2"]
-    score: float
-    divergence: int | None = Field(default=None, ge=1)
-    good_step_count: int = Field(ge=0)
-    bad_step_count: int = Field(ge=1)
-    alignment: list[AlignmentColumn]
-    provenance: ResultProvenance
-    html: ArtifactRef
-
-
 # The five classes `tracewake.diverge.reliability` sorts a run into, and the
 # band each maps to. Carried on the wire because the step alone does not say
 # whether to act on it: `silent-long` is right about a tenth of the time.
@@ -125,6 +112,31 @@ Reliability = Literal[
     "commit-long-many",
     "silent-long",
 ]
+Confidence = Literal["high", "moderate", "low", "very low"]
+
+
+class DiffResult(ContractModel):
+    kind: Literal["diff"] = "diff"
+    schema_version: Literal[CONTRACT_SCHEMA_VERSION]
+    profile: Literal["align-v2"]
+    score: float
+    divergence: int | None = Field(default=None, ge=1)
+    # Travels with the divergence because the step alone does not say whether
+    # to act on it. Both are absent exactly when divergence is.
+    reliability: Reliability | None = None
+    confidence: Confidence | None = None
+    good_step_count: int = Field(ge=0)
+    bad_step_count: int = Field(ge=1)
+    alignment: list[AlignmentColumn]
+    provenance: ResultProvenance
+    html: ArtifactRef
+
+    @model_validator(mode="after")
+    def _divergence_carries_its_class(self) -> DiffResult:
+        present = (self.divergence is None, self.reliability is None, self.confidence is None)
+        if len(set(present)) != 1:
+            raise ValueError("a reported divergence must carry its reliability class and band")
+        return self
 
 
 class LocalizeResult(ContractModel):
@@ -134,7 +146,7 @@ class LocalizeResult(ContractModel):
     step: int = Field(ge=1)
     step_count: int = Field(ge=1)
     reliability: Reliability
-    confidence: Literal["high", "moderate", "low", "very low"]
+    confidence: Confidence
     provenance: ResultProvenance
     artifact: ArtifactRef
 

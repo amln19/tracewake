@@ -47,6 +47,11 @@ h1 .sub { color: var(--dim); font-weight: 400; }
 }
 .banner b { color: var(--diverge); }
 .banner.none b { color: var(--agree); }
+.banner .band {
+  font-size: 13px;
+  opacity: 0.75;
+  white-space: nowrap;
+}
 .warn {
   margin-top: 10px;
   padding: 8px 12px;
@@ -279,10 +284,23 @@ function renderHead() {
       banner.appendChild(document.createTextNode(" — "));
       banner.appendChild(el("span", "mono", b.name + (b.target ? " → " + b.target : "")));
     }
+    // The step without its class invites more trust than the rule earns: the
+    // same rule lands within two steps about nine times in ten on one class and
+    // one in ten on another. Both values are closed sets from the Python side.
+    if (D.reliability) {
+      banner.appendChild(document.createTextNode(" · "));
+      banner.appendChild(el("span", "band", D.reliability + ", " + D.confidence + " confidence"));
+    }
   }
   document.getElementById("banner").appendChild(banner);
 
   const warn = document.getElementById("warnings");
+  if (D.reliability === "silent-long") {
+    warn.appendChild(el("div", "warn",
+      "This run changed nothing it had not created, over a long trace. That is the " +
+      "class the rule is least often right about — treat the step above as unreliable " +
+      "rather than as an answer."));
+  }
   if (D.excluded_by_length) {
     warn.appendChild(el("div", "warn",
       "Length ratio " + D.length_ratio.toFixed(2) + ":1 exceeds 4:1. Gap cost dominates the " +

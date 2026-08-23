@@ -247,6 +247,8 @@ def fixture_bytes() -> tuple[dict[str, bytes], list[dict[str, object]]]:
                         profile="align-v2",
                         score=0.75,
                         divergence=2,
+                        reliability="commit-short",
+                        confidence="high",
                         good_step_count=3,
                         bad_step_count=3,
                         alignment=[
@@ -390,6 +392,34 @@ def fixture_bytes() -> tuple[dict[str, bytes], list[dict[str, object]]]:
                     "operation": "diff",
                     "run_ids": [RUN_ID, RUN_ID],
                     "profile": "align-v2",
+                }
+            ),
+        ),
+        "rejected/result-diff-divergence-without-class.json": (
+            "result-envelope",
+            "invalid_message",
+            _json(
+                {
+                    "protocol_version": 1,
+                    "status": "succeeded",
+                    "result": {
+                        "kind": "diff",
+                        "schema_version": 1,
+                        "profile": "align-v2",
+                        "score": 0.75,
+                        "divergence": 2,
+                        "reliability": None,
+                        "confidence": None,
+                        "good_step_count": 3,
+                        "bad_step_count": 3,
+                        "alignment": [{"good_index": 0, "bad_index": 0, "similarity": 1.0}],
+                        "provenance": _provenance(
+                            bundle_digest, logical_digest, profile="align-v2", inputs=2
+                        ).model_dump(mode="json"),
+                        "html": companion("diff_html", "text/html; charset=utf-8").model_dump(
+                            mode="json"
+                        ),
+                    },
                 }
             ),
         ),
