@@ -158,7 +158,23 @@ jobs:
         with:
           go-version-file: controlplane/go.mod
           cache-dependency-path: controlplane/go.sum
-      - run: go test ./...
+      # Every lifecycle, fencing, and end-to-end test here skips when
+      # TRACEWAKE_TEST_DATABASE_URL is unset, and `go test` still exits 0. A
+      # dropped env var or a renamed service would therefore report green
+      # having tested none of the guarantees this job exists to hold. With a
+      # database reachable nothing skips, so a skip is that failure and not a
+      # test opting out.
+      - name: Test, and fail if the database-backed tests skipped
+        run: |
+          if ! go test -count=1 -v ./... > "$RUNNER_TEMP/control-plane.log" 2>&1; then
+            cat "$RUNNER_TEMP/control-plane.log"
+            exit 1
+          fi
+          if grep -q -e '--- SKIP' "$RUNNER_TEMP/control-plane.log"; then
+            grep -e '--- SKIP' "$RUNNER_TEMP/control-plane.log"
+            echo "::error::control-plane tests skipped, so the database was not reachable"
+            exit 1
+          fi
         working-directory: controlplane
       - run: go test -race ./...
         working-directory: controlplane
