@@ -15,6 +15,7 @@
       "enum": [
         "validate",
         "diff",
+        "localize",
         "otlp",
         "pprof"
       ],

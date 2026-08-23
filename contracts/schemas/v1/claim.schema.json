@@ -113,6 +113,7 @@
       "enum": [
         "validate",
         "diff",
+        "localize",
         "otlp",
         "pprof"
       ],
@@ -122,7 +123,10 @@
     "profile": {
       "anyOf": [
         {
-          "const": "align-v2",
+          "enum": [
+            "align-v2",
+            "localize-v1"
+          ],
           "type": "string"
         },
         {

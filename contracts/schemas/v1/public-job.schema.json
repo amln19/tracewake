@@ -170,6 +170,8 @@
           "enum": [
             "diff_json",
             "diff_html",
+            "localize_result_json",
+            "localize_json",
             "otlp_result_json",
             "otlp_json",
             "pprof_result_json",
@@ -302,6 +304,7 @@
     "operation": {
       "enum": [
         "diff",
+        "localize",
         "otlp",
         "pprof"
       ],
@@ -311,7 +314,10 @@
     "profile": {
       "anyOf": [
         {
-          "const": "align-v2",
+          "enum": [
+            "align-v2",
+            "localize-v1"
+          ],
           "type": "string"
         },
         {

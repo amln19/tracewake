@@ -26,9 +26,10 @@ from tracewake import (
     ToolOutcome,
     Usage,
 )
-from tracewake.align import LexicalEmbedder, diff_runs
+from tracewake.align import LexicalEmbedder, diff_runs, extract_steps
 from tracewake.bundle import build_bundle, bundle_header, validate_bundle
-from tracewake.diverge import localize
+from tracewake.contracts import REQUIRED_PROFILE
+from tracewake.diverge import RELIABILITY_BAND, localize
 from tracewake.cassette import export_cassette
 from tracewake.otel import build_spans, encode_spans
 from tracewake.pprof import (
@@ -193,7 +194,7 @@ def claim_for(operation: str, runs: list[Recorded], *, profile: str | None = Non
         "attempt_number": 1,
         "attempt_token": "attempt",
         "operation": operation,
-        "profile": profile if profile is not None else ("align-v2" if operation == "diff" else None),
+        "profile": profile if profile is not None else REQUIRED_PROFILE.get(operation),
         "input_artifacts": [
             {
                 "artifact_id": RUN_IDS[index],
@@ -282,13 +283,45 @@ def test_hosted_diff_matches_a_local_comparison(tmp_path: Path, objects, good: R
     assert "http://" not in html and "https://" not in html
 
 
+def test_hosted_localize_matches_the_local_rule(tmp_path: Path, objects, bad: Recorded) -> None:
+    client = deploy(objects, [bad])
+    output = worker._localize(client, claim_for("localize", [bad]), tmp_path)
 
-@pytest.mark.parametrize("operation", ["otlp", "pprof", "diff"])
+    steps = extract_steps(bad.events)
+    step, klass = localize(steps)
+    result = result_of(output)
+    assert result["step"] == step
+    assert result["step_count"] == len(steps)
+    assert result["reliability"] == klass
+    assert result["confidence"] == RELIABILITY_BAND[klass]
+
+    # The companion carries the same answer, so a reader that only fetched the
+    # artifact cannot disagree with the envelope.
+    document = json.loads(companion(client, objects, output))
+    assert document["step"] == step and document["reliability"] == klass
+
+
+def test_hosted_localize_needs_only_the_failing_run(tmp_path: Path, objects, bad: Recorded) -> None:
+    """The point of the operation: no passing run is uploaded or referenced."""
+    claim = claim_for("localize", [bad])
+    assert len(claim["input_artifacts"]) == 1
+
+    output = worker._localize(deploy(objects, [bad]), claim, tmp_path)
+
+    assert len(result_of(output)["provenance"]["inputs"]) == 1
+
+
+@pytest.mark.parametrize("operation", ["otlp", "pprof", "diff", "localize"])
 def test_analyses_are_deterministic_from_normalized_inputs(
     tmp_path: Path, objects, good: Recorded, bad: Recorded, operation: str
 ) -> None:
     runs = [good, bad] if operation == "diff" else [good]
-    handler = {"otlp": worker._otlp, "pprof": worker._pprof, "diff": worker._diff}[operation]
+    handler = {
+        "otlp": worker._otlp,
+        "pprof": worker._pprof,
+        "diff": worker._diff,
+        "localize": worker._localize,
+    }[operation]
     client = deploy(objects, runs)
     for name in ("first", "second"):
         (tmp_path / name).mkdir()
@@ -314,6 +347,8 @@ def test_analyses_are_deterministic_from_normalized_inputs(
         ("diff", None),
         ("otlp", "mlx-community/bge-small-en-v1.5-bf16"),
         ("pprof", "align-v2"),
+        ("localize", "align-v2"),
+        ("localize", None),
         ("verify", None),
     ],
 )

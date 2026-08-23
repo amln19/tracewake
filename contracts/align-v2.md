@@ -23,8 +23,9 @@ reinterpret any result committed under it. The superseded readout is retained as
 an evaluation baseline in `bench/`, under the name `last-target-agreement`, and
 `contracts/divergence.md` records the comparison that justifies the swap.
 
-`tests/test_profiles.py` pins these parameters, the golden alignment, and the
-new readout against regression.
+The single-run form of the same rule is a separate operation with its own
+profile: see [`localize-v1.md`](localize-v1.md). `tests/test_profiles.py` pins
+these parameters, the golden alignment, and the new readout against regression.
 
 This profile was called `lexical-v1`, then `align-v1`, before first release.
 Neither name was ever published, so each was corrected rather than aliased.
@@ -83,7 +84,7 @@ remains. Tool batches and input sequences retain their defined order.
 ## Divergence
 
 The `divergence` field is the single-trace rule's answer, defined in
-[`divergence.md`](divergence.md) and identical to what `tracewake localize`
+[`localize-v1.md`](localize-v1.md) and identical to what `tracewake localize`
 reports for the failing run alone. It does not read the alignment. An empty
 failing run has no step to report and the field is absent; the alignment is
 still meaningful without one.

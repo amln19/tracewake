@@ -19,11 +19,11 @@ import (
 // becomes "other" rather than a new time series, which is what keeps a metric
 // bill and an alarm evaluation bounded no matter what a client sends.
 var (
-	Operations       = []string{"validate", "diff", "otlp", "pprof"}
+	Operations       = []string{"validate", "diff", "localize", "otlp", "pprof"}
 	Outcomes         = []string{"succeeded", "failed", "cancelled"}
 	FenceReasons     = []string{"lease_expired", "retryable_failure", "retry_exhausted", "cancelled"}
 	ReconcileActions = []string{"lease_fenced", "retry_scheduled", "retry_exhausted", "republished"}
-	ArtifactKinds    = []string{"validation_json", "diff_json", "diff_html", "otlp_json", "otlp_result_json", "pprof", "pprof_result_json", "worker_diagnostic"}
+	ArtifactKinds    = []string{"validation_json", "diff_json", "diff_html", "localize_json", "localize_result_json", "otlp_json", "otlp_result_json", "pprof", "pprof_result_json", "worker_diagnostic"}
 	Surfaces         = []string{"public", "worker", "object"}
 	StatusClasses    = []string{"2xx", "3xx", "4xx", "5xx"}
 	Attempts         = []string{"1", "2", "3"}

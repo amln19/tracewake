@@ -10,8 +10,8 @@ from .align import (
     Step,
     align,
 )
-from .contracts import AnalysisProfile
-from .diverge import localize
+from .contracts import AnalysisProfile, LocalizeProfile
+from .diverge import CREATE_MARKERS, LONG_TRACE, SCRATCH_FALLBACK, Reliability, localize
 
 ALIGN_V2 = AnalysisProfile(
     name="align-v2",
@@ -26,6 +26,15 @@ ALIGN_V2 = AnalysisProfile(
     gap_extend=-0.2,
     score_transform="2*s-1",
     divergence_rule="first-nonscratch-write",
+)
+
+LOCALIZE_V1 = LocalizeProfile(
+    name="localize-v1",
+    version=1,
+    rule="first-nonscratch-write",
+    create_markers=list(CREATE_MARKERS),
+    scratch_fallback=SCRATCH_FALLBACK,
+    long_trace=LONG_TRACE,
 )
 
 
@@ -58,3 +67,15 @@ def align_v2(good: Sequence[Step], bad: Sequence[Step]) -> ProfileAlignment:
         scores=scores,
     )
 
+
+@dataclass(frozen=True)
+class ProfileLocalization:
+    step: int
+    step_count: int
+    reliability: Reliability
+
+
+def localize_v1(bad: Sequence[Step]) -> ProfileLocalization:
+    """Locate the failing run's point of no return, from that run alone."""
+    step, klass = localize(bad)
+    return ProfileLocalization(step=step, step_count=len(bad), reliability=klass)

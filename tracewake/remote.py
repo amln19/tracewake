@@ -10,6 +10,7 @@ from typing import Annotated, Any
 import typer
 
 from .bundle import validate_bundle
+from .contracts import REQUIRED_PROFILE
 
 app = typer.Typer(no_args_is_help=True, help="Use a local or hosted Tracewake control plane.")
 URL = Annotated[str, typer.Option("--url", envvar="TRACEWAKE_REMOTE_URL")]
@@ -90,7 +91,7 @@ def delete_(run_id: str, url: URL = "http://127.0.0.1:8080", token: Token = "") 
 
 @app.command()
 def analyze(
-    operation: Annotated[str, typer.Argument(help="diff, otlp, or pprof")],
+    operation: Annotated[str, typer.Argument(help="diff, localize, otlp, or pprof")],
     run_ids: Annotated[list[str], typer.Argument()],
     idempotency_key: Annotated[str, typer.Option("--idempotency-key")],
     url: URL = "http://127.0.0.1:8080",
@@ -98,7 +99,7 @@ def analyze(
 ) -> None:
     """Queue an analysis of ready remote runs."""
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json", "Idempotency-Key": idempotency_key}
-    value = {"operation": operation, "run_ids": run_ids, "profile": "align-v2" if operation == "diff" else None}
+    value = {"operation": operation, "run_ids": run_ids, "profile": REQUIRED_PROFILE.get(operation)}
     request = urllib.request.Request(url.rstrip("/") + "/v1/jobs", data=json.dumps(value).encode(), headers=headers, method="POST")
     try:
         with urllib.request.urlopen(request, timeout=30) as response:

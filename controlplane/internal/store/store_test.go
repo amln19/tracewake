@@ -52,17 +52,22 @@ func TestEmbeddedMigrationsMatchThePublishedContract(t *testing.T) {
 	}
 }
 
+// A new enum value cannot be used in the same transaction that adds it, so
+// these migrations only work if the break survives into the deployed copy.
+// 0009 depends on it twice over: its CHECK constraint names the 'localize'
+// operation that its own first statement introduces.
 func TestDeployedMigrationsRetainStatementBoundaries(t *testing.T) {
-	for _, name := range []string{
-		"migrations/0002_internal_validation.up.sql",
-		"migrations/0004_analysis_result_artifacts.up.sql",
+	for name, want := range map[string]int{
+		"migrations/0002_internal_validation.up.sql":       2,
+		"migrations/0004_analysis_result_artifacts.up.sql": 2,
+		"migrations/0009_localize_operation.up.sql":        4,
 	} {
 		contents, err := migrationFiles.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if statements := migrationStatements(string(contents)); len(statements) != 2 {
-			t.Fatalf("%s split into %d statements, want 2", name, len(statements))
+		if statements := migrationStatements(string(contents)); len(statements) != want {
+			t.Fatalf("%s split into %d statements, want %d", name, len(statements), want)
 		}
 	}
 }

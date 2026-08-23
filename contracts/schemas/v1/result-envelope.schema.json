@@ -242,6 +242,76 @@
       "title": "FailureCode",
       "type": "string"
     },
+    "LocalizeResult": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "moderate",
+            "low",
+            "very low"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        },
+        "kind": {
+          "const": "localize",
+          "default": "localize",
+          "title": "Kind",
+          "type": "string"
+        },
+        "profile": {
+          "const": "localize-v1",
+          "title": "Profile",
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/ResultProvenance"
+        },
+        "reliability": {
+          "enum": [
+            "commit-short",
+            "silent-short",
+            "commit-long-single",
+            "commit-long-many",
+            "silent-long"
+          ],
+          "title": "Reliability",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "step": {
+          "minimum": 1,
+          "title": "Step",
+          "type": "integer"
+        },
+        "step_count": {
+          "minimum": 1,
+          "title": "Step Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "profile",
+        "step",
+        "step_count",
+        "reliability",
+        "confidence",
+        "provenance",
+        "artifact"
+      ],
+      "title": "LocalizeResult",
+      "type": "object"
+    },
     "OtlpResult": {
       "additionalProperties": false,
       "properties": {
@@ -497,6 +567,7 @@
           "discriminator": {
             "mapping": {
               "diff": "#/$defs/DiffResult",
+              "localize": "#/$defs/LocalizeResult",
               "otlp": "#/$defs/OtlpResult",
               "pprof": "#/$defs/PprofResult",
               "validation": "#/$defs/ValidationResult"
@@ -509,6 +580,9 @@
             },
             {
               "$ref": "#/$defs/DiffResult"
+            },
+            {
+              "$ref": "#/$defs/LocalizeResult"
             },
             {
               "$ref": "#/$defs/OtlpResult"

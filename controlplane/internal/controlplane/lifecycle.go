@@ -161,18 +161,31 @@ func (s *Service) UploadFor(ctx context.Context, principal Principal, runID stri
 	return upload, nil
 }
 
+// The profile each analysis operation must name, and how many runs it consumes.
+// Mirrors REQUIRED_PROFILE and REQUIRED_RUNS in tracewake/contracts.py; Python
+// is authoritative and this table must not drift from it.
+var analysisOperations = map[string]struct {
+	profile string
+	runs    int
+}{
+	"diff":     {profile: "align-v2", runs: 2},
+	"localize": {profile: "localize-v1", runs: 1},
+	"otlp":     {profile: "", runs: 1},
+	"pprof":    {profile: "", runs: 1},
+}
+
 func normalizedDigest(request JobRequest) (string, error) {
-	if request.Operation != "diff" && request.Operation != "otlp" && request.Operation != "pprof" {
+	shape, ok := analysisOperations[request.Operation]
+	if !ok {
 		return "", fmt.Errorf("%w: job operation %q", ErrUnsupported, request.Operation)
 	}
-	expected := 1
-	if request.Operation == "diff" {
-		expected = 2
-		if request.Profile == nil || *request.Profile != "align-v2" {
-			return "", fmt.Errorf("%w: diff requires analysis profile align-v2", ErrUnsupported)
+	expected := shape.runs
+	if shape.profile == "" {
+		if request.Profile != nil {
+			return "", fmt.Errorf("%w: %s does not accept an analysis profile", ErrUnsupported, request.Operation)
 		}
-	} else if request.Profile != nil {
-		return "", fmt.Errorf("%w: only diff accepts an analysis profile", ErrUnsupported)
+	} else if request.Profile == nil || *request.Profile != shape.profile {
+		return "", fmt.Errorf("%w: %s requires analysis profile %s", ErrUnsupported, request.Operation, shape.profile)
 	}
 	if len(request.RunIDs) != expected {
 		return "", fmt.Errorf("%w: job has invalid run identities", ErrInvalidRequest)
@@ -436,8 +449,8 @@ func (s *Service) claim(ctx context.Context, workerID, jobID string, expectedVer
 	}
 	rows.Close()
 	expectedInputs := 1
-	if operation == "diff" {
-		expectedInputs = 2
+	if shape, ok := analysisOperations[operation]; ok {
+		expectedInputs = shape.runs
 	}
 	if len(inputs) != expectedInputs {
 		return Claim{}, ErrConflict

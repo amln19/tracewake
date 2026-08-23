@@ -372,7 +372,7 @@ func (s *Service) CompleteAttempt(ctx context.Context, jobID string, attempt int
 			return err
 		}
 	}
-	expectedKinds := map[string]string{"validate": "validation_json", "diff": "diff_json", "otlp": "otlp_result_json", "pprof": "pprof_result_json"}
+	expectedKinds := map[string]string{"validate": "validation_json", "diff": "diff_json", "localize": "localize_result_json", "otlp": "otlp_result_json", "pprof": "pprof_result_json"}
 	if result.Kind != expectedKinds[operation] || result.SchemaName != "result-envelope" || result.SchemaVersion != 1 {
 		return errors.New("result schema does not match operation")
 	}
@@ -380,7 +380,7 @@ func (s *Service) CompleteAttempt(ctx context.Context, jobID string, attempt int
 	if result.ObjectKey != expectedPrefix+result.Kind {
 		return errors.New("artifact key is outside the current attempt")
 	}
-	expectedCompanions := map[string][]string{"validate": {}, "diff": {"diff_html"}, "otlp": {"otlp_json"}, "pprof": {"pprof"}}[operation]
+	expectedCompanions := map[string][]string{"validate": {}, "diff": {"diff_html"}, "localize": {"localize_json"}, "otlp": {"otlp_json"}, "pprof": {"pprof"}}[operation]
 	if len(result.Companions) != len(expectedCompanions) {
 		return errors.New("result companion set does not match operation")
 	}

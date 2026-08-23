@@ -18,6 +18,7 @@ from tracewake.contracts import (
     Failure,
     FailureCode,
     JobNotification,
+    LocalizeResult,
     OtlpResult,
     PprofResult,
     Progress,
@@ -260,6 +261,37 @@ def fixture_bytes() -> tuple[dict[str, bytes], list[dict[str, object]]]:
                 )
             ),
         ),
+        "accepted/result-envelope-localize.json": (
+            "result-envelope",
+            _json(
+                ResultEnvelope(
+                    protocol_version=1,
+                    status="succeeded",
+                    result=LocalizeResult(
+                        schema_version=1,
+                        profile="localize-v1",
+                        step=2,
+                        step_count=3,
+                        reliability="commit-short",
+                        confidence="high",
+                        provenance=_provenance(
+                            bundle_digest, logical_digest, profile="localize-v1"
+                        ),
+                        artifact=companion("localize_json", "application/json"),
+                    ),
+                )
+            ),
+        ),
+        "accepted/public-job-request-localize.json": (
+            "public-job-request",
+            _json(
+                PublicJobRequest(
+                    operation="localize",
+                    run_ids=[RUN_ID],
+                    profile="localize-v1",
+                )
+            ),
+        ),
         "accepted/result-envelope-otlp.json": (
             "result-envelope",
             _json(
@@ -357,6 +389,28 @@ def fixture_bytes() -> tuple[dict[str, bytes], list[dict[str, object]]]:
                 {
                     "operation": "diff",
                     "run_ids": [RUN_ID, RUN_ID],
+                    "profile": "align-v2",
+                }
+            ),
+        ),
+        "rejected/public-job-localize-two-runs.json": (
+            "public-job-request",
+            "invalid_request",
+            _json(
+                {
+                    "operation": "localize",
+                    "run_ids": [RUN_ID, SECOND_RUN_ID],
+                    "profile": "localize-v1",
+                }
+            ),
+        ),
+        "rejected/public-job-localize-wrong-profile.json": (
+            "public-job-request",
+            "invalid_request",
+            _json(
+                {
+                    "operation": "localize",
+                    "run_ids": [RUN_ID],
                     "profile": "align-v2",
                 }
             ),

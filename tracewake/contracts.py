@@ -115,6 +115,36 @@ class DiffResult(ContractModel):
     html: ArtifactRef
 
 
+# The five classes `tracewake.diverge.reliability` sorts a run into, and the
+# band each maps to. Carried on the wire because the step alone does not say
+# whether to act on it: `silent-long` is right about a tenth of the time.
+Reliability = Literal[
+    "commit-short",
+    "silent-short",
+    "commit-long-single",
+    "commit-long-many",
+    "silent-long",
+]
+
+
+class LocalizeResult(ContractModel):
+    kind: Literal["localize"] = "localize"
+    schema_version: Literal[CONTRACT_SCHEMA_VERSION]
+    profile: Literal["localize-v1"]
+    step: int = Field(ge=1)
+    step_count: int = Field(ge=1)
+    reliability: Reliability
+    confidence: Literal["high", "moderate", "low", "very low"]
+    provenance: ResultProvenance
+    artifact: ArtifactRef
+
+    @model_validator(mode="after")
+    def _step_within_trace(self) -> LocalizeResult:
+        if self.step > self.step_count:
+            raise ValueError("the localized step is past the end of the trace")
+        return self
+
+
 class OtlpResult(ContractModel):
     kind: Literal["otlp"] = "otlp"
     schema_version: Literal[CONTRACT_SCHEMA_VERSION]
@@ -132,7 +162,7 @@ class PprofResult(ContractModel):
 
 
 SemanticResult = Annotated[
-    ValidationResult | DiffResult | OtlpResult | PprofResult,
+    ValidationResult | DiffResult | LocalizeResult | OtlpResult | PprofResult,
     Field(discriminator="kind"),
 ]
 
@@ -176,11 +206,45 @@ class AnalysisProfile(ContractModel):
     divergence_rule: Literal["first-nonscratch-write"]
 
 
+class LocalizeProfile(ContractModel):
+    """`localize-v1`: the single-trace rule, with no alignment and no reference run.
+
+    `scratch_fallback` is the only fitted number and is inert across every value
+    it could take; `long_trace` is reused from the alignment profile's existing
+    long/short split rather than refitted. See `contracts/localize-v1.md`.
+    """
+
+    name: Literal["localize-v1"]
+    version: Literal[1]
+    rule: Literal["first-nonscratch-write"]
+    create_markers: list[str]
+    scratch_fallback: Literal[12]
+    long_trace: Literal[18]
+
+
+WorkerOperation = Literal["validate", "diff", "localize", "otlp", "pprof"]
+PublicOperation = Literal["diff", "localize", "otlp", "pprof"]
+AnalysisProfileName = Literal["align-v2", "localize-v1"]
+
+# The profile each analysis operation must name, or None where it accepts none.
+# One table so the request validator, the worker dispatch, and the control plane
+# cannot drift into disagreeing about which pairs are legal.
+REQUIRED_PROFILE: dict[str, str | None] = {
+    "diff": "align-v2",
+    "localize": "localize-v1",
+    "otlp": None,
+    "pprof": None,
+}
+
+# How many runs each operation consumes. Only diff compares.
+REQUIRED_RUNS: dict[str, int] = {"diff": 2, "localize": 1, "otlp": 1, "pprof": 1}
+
+
 class JobNotification(ContractModel):
     protocol_version: Literal[WORKER_PROTOCOL_VERSION]
     job_id: UUID
     job_version: int = Field(ge=1)
-    operation: Literal["validate", "diff", "otlp", "pprof"]
+    operation: WorkerOperation
     # Carrying the W3C trace context in the notification is what lets one trace
     # span the transition the queue makes asynchronous.
     traceparent: TraceParent | None = None
@@ -199,8 +263,8 @@ class Claim(ContractModel):
     attempt_token: Annotated[str, StringConstraints(min_length=43, max_length=256)]
     lease_expires_at: AwareDatetime
     input_artifacts: list[ArtifactRef] = Field(min_length=1, max_length=2)
-    operation: Literal["validate", "diff", "otlp", "pprof"]
-    profile: Literal["align-v2"] | None = None
+    operation: WorkerOperation
+    profile: AnalysisProfileName | None = None
 
 
 class Heartbeat(ContractModel):
@@ -232,21 +296,22 @@ class ArtifactCommit(ContractModel):
 
 
 class PublicJobRequest(ContractModel):
-    operation: Literal["diff", "otlp", "pprof"]
+    operation: PublicOperation
     run_ids: list[UUID] = Field(min_length=1, max_length=2)
-    profile: Literal["align-v2"] | None = None
+    profile: AnalysisProfileName | None = None
 
     @model_validator(mode="after")
     def _operation_shape(self) -> PublicJobRequest:
-        expected = 2 if self.operation == "diff" else 1
+        expected = REQUIRED_RUNS[self.operation]
         if len(self.run_ids) != expected:
             raise ValueError(f"{self.operation} requires {expected} run id(s)")
         if len(set(self.run_ids)) != len(self.run_ids):
             raise ValueError("run ids must be distinct")
-        if self.operation == "diff" and self.profile != "align-v2":
-            raise ValueError("diff requires profile align-v2")
-        if self.operation != "diff" and self.profile is not None:
-            raise ValueError("only diff accepts a profile")
+        required = REQUIRED_PROFILE[self.operation]
+        if required is None and self.profile is not None:
+            raise ValueError(f"{self.operation} does not accept a profile")
+        if required is not None and self.profile != required:
+            raise ValueError(f"{self.operation} requires profile {required}")
         return self
 
 
@@ -282,6 +347,8 @@ class PublicArtifact(ContractModel):
     kind: Literal[
         "diff_json",
         "diff_html",
+        "localize_result_json",
+        "localize_json",
         "otlp_result_json",
         "otlp_json",
         "pprof_result_json",
@@ -335,9 +402,9 @@ class AttemptView(ContractModel):
 
 class JobView(ContractModel):
     job_id: UUID
-    operation: Literal["diff", "otlp", "pprof"]
+    operation: PublicOperation
     run_ids: list[UUID] = Field(min_length=1, max_length=2)
-    profile: Literal["align-v2"] | None = None
+    profile: AnalysisProfileName | None = None
     state: Literal["queued", "running", "retry_wait", "succeeded", "failed", "cancelled"]
     current_attempt_number: int | None = Field(default=None, ge=1, le=3)
     attempts: list[AttemptView] = Field(max_length=3)
@@ -378,6 +445,7 @@ _SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     "failure": Failure,
     "heartbeat": Heartbeat,
     "job-notification": JobNotification,
+    "localize-profile": LocalizeProfile,
     "progress": Progress,
     "public-error": PublicError,
     "public-job": JobView,

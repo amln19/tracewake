@@ -1,0 +1,48 @@
+{
+  "additionalProperties": false,
+  "description": "`localize-v1`: the single-trace rule, with no alignment and no reference run.\n\n`scratch_fallback` is the only fitted number and is inert across every value\nit could take; `long_trace` is reused from the alignment profile's existing\nlong/short split rather than refitted. See `contracts/localize-v1.md`.",
+  "properties": {
+    "create_markers": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Create Markers",
+      "type": "array"
+    },
+    "long_trace": {
+      "const": 18,
+      "title": "Long Trace",
+      "type": "integer"
+    },
+    "name": {
+      "const": "localize-v1",
+      "title": "Name",
+      "type": "string"
+    },
+    "rule": {
+      "const": "first-nonscratch-write",
+      "title": "Rule",
+      "type": "string"
+    },
+    "scratch_fallback": {
+      "const": 12,
+      "title": "Scratch Fallback",
+      "type": "integer"
+    },
+    "version": {
+      "const": 1,
+      "title": "Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "name",
+    "version",
+    "rule",
+    "create_markers",
+    "scratch_fallback",
+    "long_trace"
+  ],
+  "title": "LocalizeProfile",
+  "type": "object"
+}

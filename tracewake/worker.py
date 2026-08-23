@@ -21,10 +21,10 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
-from .align import LexicalEmbedder, diff_runs
+from .align import LexicalEmbedder, diff_runs, extract_steps
 from .bundle import ValidatedBundle, bundle_header, validate_bundle
-from .contracts import AlignmentColumn, ArtifactRef, DiffResult as ContractDiffResult, OtlpResult, PprofResult, ResultEnvelope, ResultProvenance, RunProvenance, ValidationResult
-from .diverge import localize
+from .contracts import REQUIRED_PROFILE, AlignmentColumn, ArtifactRef, DiffResult as ContractDiffResult, LocalizeResult, OtlpResult, PprofResult, ResultEnvelope, ResultProvenance, RunProvenance, ValidationResult
+from .diverge import RELIABILITY_BAND, localize
 from .otel import encode_spans
 from .pprof import attribute_tokens, build_token_profile, gzip_profile
 from .report import write_report
@@ -38,6 +38,7 @@ CANCELLATION_SECONDS = 1
 # larger output means a defect rather than a large run.
 MAX_ARTIFACT_BYTES = 64 * 1024 * 1024
 HOSTED_PROFILE = "align-v2"
+LOCALIZE_PROFILE = "localize-v1"
 
 log = logging.getLogger("tracewake.worker")
 
@@ -397,6 +398,17 @@ def _diff(client: WorkerClient,claim: dict[str,Any],root: Path) -> dict[str,Any]
     return _analysis(ResultEnvelope(protocol_version=1,status="succeeded",result=semantic),"diff_json",companion)
 
 
+def _localize(client: WorkerClient,claim: dict[str,Any],root: Path) -> dict[str,Any]:
+    bundle=_download_input(client,claim,claim["input_artifacts"][0],root/"bundle.tar")
+    steps=extract_steps(list(bundle.events))
+    if not steps:
+        raise ValueError("run has no steps to localize")
+    step,klass=localize(steps)
+    document=json.dumps({"profile":LOCALIZE_PROFILE,"step":step,"step_count":len(steps),"reliability":klass,"confidence":RELIABILITY_BAND[klass],"action":f"{steps[step-1].name} {steps[step-1].target}".rstrip()},sort_keys=True,separators=(",",":")).encode()
+    companion=_upload(client,claim,"localize_json",document,"application/json")
+    semantic=LocalizeResult(schema_version=1,profile=LOCALIZE_PROFILE,step=step,step_count=len(steps),reliability=klass,confidence=RELIABILITY_BAND[klass],provenance=_result_provenance(claim,[bundle],LOCALIZE_PROFILE),artifact=_reference(companion))
+    return _analysis(ResultEnvelope(protocol_version=1,status="succeeded",result=semantic),"localize_result_json",companion)
+
 
 def _otlp(client: WorkerClient,claim: dict[str,Any],root: Path) -> dict[str,Any]:
     bundle=_download_input(client,claim,claim["input_artifacts"][0],root/"bundle.tar")
@@ -422,12 +434,17 @@ def _operation(claim: dict[str, Any]) -> Callable[[WorkerClient, dict[str, Any],
     permanent mismatch, not a dependency that a retry could satisfy.
     """
     operation = claim["operation"]
-    expected = HOSTED_PROFILE if operation == "diff" else None
-    if claim.get("profile") != expected:
-        raise UnsupportedAnalysis(f"{operation} does not support the requested analysis profile")
-    handlers = {"validate": _validate, "diff": _diff, "otlp": _otlp, "pprof": _pprof}
+    handlers = {
+        "validate": _validate,
+        "diff": _diff,
+        "localize": _localize,
+        "otlp": _otlp,
+        "pprof": _pprof,
+    }
     if operation not in handlers:
         raise UnsupportedAnalysis(f"unsupported worker operation {operation}")
+    if claim.get("profile") != REQUIRED_PROFILE.get(operation):
+        raise UnsupportedAnalysis(f"{operation} does not support the requested analysis profile")
     return handlers[operation]
 
 

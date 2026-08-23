@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from tracewake.align import Step
-from tracewake.profiles import ALIGN_V2, align_v2
+from tracewake.profiles import ALIGN_V2, LOCALIZE_V1, align_v2, localize_v1
 
 
 def test_align_v2_parameters_are_frozen() -> None:
@@ -20,6 +20,16 @@ def test_align_v2_parameters_are_frozen() -> None:
         "divergence_rule": "first-nonscratch-write",
     }
 
+
+def test_localize_v1_parameters_are_frozen() -> None:
+    assert LOCALIZE_V1.model_dump(mode="json") == {
+        "name": "localize-v1",
+        "version": 1,
+        "rule": "first-nonscratch-write",
+        "create_markers": ["create", "touch", "new_file", "write_file"],
+        "scratch_fallback": 12,
+        "long_trace": 18,
+    }
 
 
 def _pair() -> tuple[list[Step], list[Step]]:
@@ -57,3 +67,11 @@ def test_align_v2_divergence_is_the_single_trace_rule() -> None:
 
     assert align_v2(good, bad).divergence == 3
 
+
+def test_localize_v1_needs_no_reference_run() -> None:
+    _, bad = _pair()
+
+    result = localize_v1(bad)
+
+    assert (result.step, result.step_count) == (3, 3)
+    assert result.reliability == "silent-short"

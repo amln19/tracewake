@@ -177,6 +177,18 @@ type diffResult struct {
 	HTML          artifactRef       `json:"html"`
 }
 
+type localizeResult struct {
+	Kind          string           `json:"kind"`
+	SchemaVersion int              `json:"schema_version"`
+	Profile       string           `json:"profile"`
+	Step          int              `json:"step"`
+	StepCount     int              `json:"step_count"`
+	Reliability   string           `json:"reliability"`
+	Confidence    string           `json:"confidence"`
+	Provenance    resultProvenance `json:"provenance"`
+	Artifact      artifactRef      `json:"artifact"`
+}
+
 type otlpResult struct {
 	Kind          string           `json:"kind"`
 	SchemaVersion int              `json:"schema_version"`
@@ -304,7 +316,7 @@ func validateClaim(data []byte) string {
 		!uuidPattern.MatchString(value.JobID) || value.AttemptNumber < 1 || value.AttemptNumber > 3 ||
 		len(value.AttemptToken) < 43 || len(value.AttemptToken) > 256 ||
 		len(value.InputArtifacts) < 1 || len(value.InputArtifacts) > 2 ||
-		!oneOf(value.Operation, "validate", "diff", "otlp", "pprof") {
+		!oneOf(value.Operation, "validate", "diff", "localize", "otlp", "pprof") {
 		return "invalid_message"
 	}
 	for _, input := range value.InputArtifacts {
@@ -312,10 +324,24 @@ func validateClaim(data []byte) string {
 			return "invalid_message"
 		}
 	}
-	if value.Operation == "diff" && (value.Profile == nil || *value.Profile != "align-v2") {
-		return "invalid_message"
+	if shape, ok := analysisShapes[value.Operation]; ok && shape.profile != "" {
+		if value.Profile == nil || *value.Profile != shape.profile {
+			return "invalid_message"
+		}
 	}
 	return ""
+}
+
+// The profile each analysis operation must name, and how many runs it takes.
+// Mirrors REQUIRED_PROFILE and REQUIRED_RUNS in tracewake/contracts.py.
+var analysisShapes = map[string]struct {
+	profile string
+	runs    int
+}{
+	"diff":     {profile: "align-v2", runs: 2},
+	"localize": {profile: "localize-v1", runs: 1},
+	"otlp":     {profile: "", runs: 1},
+	"pprof":    {profile: "", runs: 1},
 }
 
 func validatePublicJob(data []byte) string {
@@ -323,13 +349,8 @@ func validatePublicJob(data []byte) string {
 	if decodeStrict(data, &value) != nil {
 		return "invalid_request"
 	}
-	expected := 1
-	if value.Operation == "diff" {
-		expected = 2
-	} else if !oneOf(value.Operation, "otlp", "pprof") {
-		return "invalid_request"
-	}
-	if len(value.RunIDs) != expected {
+	shape, ok := analysisShapes[value.Operation]
+	if !ok || len(value.RunIDs) != shape.runs {
 		return "invalid_request"
 	}
 	seen := map[string]bool{}
@@ -339,10 +360,11 @@ func validatePublicJob(data []byte) string {
 		}
 		seen[id] = true
 	}
-	if value.Operation == "diff" && (value.Profile == nil || *value.Profile != "align-v2") {
-		return "invalid_request"
-	}
-	if value.Operation != "diff" && value.Profile != nil {
+	if shape.profile == "" {
+		if value.Profile != nil {
+			return "invalid_request"
+		}
+	} else if value.Profile == nil || *value.Profile != shape.profile {
 		return "invalid_request"
 	}
 	return ""
@@ -424,6 +446,18 @@ func validateDiffResult(data []byte) string {
 	return ""
 }
 
+func validateLocalizeResult(data []byte) string {
+	var result localizeResult
+	if decodeStrict(data, &result) != nil || result.SchemaVersion != 1 || result.Profile != "localize-v1" ||
+		result.Step < 1 || result.StepCount < 1 || result.Step > result.StepCount ||
+		!oneOf(result.Reliability, "commit-short", "silent-short", "commit-long-single", "commit-long-many", "silent-long") ||
+		!oneOf(result.Confidence, "high", "moderate", "low", "very low") ||
+		!validProvenance(result.Provenance, 1) || !validArtifactRef(result.Artifact) {
+		return "invalid_message"
+	}
+	return ""
+}
+
 func validateArtifactResult(data []byte, kind string) string {
 	if kind == "otlp" {
 		var result otlpResult
@@ -462,6 +496,8 @@ func validateResult(data []byte) string {
 			return validateValidationResult(envelope.Result)
 		case "diff":
 			return validateDiffResult(envelope.Result)
+		case "localize":
+			return validateLocalizeResult(envelope.Result)
 		case "otlp", "pprof":
 			return validateArtifactResult(envelope.Result, kind.Kind)
 		default:

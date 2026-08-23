@@ -9,6 +9,7 @@ Version 1 contains:
 
 * `bundle-v1.md`: deterministic transport bytes and validation limits;
 * `align-v2.md`: the dependency-free hosted alignment profile;
+* `localize-v1.md`: the hosted single-trace divergence profile;
 * `public-api-v1.md`: tenant-facing HTTP resources and errors;
 * `worker-protocol-v1.md`: attempt-scoped worker messages and authentication;
 * `lifecycle-v1.json` and `lifecycle-v1.md`: executable state-machine rules;
@@ -21,8 +22,8 @@ Version 1 contains:
 local rule that locates where a failing run went irrecoverably wrong, which is
 expected to change as evidence changes. It carries no version and promises no
 compatibility. Where the hosted plane exposes that rule it does so under a
-version that does: the `divergence` field of `align-v2`, which is the only
-analysis profile it accepts.
+version that does — `localize-v1`, and the `divergence` field of `align-v2` —
+and those two names are the only analysis profiles it accepts.
 
 Regenerate or check schemas without an additional dependency:
 

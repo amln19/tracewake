@@ -292,7 +292,7 @@ func (a *API) declareArtifact(w http.ResponseWriter, r *http.Request) {
 		Digest          string `json:"digest"`
 		Size            int64  `json:"size"`
 	}
-	allowed := map[string]bool{"validation_json": true, "diff_json": true, "diff_html": true, "otlp_json": true, "otlp_result_json": true, "pprof": true, "pprof_result_json": true, "worker_diagnostic": true}
+	allowed := map[string]bool{"validation_json": true, "diff_json": true, "diff_html": true, "localize_json": true, "localize_result_json": true, "otlp_json": true, "otlp_result_json": true, "pprof": true, "pprof_result_json": true, "worker_diagnostic": true}
 	if decode(w, r, &body) != nil || body.ProtocolVersion != 1 || body.Attempt != attempt || !allowed[body.Kind] || body.MediaType == "" {
 		writeError(w, 400, "invalid_request")
 		return
@@ -485,8 +485,8 @@ func validateResultBindings(envelope map[string]any, completion controlplane.Com
 		return errors.New("result is not an object")
 	}
 	kind, _ := result["kind"].(string)
-	expectedArtifactKind := map[string]string{"validation": "validation_json", "diff": "diff_json", "otlp": "otlp_result_json", "pprof": "pprof_result_json"}[kind]
-	expectedCompanionKind := map[string]string{"diff": "diff_html", "otlp": "otlp_json", "pprof": "pprof"}[kind]
+	expectedArtifactKind := map[string]string{"validation": "validation_json", "diff": "diff_json", "localize": "localize_result_json", "otlp": "otlp_result_json", "pprof": "pprof_result_json"}[kind]
+	expectedCompanionKind := map[string]string{"diff": "diff_html", "localize": "localize_json", "otlp": "otlp_json", "pprof": "pprof"}[kind]
 	if expectedArtifactKind == "" || completion.Kind != expectedArtifactKind {
 		return errors.New("result kind does not match the committed artifact kind")
 	}
