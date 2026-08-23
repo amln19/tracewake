@@ -5,7 +5,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"os"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -61,8 +63,14 @@ func TestMigrateFromSchemaOne(t *testing.T) {
 	if err := legacy.Pool().QueryRow(ctx, "SELECT array_agg(version ORDER BY version) FROM schema_migrations").Scan(&versions); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(versions, []int{1, 2, 3, 4, 5, 6, 7}) {
-		t.Fatalf("versions=%v", versions)
+	// Derived rather than written out, because a hardcoded list only records
+	// how many migrations existed when it was last edited. What this asserts is
+	// that migrating a schema-one database applies every published migration and
+	// records each exactly once; TestEmbeddedMigrationsMatchThePublishedContract
+	// is what ties the published set to the one the migrator actually runs.
+	expected := publishedMigrationVersions(t)
+	if !slices.Equal(versions, expected) {
+		t.Fatalf("versions=%v, want %v", versions, expected)
 	}
 	var activeDigestIndex string
 	if err := legacy.Pool().QueryRow(ctx, `SELECT indexdef FROM pg_indexes
@@ -97,14 +105,16 @@ func TestMigrateFromSchemaOne(t *testing.T) {
 	if err := legacy.Pool().QueryRow(ctx, "SELECT enum_range(NULL::job_operation)::text[]").Scan(&labels); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(labels, "validate") {
-		t.Fatalf("job operations=%v", labels)
+	for _, operation := range []string{"validate", "localize"} {
+		if !slices.Contains(labels, operation) {
+			t.Fatalf("job operations=%v", labels)
+		}
 	}
 	var kinds []string
 	if err := legacy.Pool().QueryRow(ctx, "SELECT enum_range(NULL::artifact_kind)::text[]").Scan(&kinds); err != nil {
 		t.Fatal(err)
 	}
-	for _, kind := range []string{"validation_json", "otlp_result_json", "pprof_result_json"} {
+	for _, kind := range []string{"validation_json", "otlp_result_json", "pprof_result_json", "localize_json", "localize_result_json"} {
 		if !slices.Contains(kinds, kind) {
 			t.Fatalf("artifact kinds=%v", kinds)
 		}
@@ -115,4 +125,31 @@ func TestMigrateFromSchemaOne(t *testing.T) {
 	if err := legacy.Migrate(ctx); err == nil {
 		t.Fatal("future schema version was accepted")
 	}
+}
+
+// publishedMigrationVersions is the ordered version of every up migration in
+// contracts/postgres, which is the contract the control plane deploys.
+func publishedMigrationVersions(t *testing.T) []int {
+	t.Helper()
+	paths, err := filepath.Glob("../../../contracts/postgres/*.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) == 0 {
+		t.Fatal("no published migrations found")
+	}
+	versions := make([]int, 0, len(paths))
+	for _, path := range paths {
+		text, _, found := strings.Cut(filepath.Base(path), "_")
+		if !found {
+			t.Fatalf("migration %q has no version prefix", path)
+		}
+		version, err := strconv.Atoi(text)
+		if err != nil {
+			t.Fatalf("migration %q has an unparseable version: %v", path, err)
+		}
+		versions = append(versions, version)
+	}
+	slices.Sort(versions)
+	return versions
 }
