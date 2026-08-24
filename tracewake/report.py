@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from .align import DiffResult, Step, StepTrace, extract_traces, target_agree, target_of
-from .diverge import RELIABILITY_BAND, reliability
+from .diverge import RELIABILITY_BAND, localize
 from .events import ModelCallEvent, OutcomeEvent, RunHeader, StoredEvent
 from .pprof import attribute_tokens
 from .store import BlobStore
@@ -275,16 +275,22 @@ def build_payload(
         )
 
     store_b = store_path if store_path_b is None else store_path_b
-    klass = reliability(result.bad_steps) if result.bad_steps else None
+    # Two different readouts, same as `tracewake diff`'s terminal output: the
+    # single-trace rule says where the failing run went wrong and needs no
+    # reference run, so it answers even when the alignment fully re-agrees.
+    # `alignment_divergence` is align.py's own, weaker readout -- where the two
+    # runs stopped agreeing -- kept for the alignment table's own display.
+    step, klass = localize(result.bad_steps) if result.bad_steps else (None, None)
     payload: dict[str, Any] = {
         "good": _run_summary(good_header, good_events, len(result.good_steps), store_path),
         "bad": _run_summary(bad_header, bad_events, len(result.bad_steps), store_b),
-        "divergence": result.divergence,
+        "divergence": step,
         # The step alone does not say whether to act on it: the same rule is
         # right about nine times in ten on one class and one in ten on another.
         # Reporting the step without its class is what the CLI refuses to do.
         "reliability": klass,
         "confidence": None if klass is None else RELIABILITY_BAND[klass],
+        "alignment_divergence": result.divergence,
         "score": round(result.score, 4),
         "length_ratio": round(result.length_ratio, 4),
         "excluded_by_length": result.excluded_by_length,

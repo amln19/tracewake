@@ -52,6 +52,11 @@ h1 .sub { color: var(--dim); font-weight: 400; }
   opacity: 0.75;
   white-space: nowrap;
 }
+.alignment-note {
+  margin-top: 6px;
+  font-size: 13px;
+  opacity: 0.65;
+}
 .warn {
   margin-top: 10px;
   padding: 8px 12px;
@@ -267,11 +272,15 @@ function spendNode(r) {
 }
 
 function renderHead() {
+  // Two different questions, same split as `tracewake diff`'s terminal output.
+  // The single-trace rule needs no reference run, so it has an answer even when
+  // the alignment fully re-agrees; leading with the alignment's own readout
+  // here would report the weaker answer as if it were the only one.
   const banner = el("div", "banner");
   if (D.divergence === null) {
     banner.className = "banner none";
     banner.appendChild(document.createTextNode(
-      "The two runs re-align through the end. No standing divergence."));
+      "The failing run has no steps to localize."));
   } else {
     // Built node by node rather than as an HTML string. A step's name and
     // target are recorded agent input — a search query, a filename — so they
@@ -293,6 +302,13 @@ function renderHead() {
     }
   }
   document.getElementById("banner").appendChild(banner);
+
+  const alignment = el("div", "alignment-note");
+  alignment.appendChild(document.createTextNode(
+    D.alignment_divergence === null
+      ? "The alignment: the two runs re-align through the end. No standing divergence."
+      : "The alignment: the two runs stop agreeing at failing step " + D.alignment_divergence + "."));
+  document.getElementById("banner").appendChild(alignment);
 
   const warn = document.getElementById("warnings");
   if (D.reliability === "silent-long") {

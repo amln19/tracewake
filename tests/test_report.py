@@ -22,7 +22,7 @@ from tracewake import (
     Usage,
 )
 from tracewake.align import LexicalEmbedder, Step, diff_runs
-from tracewake.diverge import RELIABILITY_BAND, reliability
+from tracewake.diverge import RELIABILITY_BAND, localize
 from tracewake.report import build_payload, render, write_report
 
 SYSTEM = "You are a coding agent. Read before you edit." * 12
@@ -171,26 +171,37 @@ def test_the_page_never_builds_markup_out_of_recorded_text() -> None:
         )
 
 
-def test_the_report_and_the_diff_name_the_same_divergence(
+def test_the_report_and_the_diff_name_the_same_alignment(
     pair: tuple[Store, str, str],
 ) -> None:
     db, good, bad = pair
     result = diff_runs(db.events(good), db.events(bad), embed=LexicalEmbedder())
     payload = _built(db, good, bad)
     assert result.divergence is not None
-    assert payload["divergence"] == result.divergence
+    assert payload["alignment_divergence"] == result.divergence
     assert len(payload["columns"]) == len(result.alignment)
     assert [c["g"] for c in payload["columns"]] == [i for i, _ in result.alignment]
     assert [c["b"] for c in payload["columns"]] == [j for _, j in result.alignment]
 
 
-def test_the_report_carries_the_class_with_the_step(pair: tuple[Store, str, str]) -> None:
-    """A step shown without its class invites more trust than the rule earns."""
+def test_the_report_leads_with_the_single_trace_rule(
+    pair: tuple[Store, str, str],
+) -> None:
+    """The report leads with the same answer `tracewake diff` does, not the alignment's.
+
+    The alignment's own readout answers where two runs stopped agreeing;
+    `divergence` needs no reference run at all and reads only the failing run.
+    They can disagree -- `test_a_run_against_itself_has_no_standing_alignment_divergence`
+    below is the case where they provably do -- though this fixture is not
+    built to force that; it only pins that `divergence` is the single-trace
+    rule's own answer, not the alignment's.
+    """
     db, good, bad = pair
     result = diff_runs(db.events(good), db.events(bad), embed=LexicalEmbedder())
     payload = _built(db, good, bad)
 
-    klass = reliability(result.bad_steps)
+    step, klass = localize(result.bad_steps)
+    assert payload["divergence"] == step
     assert payload["reliability"] == klass
     assert payload["confidence"] == RELIABILITY_BAND[klass]
 
@@ -353,13 +364,21 @@ def test_view_writes_one_file_and_names_the_divergence(tmp_path: Path) -> None:
     assert payload["bad"]["outcome"]["resolve"] is False
 
 
-def test_a_run_against_itself_has_no_standing_divergence(
+def test_a_run_against_itself_has_no_standing_alignment_divergence(
     pair: tuple[Store, str, str],
 ) -> None:
+    """The alignment agrees with itself; the single-trace rule does not care.
+
+    `localize` reads only the failing run, so comparing a run against itself
+    does not make its answer disappear -- the run still committed at some step,
+    regardless of what it is being compared against. Only `alignment_divergence`
+    is a property of the pair.
+    """
     db, good, _ = pair
     payload = _built(db, good, good)
-    assert payload["divergence"] is None
+    assert payload["alignment_divergence"] is None
     assert all(c["agree"] for c in payload["columns"])
+    assert payload["divergence"] is not None
 
 
 def test_write_report_returns_the_payload_it_embedded(tmp_path: Path) -> None:

@@ -283,6 +283,12 @@ def test_hosted_diff_matches_a_local_comparison(tmp_path: Path, objects, good: R
     assert result["reliability"] == klass
     assert result["confidence"] == RELIABILITY_BAND[klass]
 
+    # The JSON result and its HTML companion describe the same attempt; a
+    # reader who only opened one of them must not see a different step named as
+    # "the" divergence than a reader who opened the other.
+    html = companion(client, objects, output).decode("utf-8")
+    assert f'"divergence":{step}' in html.replace(" ", "")
+
     html = companion(client, objects, output).decode("utf-8")
     assert html.startswith("<!DOCTYPE html>")
     assert "http://" not in html and "https://" not in html

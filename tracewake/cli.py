@@ -563,9 +563,12 @@ def view(
 
     size = out.stat().st_size
     where = (
-        "no standing divergence"
-        if result.divergence is None
-        else f"divergence at failing step {result.divergence}"
+        "the failing run has no steps to localize"
+        if payload["divergence"] is None
+        else (
+            f"divergence at failing step {payload['divergence']} "
+            f"[{payload['reliability']}, {payload['confidence']} confidence]"
+        )
     )
     typer.echo(f"wrote {out} ({size / 1e6:.2f} MB) — {where}")
     clipped = payload["truncation"]["blocks"]
