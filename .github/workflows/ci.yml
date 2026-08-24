@@ -195,9 +195,19 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      # No cache. This job launches tracewake-worker as a background `uv run`
+      # subprocess for most of its runtime (see stack.py); a shared cache's
+      # post-job `uv cache prune` then contends with that live process for the
+      # same lock file and can time out waiting on it, failing the job in
+      # cleanup after the real work already succeeded -- as it did once, from
+      # a since-fixed leak that left an extra worker running past teardown.
+      # Disabling the cache here removes that failure surface outright rather
+      # than relying only on getting every worker-lifecycle call site right;
+      # the dependency set is small enough that caching would not meaningfully
+      # speed up a ~10-minute job anyway.
       - uses: astral-sh/setup-uv@v6
         with:
-          enable-cache: true
+          enable-cache: false
       - uses: actions/setup-go@v5
         with:
           go-version-file: controlplane/go.mod

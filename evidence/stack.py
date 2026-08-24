@@ -186,6 +186,12 @@ class Stack:
         self.control_plane = _terminate(self.control_plane, kill)
 
     def start_worker(self, build: str = "evidence") -> None:
+        # A caller that starts a second worker without stopping the first
+        # would otherwise overwrite `self.worker` and leak the original
+        # `uv run` process -- silently, since it keeps running with nothing
+        # left pointing at it, and `stack.stop()` at the end of a run can then
+        # only reap whichever worker `self.worker` currently names.
+        self.stop_worker()
         environment = self._worker_environment(build)
         stream = open(self.telemetry_dir / "worker.jsonl", "ab")
         errors = open(self.root / "worker.err", "ab")

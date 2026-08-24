@@ -15,10 +15,12 @@ import itertools
 import json
 import platform
 import shutil
+import signal
 import subprocess
 import sys
 import time
 from pathlib import Path
+from types import FrameType
 from typing import Any
 
 from . import bundles, scenarios, telemetry
@@ -74,6 +76,18 @@ def main() -> int:
     if work.exists() and not arguments.keep:
         shutil.rmtree(work)
     stack = Stack(root=work, repository=repository)
+
+    # Python's default SIGTERM handling terminates immediately without running
+    # `finally` blocks, so a job timeout or an external cancellation would
+    # otherwise skip `stack.stop()` below and leave postgres, the control
+    # plane, and the worker's `uv run` subprocess orphaned on the runner --
+    # exactly the kind of leftover process a shared uv cache's post-job prune
+    # can then contend with.
+    def _terminated(signum: int, frame: FrameType | None) -> None:
+        raise SystemExit(f"evidence harness received signal {signum}")
+
+    signal.signal(signal.SIGTERM, _terminated)
+
     measurements: dict[str, Any] = {
         "evidence_version": 1,
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
