@@ -354,14 +354,14 @@ def argument_similarity(
             return target_sim
         return config.weight_target * target_sim + config.weight_arg_rest * target_sim
 
-    ta, tb = a.target, b.target
-    if ta or tb:
+    target_a, target_b = a.target, b.target
+    if target_a or target_b:
         if "path" in a.args or "path" in b.args:
-            target_sim = path_similarity(ta, tb)
+            target_sim = path_similarity(target_a, target_b)
         elif "query" in a.args or "query" in b.args:
-            target_sim = token_jaccard(ta, tb)
+            target_sim = token_jaccard(target_a, target_b)
         else:
-            target_sim = 1.0 if ta == tb else 0.0
+            target_sim = 1.0 if target_a == target_b else 0.0
     else:
         target_sim = 1.0
 

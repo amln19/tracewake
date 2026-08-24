@@ -14,6 +14,7 @@ from .events import (
     BlobRef,
     DecodeParams,
     EnvironmentEvent,
+    EnvironmentSource,
     EventMeta,
     FsReadEvent,
     FsWriteEvent,
@@ -172,9 +173,11 @@ class StreamHandle:
         exc_type: type[BaseException] | None,
         exc: BaseException | None,
         tb: TracebackType | None,
-    ) -> bool:
+    ) -> Literal[False]:
         # A caller that breaks out early, or a backend that fails mid-stream,
         # still made a model call. An unrecorded call silently breaks replay.
+        # Never suppresses: the exception that triggered this context, if any,
+        # must keep propagating.
         if self._response is not None:
             return False
         if exc_type is None:
@@ -569,7 +572,7 @@ class Session:
         self._append(event)
         self._outcome = event
 
-    def env_value(self, source: str, key: str | None, produce: Callable[[], Any]) -> Any:
+    def env_value(self, source: EnvironmentSource, key: str | None, produce: Callable[[], Any]) -> Any:
         if self.can_replay and not self.forked:
             found, value = self._pop_env(source, key)
             if found:
@@ -593,7 +596,7 @@ class Session:
         )
         return value
 
-    def _pop_env(self, source: str, key: str | None) -> tuple[bool, Any]:
+    def _pop_env(self, source: EnvironmentSource, key: str | None) -> tuple[bool, Any]:
         values = self._env.get((source, key))
         if not values:
             return (False, None)

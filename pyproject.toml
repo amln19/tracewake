@@ -37,7 +37,7 @@ bench = [
     "pyarrow>=15",
     "datasets>=2.14",
 ]
-dev = ["pytest>=8.4", "ruff>=0.16"]
+dev = ["pytest>=8.4", "ruff>=0.16", "mypy>=2.0"]
 
 [build-system]
 requires = ["hatchling"]
@@ -74,6 +74,24 @@ target-version = "py313"
 # managers as separate, readable setup steps -- every current instance is
 # in tests/.
 ignore = ["ISC004", "SIM117"]
+
+[tool.mypy]
+# "normal application code" per AGENTS.md -- the shipped library and CLI, not
+# tests, bench/, evidence/, or the corpus tooling, which lean on looser,
+# dynamic patterns by convention (fixtures, mocks, ad-hoc dicts).
+files = ["tracewake"]
+python_version = "3.13"
+disallow_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+# Optional, lazily-imported dependencies (see the aws/embeddings extras and
+# tracewake/worker.py's inline `import boto3`): never installed in the base
+# dev environment, so mypy cannot see their stubs. Not a blanket ignore --
+# every other missing import still fails loudly.
+module = ["boto3", "huggingface_hub", "mlx_embeddings"]
+ignore_missing_imports = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["tracewake"]

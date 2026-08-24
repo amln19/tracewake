@@ -17,9 +17,10 @@ import uuid
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from .align import LexicalEmbedder, diff_runs, extract_steps
 from .bundle import ValidatedBundle, bundle_header, validate_bundle
@@ -48,8 +49,8 @@ CANCELLATION_SECONDS = 1
 # One attempt output. Analyses summarise a bundle instead of copying it, so a
 # larger output means a defect rather than a large run.
 MAX_ARTIFACT_BYTES = 64 * 1024 * 1024
-HOSTED_PROFILE = "align-v2"
-LOCALIZE_PROFILE = "localize-v1"
+HOSTED_PROFILE: Final = "align-v2"
+LOCALIZE_PROFILE: Final = "localize-v1"
 
 log = logging.getLogger("tracewake.worker")
 
@@ -116,9 +117,13 @@ class ControlPlaneNotifications:
             return None
         delivery = json.loads(raw)
         identifier = delivery["notification_id"]
+
+        def acknowledge() -> None:
+            self._client.request("POST", f"/internal/v1/notifications/{identifier}/ack")
+
         return Delivery(
             notification=delivery["notification"],
-            acknowledge=lambda: self._client.request("POST", f"/internal/v1/notifications/{identifier}/ack"),
+            acknowledge=acknowledge,
             extend_visibility=lambda _seconds: None,
         )
 
@@ -324,7 +329,7 @@ def _validate(client: WorkerClient, claim: dict[str, Any], root: Path) -> dict[s
         analysis_profile="bundle-validation-v1",
         tracewake_version=version("tracewake"),
         worker_build=os.environ.get("TRACEWAKE_WORKER_BUILD", "local"),
-        produced_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        produced_at=datetime.now(UTC),
     )
     result = ValidationResult(
         schema_version=1,
@@ -383,7 +388,7 @@ def _reference(identity: dict[str, Any]) -> ArtifactRef:
 
 
 def _result_provenance(claim: dict[str, Any], bundles: list[ValidatedBundle], profile: str) -> ResultProvenance:
-    return ResultProvenance(inputs=[_provenance(artifact,bundle) for artifact,bundle in zip(claim["input_artifacts"],bundles,strict=True)],analysis_profile=profile,tracewake_version=version("tracewake"),worker_build=os.environ.get("TRACEWAKE_WORKER_BUILD","local"),produced_at=time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()))
+    return ResultProvenance(inputs=[_provenance(artifact,bundle) for artifact,bundle in zip(claim["input_artifacts"],bundles,strict=True)],analysis_profile=profile,tracewake_version=version("tracewake"),worker_build=os.environ.get("TRACEWAKE_WORKER_BUILD","local"),produced_at=datetime.now(UTC))
 
 
 def _analysis(envelope: ResultEnvelope, kind: str, companion: dict[str, Any]) -> dict[str, Any]:

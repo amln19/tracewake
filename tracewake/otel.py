@@ -74,7 +74,7 @@ def _span(
     attributes: dict[str, Any],
     error: str | None = None,
 ) -> dict[str, Any]:
-    span = {
+    span: dict[str, Any] = {
         "traceId": _trace_id(run_id),
         "spanId": _span_id(run_id, key),
         "name": name,

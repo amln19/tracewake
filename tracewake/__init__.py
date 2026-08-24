@@ -189,6 +189,11 @@ def _open_session(
         scrubbed = (
             [redactor.text(part) for part in command] if command is not None else None
         )
+        # Declared here, not inferred from either branch below: both branches
+        # narrow it back to non-None by the time it reaches Session(), but they
+        # do it through different logic and mypy does not join that across an
+        # if/else on its own.
+        header: RunHeader | None
         if intervention is not None:
             # A fork only ever reads the source's events: it serves no recorded
             # tool result and no recorded file read, so the source can live in a

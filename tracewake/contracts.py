@@ -4,7 +4,7 @@ import argparse
 import json
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Final, Literal
 from uuid import UUID
 
 from pydantic import (
@@ -16,8 +16,16 @@ from pydantic import (
     model_validator,
 )
 
-CONTRACT_SCHEMA_VERSION = 1
-WORKER_PROTOCOL_VERSION = 1
+# Every `Literal[CONTRACT_SCHEMA_VERSION]` / `Literal[WORKER_PROTOCOL_VERSION]`
+# field below carries a `# type: ignore[valid-type]`: PEP 586 only allows a
+# Literal type parameter to be written as a literal, not a name, even a Final
+# one, so mypy rejects referencing these constants there. Pydantic has no such
+# restriction -- it builds a runtime validator from the same annotation and
+# rejects a mismatched value (verified directly; no fixture currently
+# exercises this path). Widening the field to plain int would satisfy mypy
+# and silently accept any schema or protocol version instead.
+CONTRACT_SCHEMA_VERSION: Final = 1
+WORKER_PROTOCOL_VERSION: Final = 1
 
 Digest = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 TraceParent = Annotated[str, StringConstraints(pattern=r"^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$")]
@@ -43,7 +51,7 @@ class FailureCode(StrEnum):
 
 
 class Failure(ContractModel):
-    schema_version: Literal[CONTRACT_SCHEMA_VERSION]
+    schema_version: Literal[CONTRACT_SCHEMA_VERSION]  # type: ignore[valid-type]
     code: FailureCode
     message: BoundedMessage
     retryable: bool
@@ -81,7 +89,7 @@ class ResultProvenance(ContractModel):
 
 class ValidationResult(ContractModel):
     kind: Literal["validation"] = "validation"
-    schema_version: Literal[CONTRACT_SCHEMA_VERSION]
+    schema_version: Literal[CONTRACT_SCHEMA_VERSION]  # type: ignore[valid-type]
     valid: Literal[True]
     run_id: UUID
     event_count: int = Field(ge=0)
@@ -117,7 +125,7 @@ Confidence = Literal["high", "moderate", "low", "very low"]
 
 class DiffResult(ContractModel):
     kind: Literal["diff"] = "diff"
-    schema_version: Literal[CONTRACT_SCHEMA_VERSION]
+    schema_version: Literal[CONTRACT_SCHEMA_VERSION]  # type: ignore[valid-type]
     profile: Literal["align-v2"]
     score: float
     divergence: int | None = Field(default=None, ge=1)
@@ -141,7 +149,7 @@ class DiffResult(ContractModel):
 
 class LocalizeResult(ContractModel):
     kind: Literal["localize"] = "localize"
-    schema_version: Literal[CONTRACT_SCHEMA_VERSION]
+    schema_version: Literal[CONTRACT_SCHEMA_VERSION]  # type: ignore[valid-type]
     profile: Literal["localize-v1"]
     step: int = Field(ge=1)
     step_count: int = Field(ge=1)
@@ -159,7 +167,7 @@ class LocalizeResult(ContractModel):
 
 class OtlpResult(ContractModel):
     kind: Literal["otlp"] = "otlp"
-    schema_version: Literal[CONTRACT_SCHEMA_VERSION]
+    schema_version: Literal[CONTRACT_SCHEMA_VERSION]  # type: ignore[valid-type]
     span_count: int = Field(ge=1)
     provenance: ResultProvenance
     artifact: ArtifactRef
@@ -167,7 +175,7 @@ class OtlpResult(ContractModel):
 
 class PprofResult(ContractModel):
     kind: Literal["pprof"] = "pprof"
-    schema_version: Literal[CONTRACT_SCHEMA_VERSION]
+    schema_version: Literal[CONTRACT_SCHEMA_VERSION]  # type: ignore[valid-type]
     sample_count: int = Field(ge=0)
     provenance: ResultProvenance
     artifact: ArtifactRef
@@ -180,7 +188,7 @@ SemanticResult = Annotated[
 
 
 class ResultEnvelope(ContractModel):
-    protocol_version: Literal[WORKER_PROTOCOL_VERSION]
+    protocol_version: Literal[WORKER_PROTOCOL_VERSION]  # type: ignore[valid-type]
     status: Literal["succeeded", "failed"]
     result: SemanticResult | None = None
     failure: Failure | None = None
@@ -211,9 +219,14 @@ class AnalysisProfile(ContractModel):
     blank_token: Literal["."]
     weights: dict[Literal["tool", "args", "reasoning", "files"], float]
     argument_weights: dict[Literal["target", "rest"], float]
-    line_falloff: Literal[50.0]
-    gap_open: Literal[-1.0]
-    gap_extend: Literal[-0.2]
+    # PEP 586 does not allow float literals in Literal[...], so mypy rejects
+    # these even though Pydantic's own runtime validator enforces them exactly
+    # -- tests/test_profiles.py pins all three. Widening the annotation to
+    # plain float would satisfy mypy but also weaken that runtime enforcement,
+    # since Pydantic derives its validator from this same annotation.
+    line_falloff: Literal[50.0]  # type: ignore[valid-type]
+    gap_open: Literal[-1.0]  # type: ignore[valid-type]
+    gap_extend: Literal[-0.2]  # type: ignore[valid-type]
     score_transform: Literal["2*s-1"]
     divergence_rule: Literal["first-nonscratch-write"]
 
@@ -253,7 +266,7 @@ REQUIRED_RUNS: dict[str, int] = {"diff": 2, "localize": 1, "otlp": 1, "pprof": 1
 
 
 class JobNotification(ContractModel):
-    protocol_version: Literal[WORKER_PROTOCOL_VERSION]
+    protocol_version: Literal[WORKER_PROTOCOL_VERSION]  # type: ignore[valid-type]
     job_id: UUID
     job_version: int = Field(ge=1)
     operation: WorkerOperation
@@ -263,13 +276,13 @@ class JobNotification(ContractModel):
 
 
 class ClaimRequest(ContractModel):
-    protocol_version: Literal[WORKER_PROTOCOL_VERSION]
+    protocol_version: Literal[WORKER_PROTOCOL_VERSION]  # type: ignore[valid-type]
     notification: JobNotification
     worker_id: UUID
 
 
 class Claim(ContractModel):
-    protocol_version: Literal[WORKER_PROTOCOL_VERSION]
+    protocol_version: Literal[WORKER_PROTOCOL_VERSION]  # type: ignore[valid-type]
     job_id: UUID
     attempt_number: int = Field(ge=1, le=3)
     attempt_token: Annotated[str, StringConstraints(min_length=43, max_length=256)]
@@ -280,13 +293,13 @@ class Claim(ContractModel):
 
 
 class Heartbeat(ContractModel):
-    protocol_version: Literal[WORKER_PROTOCOL_VERSION]
+    protocol_version: Literal[WORKER_PROTOCOL_VERSION]  # type: ignore[valid-type]
     attempt_number: int = Field(ge=1, le=3)
     observed_lease_expires_at: AwareDatetime
 
 
 class Progress(ContractModel):
-    protocol_version: Literal[WORKER_PROTOCOL_VERSION]
+    protocol_version: Literal[WORKER_PROTOCOL_VERSION]  # type: ignore[valid-type]
     attempt_number: int = Field(ge=1, le=3)
     sequence: int = Field(ge=1)
     stage: Literal[
@@ -301,7 +314,7 @@ class Progress(ContractModel):
 
 
 class ArtifactCommit(ContractModel):
-    protocol_version: Literal[WORKER_PROTOCOL_VERSION]
+    protocol_version: Literal[WORKER_PROTOCOL_VERSION]  # type: ignore[valid-type]
     attempt_number: int = Field(ge=1, le=3)
     artifact: ArtifactRef
     result: SemanticResult

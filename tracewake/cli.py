@@ -16,6 +16,7 @@ import typer
 
 from .align import (
     DiffResult,
+    EmbedFn,
     LexicalEmbedder,
     MlxEmbedder,
     diff_runs,
@@ -230,9 +231,7 @@ def record(
     if mode not in RECORD_MODES:
         raise typer.BadParameter(f"unknown mode {mode!r}; choose from {', '.join(RECORD_MODES)}.")
     target = name or Path(command[0]).name
-    code, run_id, replay = _run_child(
-        target, command, store, mode, redact=not no_redact  # type: ignore[arg-type]
-    )
+    code, run_id, replay = _run_child(target, command, store, mode, redact=not no_redact)
     db = Store(store)
     # Pure replay must not rewrite the recording. When the child owned the run,
     # reconcile status with the process exit code (the session context only
@@ -425,6 +424,7 @@ def _align_pair(
     good_events = db.events(good_header.run_id)
     bad_events = db_b.events(bad_header.run_id)
 
+    embed: EmbedFn
     if lexical:
         embed = LexicalEmbedder()
         model_id = "lexical"

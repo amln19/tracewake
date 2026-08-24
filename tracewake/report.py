@@ -15,13 +15,21 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from .align import DiffResult, Step, StepTrace, extract_traces, target_agree, target_of
 from .diverge import RELIABILITY_BAND, localize
 from .events import ModelCallEvent, OutcomeEvent, RunHeader, StoredEvent
 from .pprof import attribute_tokens
-from .store import BlobStore
+
+
+class BlobSource(Protocol):
+    """What the report reads a blob store for. `BlobStore` and the hosted
+    worker's in-memory `_BundleBlobs` both satisfy this without either naming
+    the other."""
+
+    def has(self, digest: str) -> bool: ...
+    def get(self, digest: str) -> bytes: ...
 
 PAYLOAD_BUDGET = 5_000_000
 
@@ -110,7 +118,7 @@ def _spend(header: RunHeader, events: list[StoredEvent]) -> list[dict[str, Any]]
         slot = totals.setdefault(share.leaf, [0, 0])
         slot[0] += share.input_tokens
         slot[1] += share.output_tokens
-    rows = [
+    rows: list[dict[str, Any]] = [
         {"leaf": leaf, "input_tokens": inp, "output_tokens": out}
         for leaf, (inp, out) in totals.items()
     ]
@@ -161,7 +169,7 @@ def _step_details(
     traces: list[StepTrace],
     events: list[StoredEvent],
     blocks: _Blocks,
-    blobs: BlobStore | None,
+    blobs: BlobSource | None,
 ) -> list[dict[str, Any]]:
     calls = {e.event.call_id: e.event for e in events if isinstance(e.event, ModelCallEvent)}
     # An intervention is addressed by model call, and a turn that produced no
@@ -240,8 +248,8 @@ def build_payload(
     bad_events: list[StoredEvent],
     result: DiffResult,
     *,
-    blobs: BlobStore | None = None,
-    blobs_b: BlobStore | None = None,
+    blobs: BlobSource | None = None,
+    blobs_b: BlobSource | None = None,
     store_path: str = "",
     store_path_b: str | None = None,
     budget: int = PAYLOAD_BUDGET,
@@ -337,8 +345,8 @@ def write_report(
     bad_events: list[StoredEvent],
     result: DiffResult,
     *,
-    blobs: BlobStore | None = None,
-    blobs_b: BlobStore | None = None,
+    blobs: BlobSource | None = None,
+    blobs_b: BlobSource | None = None,
     store_path: str = "",
     store_path_b: str | None = None,
     budget: int = PAYLOAD_BUDGET,

@@ -16,6 +16,7 @@ from types import CodeType
 from typing import TYPE_CHECKING, Any
 
 from .config import Config
+from .events import EnvironmentSource
 
 if TYPE_CHECKING:
     from .session import Session
@@ -65,9 +66,9 @@ def _frame_files(*functions: Any) -> frozenset[str]:
 # `shuffle` reach `getrandbits`. The frame that decides whether a call is worth
 # recording is the one above the forwarding layer, not the layer itself.
 _Mapping = sys.modules["_collections_abc"].Mapping
-_ENV_FORWARDERS = _frame_files(
-    os.getenv, _Mapping.get, _Mapping.__contains__
-) | frozenset({os.__file__, sys.modules["_collections_abc"].__file__})
+_ENV_FORWARDERS = _frame_files(os.getenv, _Mapping.get, _Mapping.__contains__) | frozenset(
+    f for f in (os.__file__, sys.modules["_collections_abc"].__file__) if f is not None
+)
 _RANDOM_FORWARDERS = _frame_files(
     random.randint, random.choice, random.shuffle, random.sample
 ) | frozenset({random.__file__})
@@ -191,10 +192,12 @@ class _Patcher:
         self._undo.append(lambda: instance.__dict__.pop(name, None))
         setattr(instance, name, value)
 
-    def _value(self, source: str, key: str | None, produce: Callable[[], Any]) -> Any:
+    def _value(self, source: EnvironmentSource, key: str | None, produce: Callable[[], Any]) -> Any:
         return self._session.env_value(source, key, produce)
 
-    def _clock(self, source: str, key: str | None, real: Callable[[], Any]) -> Callable[[], Any]:
+    def _clock(
+        self, source: EnvironmentSource, key: str | None, real: Callable[[], Any]
+    ) -> Callable[[], Any]:
         def patched() -> Any:
             if not _caller_is_instrumented():
                 return real()
@@ -213,14 +216,15 @@ class _Patcher:
         self._install_environ()
 
     def _install_time(self) -> None:
-        for name, source, key in (
+        installs: tuple[tuple[str, EnvironmentSource, str | None], ...] = (
             ("time", "clock", None),
             ("time_ns", "clock", "ns"),
             ("monotonic", "monotonic", None),
             ("monotonic_ns", "monotonic", "ns"),
             ("perf_counter", "perf_counter", None),
             ("perf_counter_ns", "perf_counter", "ns"),
-        ):
+        )
+        for name, source, key in installs:
             self._set(time, name, self._clock(source, key, getattr(time, name)))
 
     # datetime.now / date.today are not patched: on current CPython the type is

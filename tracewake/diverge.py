@@ -24,8 +24,8 @@ See `contracts/divergence.md` for the measured comparison and the limits.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import Literal
+from collections.abc import Callable, Sequence
+from typing import Final, Literal
 
 from .align import Step
 
@@ -42,7 +42,8 @@ def creates_files(step: Step) -> bool:
 
 
 def _commitments(
-    steps: Sequence[Step], writes_of=lambda step: set(step.writes)
+    steps: Sequence[Step],
+    writes_of: Callable[[Step], set[str]] = lambda step: set(step.writes),
 ) -> list[tuple[int, frozenset[str]]]:
     """(1-based index, paths) for each step that changes pre-existing state.
 
@@ -85,7 +86,7 @@ def commitment_steps(steps: Sequence[Step]) -> list[int]:
     return [i for i, _ in _commitments(steps)]
 
 
-SCRATCH_FALLBACK = 12
+SCRATCH_FALLBACK: Final = 12
 
 
 def first_nonscratch_write(bad: Sequence[Step]) -> int:
@@ -154,6 +155,10 @@ Reliability = Literal[
     "commit-short", "silent-short", "commit-long-single",
     "commit-long-many", "silent-long",
 ]
+# Not shared with contracts.py's own Confidence: that one is part of a frozen
+# wire contract and must not silently follow this module if the local rule's
+# classes ever change, per AGENTS.md's versioning invariant.
+Confidence = Literal["high", "moderate", "low", "very low"]
 
 # How far to trust the answer, as a band rather than a number. The classes hold
 # their order across three independent evaluations, which is what makes
@@ -162,14 +167,14 @@ Reliability = Literal[
 # commit-long-single 70% (n=23), commit-long-many 36% (n=144), silent-short 29%
 # (n=7), silent-long 11% (n=19). The two sparse classes swing by tens of points
 # between evaluations and are banded conservatively for that reason.
-RELIABILITY_BAND: dict[str, str] = {
+RELIABILITY_BAND: dict[Reliability, Confidence] = {
     "commit-short": "high",
     "commit-long-single": "moderate",
     "commit-long-many": "low",
     "silent-short": "low",
     "silent-long": "very low",
 }
-LONG_TRACE = 18
+LONG_TRACE: Final = 18
 
 
 def reliability(bad: Sequence[Step]) -> Reliability:

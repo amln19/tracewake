@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -189,8 +190,10 @@ class ModelCallEvent(Event):
                 f"{len(self.response.text)} chars in response.text. The stream adapter is "
                 f"dropping or duplicating deltas; fix it before recording."
             )
+        # Tool call ids are always strings by construction (`ToolCallRequest.id:
+        # str`), but the delta's own type is the general JsonValue union.
         delta_ids = [
-            c.tool_call_delta["id"]
+            str(c.tool_call_delta["id"])
             for c in self.stream.chunks
             if c.tool_call_delta is not None and "id" in c.tool_call_delta
         ]
@@ -219,9 +222,12 @@ class ToolCallEvent(Event):
     error: str | None = None
 
 
+EnvironmentSource = Literal["clock", "monotonic", "perf_counter", "random", "uuid", "env"]
+
+
 class EnvironmentEvent(Event):
     type: Literal["environment"] = "environment"
-    source: Literal["clock", "monotonic", "perf_counter", "random", "uuid", "env"]
+    source: EnvironmentSource
     key: str | None = None
     value: CanonicalValue
 
@@ -310,7 +316,7 @@ class StoredEvent(BaseModel):
     event: AnyEvent
 
 
-def canonical_order(events: list[StoredEvent]) -> list[StoredEvent]:
+def canonical_order(events: Sequence[StoredEvent]) -> list[StoredEvent]:
     """Order a run's events deterministically.
 
     Not `seq` order. Sequence numbers are assigned at insert time, so a parallel
@@ -344,7 +350,7 @@ def canonical_order(events: list[StoredEvent]) -> list[StoredEvent]:
     return sorted(events, key=key)
 
 
-def run_digest(events: list[StoredEvent]) -> str:
+def run_digest(events: Sequence[StoredEvent]) -> str:
     h = hashlib.sha256()
     for e in canonical_order(events):
         h.update(e.event.canonical_bytes())
