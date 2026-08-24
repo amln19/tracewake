@@ -16,7 +16,6 @@ from tracewake.contracts import (
     schema_documents,
 )
 
-
 SCHEMA_ROOT = Path(__file__).parents[1] / "contracts" / "schemas" / "v1"
 
 

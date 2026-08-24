@@ -11,7 +11,6 @@ from bench.repos import Repo, SuiteReport
 from bench.runner import Attempt
 from bench.tasks import Mutation, Task
 
-
 CLEAN = "def slice_window(xs, i, n):\n    return xs[i : i + n]\n"
 BROKEN = "def slice_window(xs, i, n):\n    return xs[i : i + n + 1]\n"
 TEST_FILE = "def test_edge():\n    assert True\n"
@@ -88,7 +87,7 @@ def test_a_wrong_but_well_formed_edit_gets_coverage_without_resolve(
 def test_the_correct_fix_gets_both(tmp_path: Path, task: Task) -> None:
     root = runner.prepare(task, tmp_path / "work")
     (root / "pkg" / "window.py").write_text(CLEAN)
-    coverage, resolve, patch = runner.grade(task, root, GREEN)
+    coverage, resolve, _patch = runner.grade(task, root, GREEN)
     assert (coverage, resolve) == (True, True)
 
 
@@ -289,7 +288,7 @@ def test_grading_survives_a_file_the_pinned_checkout_does_not_have(
     root = runner.prepare(task, tmp_path / "work")
     (root / "pkg" / "invented.py").write_text("x = 1\n")
 
-    coverage, resolve, patch = runner.grade(task, root, RED)
+    coverage, _resolve, patch = runner.grade(task, root, RED)
     assert coverage is True
     assert "invented.py" in patch
 
@@ -298,7 +297,7 @@ def test_grading_survives_a_file_the_working_copy_lost(tmp_path: Path, task: Tas
     root = runner.prepare(task, tmp_path / "work")
     (root / "pkg" / "window.py").unlink()
 
-    coverage, resolve, patch = runner.grade(task, root, RED)
+    _coverage, _resolve, patch = runner.grade(task, root, RED)
     assert "window.py" in patch, "a removed file should still show as a change"
 
 

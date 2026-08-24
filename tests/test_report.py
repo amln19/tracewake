@@ -119,7 +119,7 @@ def _built(db: Store, good: str, bad: str, budget: int = 5_000_000) -> dict[str,
 
 
 def _island(html: str) -> dict[str, Any]:
-    match = re.search(r'id="tracewake-data">(.*?)</script>', html, re.S)
+    match = re.search(r'id="tracewake-data">(.*?)</script>', html, re.DOTALL)
     assert match is not None, "the report has no embedded data island"
     return json.loads(match.group(1))
 
@@ -133,7 +133,7 @@ def test_the_page_carries_its_data_and_references_nothing_external(
     # A report that fetches anything is not self-contained: it would break from a
     # file:// page, offline, or behind a README link. Recorded content may name a
     # URL of its own, so only the page around the data island is checked.
-    page = re.sub(r'id="tracewake-data">.*?</script>', "", html, flags=re.S)
+    page = re.sub(r'id="tracewake-data">.*?</script>', "", html, flags=re.DOTALL)
     assert not re.search(r'(?:src|href)\s*=\s*"(?!#)', page)
     assert "http://" not in page and "https://" not in page
     assert "@import" not in page and "url(" not in page

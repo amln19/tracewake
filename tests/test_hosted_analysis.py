@@ -16,7 +16,6 @@ from typing import Any
 import pytest
 
 import tracewake
-from tracewake import worker
 from tracewake import (
     DecodeParams,
     Message,
@@ -25,12 +24,13 @@ from tracewake import (
     ToolCallRequest,
     ToolOutcome,
     Usage,
+    worker,
 )
 from tracewake.align import LexicalEmbedder, diff_runs, extract_steps
 from tracewake.bundle import build_bundle, bundle_header, validate_bundle
+from tracewake.cassette import export_cassette
 from tracewake.contracts import REQUIRED_PROFILE
 from tracewake.diverge import RELIABILITY_BAND, localize
-from tracewake.cassette import export_cassette
 from tracewake.otel import build_spans, encode_spans
 from tracewake.pprof import (
     attribute_tokens,

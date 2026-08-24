@@ -6,7 +6,12 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from .cassette import CASSETTE_FORMAT_VERSION, export_cassette, import_cassette, read_header
+from .cassette import (
+    CASSETTE_FORMAT_VERSION,
+    export_cassette,
+    import_cassette,
+    read_header,
+)
 from .config import (
     MATCHERS,
     RECORD_MODES,
@@ -69,11 +74,11 @@ from .session import plan_intervention as _check
 from .store import STORE_SCHEMA_VERSION, BlobStore, Store
 
 __all__ = [
+    "CASSETTE_FORMAT_VERSION",
+    "EVENT_SCHEMA_VERSION",
     "MATCHERS",
     "RECORD_MODES",
     "REDACTED",
-    "CASSETTE_FORMAT_VERSION",
-    "EVENT_SCHEMA_VERSION",
     "SCHEMA_VERSION",
     "STORE_SCHEMA_VERSION",
     "BlobRef",

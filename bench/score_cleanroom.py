@@ -47,8 +47,10 @@ def _load_test() -> dict[str, list[tuple[str, int, list]]]:
     """Every withheld trajectory, grouped by pool."""
     import pyarrow.parquet as pq
 
-    from .external import strip_terminal, to_steps as oh_steps
-    from .nebius import _snapshot, to_steps as neb_steps
+    from .external import strip_terminal
+    from .external import to_steps as oh_steps
+    from .nebius import _snapshot
+    from .nebius import to_steps as neb_steps
     from .relabel import _bulk_rows, _openhands_snapshot, draw_test, load_steps
     from .rootse import load_failures
 

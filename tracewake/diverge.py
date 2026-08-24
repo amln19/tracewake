@@ -24,7 +24,6 @@ See `contracts/divergence.md` for the measured comparison and the limits.
 
 from __future__ import annotations
 
-from collections import Counter
 from collections.abc import Sequence
 from typing import Literal
 
@@ -125,7 +124,7 @@ def first_nonscratch_write(bad: Sequence[Step]) -> int:
             if path in read or (scratch is not None and path != scratch):
                 return index
         if written and scratch is None:
-            scratch = sorted(written)[0]
+            scratch = min(written)
         read |= {t for t in step.targets if t and t not in written}
     return min(SCRATCH_FALLBACK, len(bad)) if bad else 1
 

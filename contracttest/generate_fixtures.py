@@ -29,7 +29,14 @@ from tracewake.contracts import (
     UploadDeclaration,
     ValidationResult,
 )
-from tracewake.events import BlobRef, EventMeta, OutcomeEvent, StoredEvent, run_digest, sha256_hex
+from tracewake.events import (
+    BlobRef,
+    EventMeta,
+    OutcomeEvent,
+    StoredEvent,
+    run_digest,
+    sha256_hex,
+)
 
 RUN_ID = "018f7f28-df62-7bc4-9f45-6e6c32a19484"
 JOB_ID = "018f7f28-df62-7bc4-9f45-6e6c32a19485"

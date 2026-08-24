@@ -7,11 +7,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+from mock_agent import MockBackend, Transcript, run_agent
+
 import tracewake
 from tracewake import Store
 from tracewake.otel import build_spans
-
-from mock_agent import MockBackend, Transcript, run_agent
 
 
 def _record(tmp_path: Path) -> tuple[str, MockBackend]:
@@ -37,7 +37,7 @@ def _attrs(span: dict) -> dict:
     for pair in span["attributes"]:
         (kind, value), = pair["value"].items()
         out[pair["key"]] = value if kind != "arrayValue" else [
-            list(v.values())[0] for v in value["values"]
+            next(iter(v.values())) for v in value["values"]
         ]
     return out
 

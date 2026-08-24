@@ -20,7 +20,7 @@ def _serve(payload: bytes) -> tuple[HTTPServer, str]:
     """A control plane that hands out a download URL for `payload`."""
 
     class Handler(BaseHTTPRequestHandler):
-        def do_GET(self) -> None:  # noqa: N802
+        def do_GET(self) -> None:
             if self.path.endswith("/download"):
                 body = json.dumps(
                     {
@@ -80,7 +80,7 @@ def test_delete_sends_one_deletion_request(runner: CliRunner) -> None:
     seen: list[tuple[str, str]] = []
 
     class Handler(BaseHTTPRequestHandler):
-        def do_DELETE(self) -> None:  # noqa: N802
+        def do_DELETE(self) -> None:
             seen.append((self.command, self.path))
             self.send_response(204)
             self.send_header("Content-Length", "0")

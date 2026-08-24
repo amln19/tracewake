@@ -167,7 +167,10 @@ def _read_events(path: Path, header: CassetteHeader, source: Path) -> list[Store
                         f"actual value failed to parse: {exc}."
                     ) from exc
                 if not isinstance(data, dict):
-                    raise ValueError(
+                    # ValueError, not TypeError: this is untrusted cassette content
+                    # failing validation, not a Python API misuse. Tests and the
+                    # CLI's error handler both catch ValueError specifically.
+                    raise ValueError(  # noqa: TRY004
                         f"cassette {source} entry {path} line {number} expected an event object; "
                         f"actual value is {type(data).__name__}."
                     )
@@ -178,7 +181,7 @@ def _read_events(path: Path, header: CassetteHeader, source: Path) -> list[Store
                     )
                 seq = data.pop("seq")
                 if isinstance(seq, bool) or not isinstance(seq, int):
-                    raise ValueError(
+                    raise ValueError(  # noqa: TRY004 -- untrusted content, see above
                         f"cassette {source} entry {path} line {number} expected integer "
                         f"sequence; actual value is {seq!r}."
                     )

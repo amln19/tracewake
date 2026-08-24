@@ -69,7 +69,7 @@ class LocalModel:
         _load(self.model_id)
 
     def _prompt(self, messages: list[Message]) -> str:
-        model, tokenizer = _load(self.model_id)
+        _model, tokenizer = _load(self.model_id)
         chat = [{"role": m.role, "content": m.content} for m in messages]
         return tokenizer.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
 

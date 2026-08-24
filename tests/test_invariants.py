@@ -28,7 +28,7 @@ from tracewake import (
 from tracewake.cassette import _blob_digests, export_cassette, import_cassette
 from tracewake.cli import _restore_command
 from tracewake.config import Config
-from tracewake.events import BlobRef, EVENT_ADAPTER
+from tracewake.events import EVENT_ADAPTER, BlobRef
 from tracewake.redaction import HOME_PLACEHOLDER, Redactor
 
 

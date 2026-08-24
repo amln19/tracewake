@@ -262,7 +262,7 @@ class Stack:
 
 def _terminate(process: subprocess.Popen[bytes] | None, kill: bool) -> None:
     if process is None or process.poll() is not None:
-        return None
+        return
     number = signal.SIGKILL if kill else signal.SIGTERM
     try:
         os.killpg(os.getpgid(process.pid), number)
@@ -276,7 +276,7 @@ def _terminate(process: subprocess.Popen[bytes] | None, kill: bool) -> None:
         except (ProcessLookupError, PermissionError):
             process.kill()
         process.wait(timeout=5)
-    return None
+    return
 
 
 def wait_for(condition: Any, seconds: float, description: str, interval: float = 0.2) -> Any:

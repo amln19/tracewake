@@ -5,8 +5,9 @@ import os
 import shutil
 import time
 import warnings
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import pytest
 
@@ -29,7 +30,12 @@ from tracewake.cassette import (
     import_cassette,
     read_header,
 )
-from tracewake.events import EVENT_ADAPTER, EVENT_SCHEMA_VERSION, StoredEvent, sha256_hex
+from tracewake.events import (
+    EVENT_ADAPTER,
+    EVENT_SCHEMA_VERSION,
+    StoredEvent,
+    sha256_hex,
+)
 
 
 def _create(model_id: str, messages: list[Message], params: DecodeParams) -> ModelResponse:

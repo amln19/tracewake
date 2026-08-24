@@ -10,11 +10,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from mock_agent import MockBackend, Transcript, run_agent
 
 import tracewake
 from bench.counterfactual import _run_index, fork_diff
-
-from mock_agent import MockBackend, Transcript, run_agent
 
 
 def _record(store: Path) -> str:

@@ -27,7 +27,14 @@ import argparse
 from typing import Any
 
 import tracewake
-from tracewake import DecodeParams, Message, ModelResponse, ToolCallRequest, ToolOutcome, Usage
+from tracewake import (
+    DecodeParams,
+    Message,
+    ModelResponse,
+    ToolCallRequest,
+    ToolOutcome,
+    Usage,
+)
 
 CITY_WEATHER = {"lisbon": "68F and sunny"}
 

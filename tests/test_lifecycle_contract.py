@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-
 CONTRACT = json.loads(
     (Path(__file__).parents[1] / "contracts" / "lifecycle-v1.json").read_text(
         encoding="utf-8"

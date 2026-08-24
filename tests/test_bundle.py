@@ -15,8 +15,7 @@ from tracewake.bundle import (
     build_bundle,
     validate_bundle,
 )
-from tracewake.cassette import export_cassette
-from tracewake.cassette import CassetteHeader
+from tracewake.cassette import CassetteHeader, export_cassette
 from tracewake.events import EVENT_SCHEMA_VERSION, run_digest, sha256_hex
 from tracewake.store import Store
 

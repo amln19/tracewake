@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from bench.repos import Repo, _parse, stabilize_pytest_output
 from bench.tasks import (
     Mutation,
     apply_mutation,
@@ -12,7 +13,6 @@ from bench.tasks import (
     relative_source_files,
     write_issue,
 )
-from bench.repos import Repo, _parse, stabilize_pytest_output
 
 
 def _mutations(source: str, operator: str | None = None) -> list[tuple[Mutation, str]]:

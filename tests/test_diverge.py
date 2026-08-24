@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from tracewake.align import Step
 from tracewake.diverge import (
     RELIABILITY_BAND,
@@ -104,8 +102,9 @@ def test_every_class_carries_a_confidence_band():
     re-measured on fresh data and the percentages do not, so quoting one was
     false precision on a figure with a twelve-point interval.
     """
-    from tracewake.diverge import Reliability
     import typing
+
+    from tracewake.diverge import Reliability
     assert set(RELIABILITY_BAND) == set(typing.get_args(Reliability))
     assert RELIABILITY_BAND["commit-short"] == "high"
     assert RELIABILITY_BAND["silent-long"] == "very low"

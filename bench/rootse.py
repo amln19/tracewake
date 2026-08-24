@@ -330,8 +330,7 @@ def _predict(good, bad):
         first_target_difference,
         last_common_prefix,
     )
-    from tracewake.diverge import first_nonscratch_write
-    from tracewake.diverge import reliability
+    from tracewake.diverge import first_nonscratch_write, reliability
 
     embed = LexicalEmbedder()
     _, aligned, _ = align(good, bad, embed=embed)

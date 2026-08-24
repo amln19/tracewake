@@ -19,7 +19,6 @@ from tracewake.contracts import (
 )
 from tracewake.events import sha256_hex
 
-
 ROOT = Path(__file__).parents[1] / "contracttest" / "fixtures" / "v1"
 MODELS = {
     "failure": Failure,

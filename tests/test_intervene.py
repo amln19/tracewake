@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from mock_agent import MockBackend, Transcript, run_agent
 
 import tracewake
 from tracewake import (
@@ -16,8 +17,6 @@ from tracewake import (
     run_digest,
 )
 from tracewake.session import ReplayMiss
-
-from mock_agent import MockBackend, Transcript, run_agent
 
 
 def _record(tmp_path: Path) -> tuple[str, MockBackend]:

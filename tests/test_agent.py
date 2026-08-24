@@ -8,9 +8,16 @@ from pathlib import Path
 import pytest
 
 import tracewake
-from tracewake import DecodeParams, Message, ModelCallEvent, ModelResponse, Store, StreamChunk, Usage
-
 from bench import agent
+from tracewake import (
+    DecodeParams,
+    Message,
+    ModelCallEvent,
+    ModelResponse,
+    Store,
+    StreamChunk,
+    Usage,
+)
 
 
 @pytest.fixture
@@ -75,7 +82,7 @@ def drive(
 
 
 def test_a_full_turn_reads_edits_and_submits(tmp_path: Path, repo: Path) -> None:
-    trace, run_id, test_calls = drive(
+    trace, _run_id, test_calls = drive(
         tmp_path / "store",
         repo,
         [
@@ -172,7 +179,7 @@ def test_editing_a_test_file_is_refused(tmp_path: Path, repo: Path) -> None:
 
 def test_an_ambiguous_edit_is_refused_rather_than_guessing(tmp_path: Path, repo: Path) -> None:
     (repo / "pkg" / "dup.py").write_text("a = 1\nb = 1\n", encoding="utf-8")
-    trace, run_id, _ = drive(
+    trace, _run_id, _ = drive(
         tmp_path / "store",
         repo,
         [
@@ -187,7 +194,7 @@ def test_an_ambiguous_edit_is_refused_rather_than_guessing(tmp_path: Path, repo:
 def test_reading_outside_the_repo_is_refused(tmp_path: Path, repo: Path) -> None:
     secret = tmp_path / "secret.txt"
     secret.write_text("not the agent's business")
-    trace, run_id, _ = drive(
+    _trace, run_id, _ = drive(
         tmp_path / "store",
         repo,
         [
@@ -382,7 +389,7 @@ def test_a_large_file_is_windowed_rather_than_gutted(tmp_path: Path, repo: Path)
     lines[599] = "BUG_IS_HERE = True"
     (repo / "pkg" / "big.py").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    trace, run_id, _ = drive(
+    _trace, run_id, _ = drive(
         tmp_path / "store",
         repo,
         [
@@ -525,7 +532,7 @@ def test_an_edit_makes_earlier_reads_and_tests_repeatable_again(
     edit = block(
         '{"action": "edit_file", "path": "pkg/window.py", "old": "i + n + 1", "new": "i + n"}'
     )
-    trace, run_id, test_calls = drive(
+    trace, _run_id, test_calls = drive(
         tmp_path / "store",
         repo,
         [read, test, edit, read, test, block('{"action": "submit"}')],
@@ -573,7 +580,7 @@ def test_an_edit_that_breaks_the_file_says_so_at_once(tmp_path: Path, repo: Path
         "    return None\n",
         encoding="utf-8",
     )
-    trace, run_id, _ = drive(
+    _trace, run_id, _ = drive(
         tmp_path / "store",
         repo,
         [
@@ -703,7 +710,7 @@ def test_a_stripped_single_line_snippet_also_matches(tmp_path: Path, repo: Path)
 
 
 def test_a_genuinely_absent_snippet_is_still_refused(tmp_path: Path, repo: Path) -> None:
-    trace, run_id, _ = drive(
+    trace, _run_id, _ = drive(
         tmp_path / "store",
         repo,
         [
@@ -719,7 +726,7 @@ def test_a_genuinely_absent_snippet_is_still_refused(tmp_path: Path, repo: Path)
 
 def test_search_finds_matches_in_test_files_too(tmp_path: Path, repo: Path) -> None:
     """The issue text names failing tests, and search must be able to find them."""
-    trace, run_id, _ = drive(
+    _trace, run_id, _ = drive(
         tmp_path / "store",
         repo,
         [
@@ -763,7 +770,7 @@ def test_retrying_a_stale_snippet_shows_the_current_file_not_just_an_error(
 ) -> None:
     """Taken from a real run: a stale 'old' after a broken edit repeated forever
     because the error told it to re-read rather than showing the current state."""
-    trace, run_id, _ = drive(
+    _trace, run_id, _ = drive(
         tmp_path / "store",
         repo,
         [
@@ -797,7 +804,7 @@ def test_a_multiline_repair_matches_even_when_offset_by_whitespace(
     (repo / "pkg" / "cond.py").write_text(
         "def f(x):\n    if x:\n        return 1\n    return 0\n", encoding="utf-8"
     )
-    trace, run_id, _ = drive(
+    trace, _run_id, _ = drive(
         tmp_path / "store",
         repo,
         [

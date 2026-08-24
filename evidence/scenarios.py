@@ -7,9 +7,9 @@ import json
 import subprocess
 import time
 import urllib.error
+from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
-from collections.abc import Iterator
 from typing import Any
 
 from tracewake.worker import WorkerClient

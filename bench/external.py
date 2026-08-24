@@ -191,9 +191,12 @@ def to_steps(
                 # a second edit to the same path adds nothing to it while still
                 # being a write.
                 command = name.rpartition(".")[2]
-                if name.startswith(f"{_EDITOR}.") and command in _EDIT_COMMANDS:
-                    if args.get("path"):
-                        written.add(str(args["path"]))
+                if (
+                    name.startswith(f"{_EDITOR}.")
+                    and command in _EDIT_COMMANDS
+                    and args.get("path")
+                ):
+                    written.add(str(args["path"]))
             names.append(name)
             targets.append(str(args.get("path", "")))
             merged.update(args)

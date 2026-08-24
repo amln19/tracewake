@@ -23,13 +23,24 @@ from typing import Any
 
 from .align import LexicalEmbedder, diff_runs, extract_steps
 from .bundle import ValidatedBundle, bundle_header, validate_bundle
-from .contracts import REQUIRED_PROFILE, AlignmentColumn, ArtifactRef, DiffResult as ContractDiffResult, LocalizeResult, OtlpResult, PprofResult, ResultEnvelope, ResultProvenance, RunProvenance, ValidationResult
+from .contracts import (
+    REQUIRED_PROFILE,
+    AlignmentColumn,
+    ArtifactRef,
+    LocalizeResult,
+    OtlpResult,
+    PprofResult,
+    ResultEnvelope,
+    ResultProvenance,
+    RunProvenance,
+    ValidationResult,
+)
+from .contracts import DiffResult as ContractDiffResult
 from .diverge import RELIABILITY_BAND, localize
 from .otel import encode_spans
 from .pprof import attribute_tokens, build_token_profile, gzip_profile
 from .report import write_report
 from .telemetry import Span, Telemetry
-
 
 LEASE_SECONDS = 60
 HEARTBEAT_SECONDS = 20

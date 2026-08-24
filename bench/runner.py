@@ -22,7 +22,7 @@ from tracewake import Store
 
 from . import agent, repos
 from .backend import DEFAULT_MODEL, PROVIDER, LocalModel
-from .repos import CORPUS_ROOT, BY_NAME, SuiteReport, working_copy
+from .repos import BY_NAME, CORPUS_ROOT, SuiteReport, working_copy
 from .tasks import Task, apply_mutation, load, relative_source_files
 
 ORDER_SEED = 20260729

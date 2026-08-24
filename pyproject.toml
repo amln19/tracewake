@@ -37,11 +37,43 @@ bench = [
     "pyarrow>=15",
     "datasets>=2.14",
 ]
-dev = ["pytest>=8.4"]
+dev = ["pytest>=8.4", "ruff>=0.16"]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.ruff]
+target-version = "py313"
+# Linting only. `ruff format` disagrees with this codebase's dense,
+# single-line style in most files; adopting it is a separate, much larger
+# decision than adopting the linter, not something to fold in here.
+
+[tool.ruff.lint.per-file-ignores]
+# A worker daemon and a fault-injection harness, both of which must survive
+# and log an unexpected failure rather than die from one. Each site already
+# logs what it recovered from.
+"tracewake/worker.py" = ["BLE001"]
+# The evidence harness inspects `.returncode` itself for readiness polling and
+# expected non-zero exits (a not-yet-ready Postgres, a fault-injection probe);
+# `check=True` would turn an expected outcome into a raised exception. The
+# `open()` file handles in stack.py are passed straight into `subprocess.Popen`
+# and must outlive the function that opens them, for the life of the
+# long-running process they back; a `with` block would close them immediately.
+"evidence/scenarios.py" = ["BLE001", "PLW1510"]
+"evidence/stack.py" = ["PLW1510", "SIM115"]
+# JSON fixture strings built with `%` so their literal `{`/`}` never collide
+# with f-string interpolation syntax.
+"tests/test_agent.py" = ["UP031"]
+
+[tool.ruff.lint]
+# Implicit multi-line string concatenation inside a list/dict literal is this
+# codebase's established way to keep a long message readable; used the same
+# way a dozen times, mostly in bench/external.py. Nested `with` blocks are
+# this codebase's established test style for stacking several context
+# managers as separate, readable setup steps -- every current instance is
+# in tests/.
+ignore = ["ISC004", "SIM117"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["tracewake"]

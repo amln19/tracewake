@@ -11,7 +11,14 @@ from pathlib import Path
 from typing import Any
 
 import tracewake
-from tracewake import DecodeParams, Message, ModelResponse, ToolCallRequest, ToolOutcome, Usage
+from tracewake import (
+    DecodeParams,
+    Message,
+    ModelResponse,
+    ToolCallRequest,
+    ToolOutcome,
+    Usage,
+)
 from tracewake.bundle import build_bundle
 from tracewake.cassette import export_cassette
 from tracewake.store import Store

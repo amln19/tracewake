@@ -35,7 +35,7 @@ from tracewake.align import (
 )
 
 from .fidelity import ledger_rows
-from .label import LABELS_FILE, LABEL_ROOT, SELECT_SEED, SelectedPair, select_pairs
+from .label import LABEL_ROOT, LABELS_FILE, SELECT_SEED, SelectedPair, select_pairs
 from .repos import CORPUS_ROOT, corpus_metadata_path
 from .runner import LEDGER, STORE
 
@@ -190,7 +190,7 @@ def run_predictions(
     preds: list[PairPred] = []
     try:
         for pair in selected:
-            good, bad, aligner, base_a, base_b = predict_pair(
+            _good, bad, aligner, base_a, base_b = predict_pair(
                 store=db, pair=pair, stops=stops, embed=embed
             )
             packet_id = packet_for_task.get(pair.task_id)

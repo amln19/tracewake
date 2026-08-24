@@ -5,7 +5,7 @@ import json
 import ssl
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 import pytest
 
@@ -292,7 +292,9 @@ def test_worker_supervisor_retries_after_an_unexpected_failure(
 class Validating(FakeClient):
     """Answers a complete validation attempt from memory."""
 
-    traces: list[str | None] = []
+    def __init__(self, bundle: bytes) -> None:
+        super().__init__(bundle)
+        self.traces: list[str | None] = []
 
     def json(self, method: str, path: str, value: Any = None, **kwargs):  # type: ignore[no-untyped-def]
         self.traces.append(self.traceparent)
@@ -314,7 +316,6 @@ def run_traced(bundle: bytes, traceparent: str | None) -> tuple[Validating, list
         notification["traceparent"] = traceparent
     stream = io.StringIO()
     client = Validating(bundle)
-    client.traces = []
     delivery = worker.Delivery(notification=notification, acknowledge=lambda: None, extend_visibility=lambda _s: None)
     source = type("Source", (), {"next": lambda _self: delivery})()
     assert run_once(client, source, Telemetry(stream=stream, environment="test"))
@@ -379,12 +380,12 @@ def test_requests_carry_the_attempt_trace_header(monkeypatch: pytest.MonkeyPatch
 
     class Response:
         status = 204
-        headers: dict[str, str] = {}
+        headers: dict[str, str] = {}  # noqa: RUF012 -- read-only; class is redefined fresh per test call
 
         def read(self) -> bytes:
             return b""
 
-        def __enter__(self) -> Response:
+        def __enter__(self) -> Self:
             return self
 
         def __exit__(self, *args: object) -> None:
@@ -415,7 +416,7 @@ def test_worker_request_trusts_the_configured_private_ca(
         def read(self) -> bytes:
             return b""
 
-        def __enter__(self) -> Response:
+        def __enter__(self) -> Self:
             return self
 
         def __exit__(self, *args: object) -> None:

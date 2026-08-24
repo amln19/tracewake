@@ -19,7 +19,7 @@ from tracewake import Store
 
 from . import agent, repos
 from .backend import DEFAULT_MODEL, PROVIDER, LocalModel
-from .repos import CORPUS_ROOT, BY_NAME
+from .repos import BY_NAME, CORPUS_ROOT
 from .runner import STORE, grade, prepare
 from .tasks import load
 
