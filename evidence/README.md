@@ -18,6 +18,9 @@ Runs take roughly ten minutes. Several scenarios wait out real timers — a
 60-second attempt lease, 5- and 30-second retry backoffs — because shortening
 them would measure a different system than the one that gets deployed.
 
+The retained local run used one control-plane process, one worker, PostgreSQL
+17, Go, and Python 3.13 on one macOS arm64 machine.
+
 ## What each scenario measures
 
 | Scenario | What it does | What it establishes |
@@ -51,6 +54,64 @@ them would measure a different system than the one that gets deployed.
 
 `control-plane.jsonl` and `worker.jsonl` are the complete telemetry streams the
 two services emitted, retained so the summary can be recomputed.
+
+### Measured behaviour
+
+| Measurement | Value |
+| --- | --- |
+| 10 bundles uploaded and validated | p50 879 ms, p95 950 ms |
+| 24 diff analyses submitted at once | drained in 1.47 s |
+| Their end-to-end latency | p50 1153 ms, p95 1237 ms |
+| One analysis every two seconds for a minute | 30 of 30 succeeded, p50 460 ms |
+| Killed worker to fenced attempt | 60.4 s, the attempt lease |
+| Killed worker to committed result | 70.3 s |
+| Spans emitted | 1986 across 636 traces |
+| Traces spanning both languages | 78, up to 20 spans each |
+| Distinct metric series | 103 |
+
+The local stack polls the outbox once per second, so that interval dominates
+these latency figures. Under the sustained rate, the mean was 634 ms across its first half
+and 396 ms across its second; the one worker kept up rather than falling behind.
+Every injected failure condition moved the metric its configured deployment
+alarm watches.
+
+### On a deployed environment
+
+One deployment of the same release and fault workflow is retained in
+[`results/aws/measurements.json`](results/aws/measurements.json).
+
+| Measurement | Value |
+| --- | --- |
+| Notification latency, diff (5 samples) | 38–820 ms |
+| Notification latency, mandatory validation (6 samples) | 81–923 ms |
+| Fastest diff, request to terminal state | 371 ms |
+| Database point-in-time restore to available | 15 min 30 s |
+
+Three real-fault alarms entered `ALARM`: an attempt-lease loss under worker
+partition, a reconciler failure during a database reboot, and worker capacity
+reduced to zero. Both partitioned jobs recovered on their second attempt and
+committed one authoritative result. SQS long-polling gave a 38 ms best
+notification latency, unlike the local polling floor. Scaling behaviour and
+cost remain unmeasured.
+
+### Lifecycle coverage
+
+The local evidence run exercises this complete lifecycle; the named
+observations are retained in `results/measurements.json`.
+
+| Step | Recorded observation |
+| --- | --- |
+| Upload a deterministic bundle | `ingestion` |
+| Observe mandatory validation before it is usable | `ingestion` |
+| Submit an idempotent align-v2 diff | `analysis_load` |
+| Observe a claimed attempt reporting progress | `worker_recovery.progress_while_running` |
+| Kill the active worker and wait for fencing | `worker_recovery.kill_to_fence_seconds` |
+| Observe retry and the replacement result | `worker_recovery.succeeded_attempts` |
+| Send a late completion from the old worker | `late_completion.stale_attempt_requests` |
+| Repeat the idempotent request | `idempotent_replay` |
+| Inspect artifact identity, provenance, and audit | `result_provenance` |
+| Attempt a cross-workspace read | `tenant_isolation` |
+| Record and replay with no service running | `local_independence` |
 
 ## What this does not measure
 

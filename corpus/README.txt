@@ -1,6 +1,7 @@
-What is in here. Only labels/, alignment/, runs.jsonl, tasks.json and this file
-are committed — every published number traces back to those, and they are
-neither large nor regenerable. The recorded stores are git-excluded.
+Labelled evaluation data. Every published accuracy figure traces back to
+labels/, alignment/, runs.jsonl, tasks.json and this file — those are what is
+committed. They are neither large nor regenerable. The recorded stores are
+git-excluded.
 
   store/              the corpus: 192 recorded runs over 64 injected bugs. CLOSED
                       — the agent changed after these were recorded, so appending

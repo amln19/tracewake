@@ -2,6 +2,10 @@
 
 Where did a failing agent run go irrecoverably wrong?
 
+This is the full evaluation writeup for `tracewake localize`. The repository
+README summarises headline results; every figure here is reproducible from
+`corpus/` via `uv run --group bench python -m bench.score_cleanroom`.
+
 Tracewake answers this from the failing run alone. No reference run, no
 alignment, no inference, no model call. `tracewake localize <run>` reports a
 step and how much to trust it.
@@ -78,9 +82,9 @@ rule has been scored on **262 trajectories it has never seen**:
 
 Chance rates for the same population are 5%, 22% and 40%.
 
-RootSE is the row that carries the most weight and reads the worst. It is the
-only set labelled by people unconnected to this project, and the only figure
-here that is both externally labelled and out-of-sample. Reproduce with
+RootSE is the row that carries the most weight. It is the only set labelled by
+people unconnected to this project, and the only figure here that is both
+externally labelled and out-of-sample. Reproduce with
 `uv run --group bench python -m bench.score_cleanroom`.
 
 ### Against published methods, on their metric

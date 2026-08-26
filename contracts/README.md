@@ -1,9 +1,10 @@
 # Tracewake contract set
 
-These files define the boundary between the local Python semantics and a hosted
-control plane. Python remains authoritative for bundles, event interpretation,
-analysis profiles, and semantic results. The hosted control plane owns tenant
-authorization and lifecycle transitions.
+Start here when extending the hosted API, worker protocol, bundle format, or
+lifecycle. These files define the boundary between the local Python semantics
+and a hosted control plane. Python remains authoritative for bundles, event
+interpretation, analysis profiles, and semantic results. The hosted control
+plane owns tenant authorization and lifecycle transitions.
 
 Version 1 contains:
 

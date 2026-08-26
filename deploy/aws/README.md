@@ -1,11 +1,12 @@
 # AWS environment
 
 This directory deploys one Tracewake environment: a VPC, an application load
-balancer and WAF for tenants, a private HTTPS load balancer for workers, ECS/Fargate services
-for the Go control plane and the Python worker, RDS PostgreSQL for
-authoritative hosted state, a private versioned S3 bucket for bundles and
-results, an SQS job queue with a dead-letter queue, ECR repositories, Secrets
-Manager secrets, least-privilege IAM roles, and CloudWatch log groups.
+balancer and WAF for tenants, a private HTTPS load balancer for workers,
+ECS/Fargate services for the Go control plane and the Python worker, RDS
+PostgreSQL for authoritative hosted state, a private versioned S3 bucket for
+bundles and results, an SQS job queue with a dead-letter queue, ECR
+repositories, Secrets Manager secrets, least-privilege IAM roles, and
+CloudWatch log groups.
 
 The same code runs locally against PostgreSQL and the filesystem store; nothing
 here changes Tracewake semantics. Local recording, replay, verification, import,

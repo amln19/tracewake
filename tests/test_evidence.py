@@ -1,9 +1,9 @@
 """The retained operational run, checked as an artifact.
 
-`evidence/README.md` explains how to reproduce it. These tests keep the
-retained results honest: that the telemetry carries nothing sensitive, that
-every claim the documentation makes about the run is present in the run, and
-that each alarm condition the deployment names actually moved a metric.
+`evidence/README.md` is where published operational numbers live. These tests
+keep that document honest: that the telemetry carries nothing sensitive, that
+every claim it makes about the run is present in the run, and that each alarm
+condition the deployment names actually moved a metric.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ import pytest
 from evidence.stack import Stack
 
 RESULTS = Path("evidence/results")
+EVIDENCE_README = Path("evidence/README.md")
 
 pytestmark = pytest.mark.skipif(
     not (RESULTS / "measurements.json").is_file(),
@@ -166,7 +167,7 @@ def test_every_analysis_under_load_succeeded(measurements: dict[str, Any]) -> No
 
 
 def test_every_published_number_comes_from_this_run(measurements: dict[str, Any]) -> None:
-    """The README's measured-behaviour table may only restate the retained run."""
+    """The evidence README's measured-behaviour table may only restate the retained run."""
     latency = measurements["latency"]
     scenarios = measurements["scenarios"]
     telemetry_summary = measurements["telemetry"]
@@ -187,21 +188,25 @@ def test_every_published_number_comes_from_this_run(measurements: dict[str, Any]
         f"{len(scenarios['ingestion']['run_ids'])} bundles",
         f"{scenarios['analysis_load']['jobs']} diff analyses",
     ]
-    readme = Path("README.md").read_text(encoding="utf-8")
-    section = readme.split("### Measured behaviour", 1)[-1].split("## Versioned formats", 1)[0]
+    readme = EVIDENCE_README.read_text(encoding="utf-8")
+    section = readme.split("### Measured behaviour", 1)[-1].split("### On a deployed environment", 1)[0]
     for value in published:
-        assert value.lower() in section.lower(), f"the README does not restate {value!r} from the retained run"
+        assert value.lower() in section.lower(), (
+            f"evidence/README.md does not restate {value!r} from the retained run"
+        )
 
 
 def test_the_demonstration_recorded_every_step(measurements: dict[str, Any]) -> None:
-    """Each step the README maps must be present and satisfying in the run."""
+    """Each step the evidence README maps must be present and satisfying in the run."""
     scenarios = measurements["scenarios"]
-    readme = Path("README.md").read_text(encoding="utf-8")
-    section = readme.split("### Lifecycle coverage", 1)[-1].split("## Versioned formats", 1)[0]
+    readme = EVIDENCE_README.read_text(encoding="utf-8")
+    section = readme.split("### Lifecycle coverage", 1)[-1].split("## What this does not measure", 1)[0]
     rows = [line for line in section.splitlines() if line.startswith("|")]
     for reference in re.findall(r"`([a-z_]+(?:\.[a-z_]+)?)`", "\n".join(rows)):
         name, _, field = reference.partition(".")
-        assert name in scenarios, f"the README maps a step to {name}, which the run does not record"
+        assert name in scenarios, (
+            f"evidence/README.md maps a step to {name}, which the run does not record"
+        )
         if field:
             assert scenarios[name][field], f"{reference} recorded nothing"
 
@@ -215,8 +220,8 @@ def test_the_demonstration_recorded_every_step(measurements: dict[str, Any]) -> 
     # to `align-v1`, and `align-v1` to today's `align-v2` — so it records the name
     # that was in force when it executed. Rewriting the measurement to match
     # today's code would falsify what ran, and re-running would replace every
-    # latency figure the README quotes with numbers from a different machine.
-    # The record keeps its own history.
+    # latency figure the evidence README quotes with numbers from a different
+    # machine. The record keeps its own history.
     assert provenance["analysis_profile"] == "lexical-v1"
     assert provenance["result_schema"] == {"name": "result-envelope", "version": 1}
     assert len(provenance["input_digests"]) == 2
@@ -303,7 +308,7 @@ def test_the_deployed_baseline_verified_every_artifact(deployed: dict[str, Any])
 def test_no_cost_number_is_published(deployed: dict[str, Any]) -> None:
     # Cost Explorer had not ingested the window. Nothing may claim otherwise.
     assert "cost" not in json.dumps(deployed["metrics"]).lower()
-    readme = Path("README.md").read_text(encoding="utf-8")
+    readme = EVIDENCE_README.read_text(encoding="utf-8")
     section = readme.split("### On a deployed environment", 1)[-1].split("### Lifecycle coverage", 1)[0]
     assert "cost remain unmeasured" in section or "cost remains unmeasured" in section
 
@@ -327,7 +332,9 @@ def test_deployed_numbers_come_from_the_deployed_run(deployed: dict[str, Any]) -
         if attempt["failure"] == "lease_lost"
     )
     assert fenced == int(metrics["attempts_fenced_lease_expired"]["Sum"])
-    readme = Path("README.md").read_text(encoding="utf-8")
+    readme = EVIDENCE_README.read_text(encoding="utf-8")
     section = readme.split("### On a deployed environment", 1)[-1].split("### Lifecycle coverage", 1)[0]
     for value in published:
-        assert value in section, f"the README does not restate {value!r} from the deployed run"
+        assert value in section, (
+            f"evidence/README.md does not restate {value!r} from the deployed run"
+        )
