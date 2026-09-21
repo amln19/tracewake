@@ -87,6 +87,39 @@ type artifact struct {
 	SchemaVersion *int    `json:"schema_version"`
 }
 
+type committedArtifact struct {
+	ArtifactID    string  `json:"artifact_id"`
+	Kind          string  `json:"kind"`
+	ObjectKey     string  `json:"object_key"`
+	ObjectVersion string  `json:"object_version"`
+	Digest        string  `json:"digest"`
+	Size          int64   `json:"size"`
+	MediaType     string  `json:"media_type"`
+	SchemaName    *string `json:"schema_name"`
+	SchemaVersion *int    `json:"schema_version"`
+}
+
+type artifactCommit struct {
+	ProtocolVersion       int                 `json:"protocol_version"`
+	AttemptNumber         int                 `json:"attempt_number"`
+	ArtifactID            string              `json:"artifact_id"`
+	Kind                  string              `json:"kind"`
+	ObjectKey             string              `json:"object_key"`
+	ObjectVersion         string              `json:"object_version"`
+	Digest                string              `json:"digest"`
+	Size                  int64               `json:"size"`
+	MediaType             string              `json:"media_type"`
+	SchemaName            string              `json:"schema_name"`
+	SchemaVersion         int                 `json:"schema_version"`
+	LogicalRunDigest      string              `json:"logical_run_digest"`
+	BundleDigest          string              `json:"bundle_digest"`
+	EventCount            int                 `json:"event_count"`
+	BundleFormatVersion   int                 `json:"bundle_format_version"`
+	CassetteFormatVersion int                 `json:"cassette_format_version"`
+	EventSchemaVersion    int                 `json:"event_schema_version"`
+	Companions            []committedArtifact `json:"companions"`
+}
+
 type claim struct {
 	ProtocolVersion int        `json:"protocol_version"`
 	JobID           string     `json:"job_id"`
@@ -283,7 +316,7 @@ func validNotification(value notification) bool {
 		return false
 	}
 	return value.ProtocolVersion == 1 && uuidPattern.MatchString(value.JobID) &&
-		value.JobVersion >= 1 && oneOf(value.Operation, "validate", "diff", "otlp", "pprof")
+		value.JobVersion >= 1 && oneOf(value.Operation, "validate", "diff", "localize", "otlp", "pprof")
 }
 
 func validateNotification(data []byte) string {
@@ -310,6 +343,56 @@ func validArtifact(value artifact) bool {
 		value.Size >= 0 && len(value.MediaType) >= 1 && len(value.MediaType) <= 128 &&
 		((value.SchemaName == nil && value.SchemaVersion == nil) ||
 			(value.SchemaName != nil && value.SchemaVersion != nil && *value.SchemaVersion >= 1))
+}
+
+func validateArtifactCommit(data []byte) string {
+	var value artifactCommit
+	if decodeStrict(data, &value) != nil || value.ProtocolVersion != 1 ||
+		value.AttemptNumber < 1 || value.AttemptNumber > 3 ||
+		!validArtifact(artifact{
+			ArtifactID: value.ArtifactID, ObjectKey: value.ObjectKey,
+			ObjectVersion: value.ObjectVersion, Digest: value.Digest, Size: value.Size,
+			MediaType: value.MediaType, SchemaName: &value.SchemaName, SchemaVersion: &value.SchemaVersion,
+		}) || value.Size > maxBlobBytes || value.MediaType != "application/json" ||
+		value.SchemaName != "result-envelope" || value.SchemaVersion != 1 ||
+		value.EventCount < 0 || value.EventCount > maxEvents {
+		return "invalid_message"
+	}
+	expectedCompanion, ok := map[string]string{
+		"validation_json": "", "diff_json": "diff_html", "localize_result_json": "localize_json",
+		"otlp_result_json": "otlp_json", "pprof_result_json": "pprof",
+	}[value.Kind]
+	if !ok {
+		return "invalid_message"
+	}
+	if expectedCompanion == "" {
+		if len(value.Companions) != 0 || !digestPattern.MatchString(value.LogicalRunDigest) ||
+			!digestPattern.MatchString(value.BundleDigest) || value.BundleFormatVersion < 1 ||
+			value.CassetteFormatVersion < 1 || value.EventSchemaVersion < 1 {
+			return "invalid_message"
+		}
+		return ""
+	}
+	if len(value.Companions) != 1 || value.LogicalRunDigest != "" || value.BundleDigest != "" ||
+		value.EventCount != 0 || value.BundleFormatVersion != 0 || value.CassetteFormatVersion != 0 ||
+		value.EventSchemaVersion != 0 {
+		return "invalid_message"
+	}
+	companion := value.Companions[0]
+	expectedMediaType := map[string]string{
+		"diff_html": "text/html; charset=utf-8", "localize_json": "application/json",
+		"otlp_json": "application/json", "pprof": "application/octet-stream",
+	}[expectedCompanion]
+	if companion.Kind != expectedCompanion || companion.Size > maxBlobBytes || companion.MediaType != expectedMediaType ||
+		companion.SchemaName != nil || companion.SchemaVersion != nil ||
+		!validArtifact(artifact{
+			ArtifactID: companion.ArtifactID, ObjectKey: companion.ObjectKey,
+			ObjectVersion: companion.ObjectVersion, Digest: companion.Digest, Size: companion.Size,
+			MediaType: companion.MediaType,
+		}) {
+		return "invalid_message"
+	}
+	return ""
 }
 
 func validateClaim(data []byte) string {
@@ -437,8 +520,7 @@ func validateDiffResult(data []byte) string {
 	if result.Divergence != nil && *result.Divergence < 1 {
 		return "invalid_message"
 	}
-	// A reported step without its class invites more trust than the rule earns,
-	// so the three travel together or not at all.
+	// Divergence, reliability, and confidence must be reported together.
 	if (result.Divergence == nil) != (result.Reliability == nil) || (result.Divergence == nil) != (result.Confidence == nil) {
 		return "invalid_message"
 	}
@@ -616,6 +698,8 @@ func validateBundle(data []byte) string {
 
 func validateFixture(data []byte, validator string) string {
 	switch validator {
+	case "artifact-commit":
+		return validateArtifactCommit(data)
 	case "bundle":
 		return validateBundle(data)
 	case "failure":
@@ -682,6 +766,7 @@ func FuzzContractValidatorsDoNotPanic(f *testing.F) {
 	f.Add([]byte{0x1f, 0x8b})
 	f.Fuzz(func(t *testing.T, data []byte) {
 		for _, validator := range []string{
+			"artifact-commit",
 			"bundle",
 			"failure",
 			"job-notification",

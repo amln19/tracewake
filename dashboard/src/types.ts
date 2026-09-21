@@ -7,7 +7,7 @@ export type Failure = {
 
 export type Run = {
   run_id: string;
-  state: "pending" | "uploaded" | "validating" | "ready" | "invalid" | "deleted";
+  state: "pending" | "validating" | "ready" | "invalid" | "deleted";
   bundle_digest: string;
   bundle_format_version: number;
   logical_run_digest: string | null;
@@ -49,7 +49,7 @@ export type Artifact = {
 
 export type Job = {
   job_id: string;
-  operation: "diff" | "otlp" | "pprof";
+  operation: "diff" | "localize" | "otlp" | "pprof";
   state: "queued" | "running" | "retry_wait" | "succeeded" | "failed" | "cancelled";
   run_ids: string[];
   profile: string | null;

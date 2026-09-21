@@ -167,6 +167,9 @@ func claimFailure(err error) (int, string) {
 }
 
 func attemptFailure(err error) (int, string) {
+	if errors.Is(err, controlplane.ErrInvalidRequest) {
+		return http.StatusBadRequest, "invalid_request"
+	}
 	if errors.Is(err, controlplane.ErrLeaseLost) || errors.Is(err, controlplane.ErrConflict) || errors.Is(err, controlplane.ErrNotFound) {
 		return http.StatusConflict, "lease_lost"
 	}
@@ -292,7 +295,7 @@ func (a *API) declareArtifact(w http.ResponseWriter, r *http.Request) {
 		Digest          string `json:"digest"`
 		Size            int64  `json:"size"`
 	}
-	allowed := map[string]bool{"validation_json": true, "diff_json": true, "diff_html": true, "localize_json": true, "localize_result_json": true, "otlp_json": true, "otlp_result_json": true, "pprof": true, "pprof_result_json": true, "worker_diagnostic": true}
+	allowed := map[string]bool{"validation_json": true, "diff_json": true, "diff_html": true, "localize_json": true, "localize_result_json": true, "otlp_json": true, "otlp_result_json": true, "pprof": true, "pprof_result_json": true}
 	if decode(w, r, &body) != nil || body.ProtocolVersion != 1 || body.Attempt != attempt || !allowed[body.Kind] || body.MediaType == "" {
 		writeError(w, 400, "invalid_request")
 		return
@@ -334,17 +337,12 @@ func (a *API) complete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body controlplane.Completion
-	if decode(w, r, &body) != nil {
+	if decode(w, r, &body) != nil || !body.ValidWorkerRequest(attempt) {
 		writeError(w, 400, "invalid_request")
 		return
 	}
-	// The completion body names the keys to commit, so the attempt has to be
-	// judged before the object store is consulted — and the keys constrained to
-	// the attempt that authorized them. `declareArtifact` never has to ask,
-	// because it builds the key from the authorized workspace itself; here the
-	// worker supplies it, and a worker cannot be allowed to choose an arbitrary
-	// object key even for a read. `CompleteAttempt` checks the exact keys again
-	// inside the transaction that commits them.
+	// Authorize before reading worker-supplied keys. CompleteAttempt rechecks
+	// the exact keys inside the transaction that commits them.
 	workspace, err := a.service.AuthorizeAttempt(r.Context(), r.PathValue("job"), attempt, r.Header.Get("Tracewake-Attempt-Token"))
 	if err != nil {
 		status, code := attemptFailure(err)

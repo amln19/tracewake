@@ -62,9 +62,11 @@ All paths include the claim's job ID and attempt number:
 * `GET /internal/v1/identity` returns the authenticated worker ID for claims,
   so a worker that received only a credential needs no second configured value.
 * `POST /internal/v1/jobs/{job}/attempts/{attempt}/complete` accepts the
-  artifact-commit schema after upload. The control plane verifies immutable
-  object version, digest, size, semantic schema, and canonical result before
-  the single success transition. Result canonicalization is the Python 3.13
+  flattened `artifact-commit` schema after upload. It names the authoritative
+  result artifact, any companion artifact, and validation metadata when the
+  operation is bundle validation. The control plane verifies immutable object
+  version, digest, size, semantic schema, and canonical result before the
+  single success transition. Result canonicalization is the Python 3.13
   worker encoding: recursively sorted object keys, `,` and `:` separators, JSON
   ASCII escapes for non-ASCII code points, shortest round-trippable finite
   number spellings, and exactly one trailing LF.

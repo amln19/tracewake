@@ -313,11 +313,76 @@ class Progress(ContractModel):
     message: BoundedMessage
 
 
-class ArtifactCommit(ContractModel):
+class CommittedCompanion(ArtifactRef):
+    kind: Literal["diff_html", "localize_json", "otlp_json", "pprof"]
+
+
+class ArtifactCommit(ArtifactRef):
     protocol_version: Literal[WORKER_PROTOCOL_VERSION]  # type: ignore[valid-type]
     attempt_number: int = Field(ge=1, le=3)
-    artifact: ArtifactRef
-    result: SemanticResult
+    kind: Literal[
+        "validation_json",
+        "diff_json",
+        "localize_result_json",
+        "otlp_result_json",
+        "pprof_result_json",
+    ]
+    size: int = Field(ge=0, le=64 * 1024 * 1024)
+    media_type: Literal["application/json"]
+    schema_name: Literal["result-envelope"]
+    schema_version: Literal[CONTRACT_SCHEMA_VERSION]  # type: ignore[valid-type]
+    logical_run_digest: Digest | Literal[""]
+    bundle_digest: Digest | Literal[""]
+    event_count: int = Field(ge=0, le=100_000)
+    bundle_format_version: int = Field(ge=0)
+    cassette_format_version: int = Field(ge=0)
+    event_schema_version: int = Field(ge=0)
+    companions: list[CommittedCompanion] = Field(max_length=1)
+
+    @model_validator(mode="after")
+    def _operation_shape(self) -> ArtifactCommit:
+        expected_companion = {
+            "validation_json": None,
+            "diff_json": "diff_html",
+            "localize_result_json": "localize_json",
+            "otlp_result_json": "otlp_json",
+            "pprof_result_json": "pprof",
+        }[self.kind]
+        if expected_companion is None:
+            if self.companions:
+                raise ValueError("validation does not commit a companion artifact")
+            if not self.logical_run_digest or not self.bundle_digest:
+                raise ValueError("validation requires the validated run identity")
+            if min(
+                self.bundle_format_version,
+                self.cassette_format_version,
+                self.event_schema_version,
+            ) < 1:
+                raise ValueError("validation requires positive format versions")
+        else:
+            if len(self.companions) != 1 or self.companions[0].kind != expected_companion:
+                raise ValueError(f"{self.kind} requires companion {expected_companion}")
+            if (
+                self.logical_run_digest
+                or self.bundle_digest
+                or self.event_count
+                or self.bundle_format_version
+                or self.cassette_format_version
+                or self.event_schema_version
+            ):
+                raise ValueError("analysis completion cannot update run validation fields")
+        for companion in self.companions:
+            if companion.schema_name is not None or companion.schema_version is not None:
+                raise ValueError("companion artifacts do not carry a semantic schema")
+            expected_media_type = {
+                "diff_html": "text/html; charset=utf-8",
+                "localize_json": "application/json",
+                "otlp_json": "application/json",
+                "pprof": "application/octet-stream",
+            }[companion.kind]
+            if companion.media_type != expected_media_type:
+                raise ValueError(f"{companion.kind} requires media type {expected_media_type}")
+        return self
 
 
 class PublicJobRequest(ContractModel):
@@ -389,7 +454,7 @@ class PublicArtifact(ContractModel):
 
 class RunView(ContractModel):
     run_id: UUID
-    state: Literal["pending", "uploaded", "validating", "ready", "invalid", "deleted"]
+    state: Literal["pending", "validating", "ready", "invalid", "deleted"]
     bundle_format_version: int = Field(ge=1)
     bundle_digest: Digest
     logical_run_digest: Digest | None = None

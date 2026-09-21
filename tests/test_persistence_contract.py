@@ -51,6 +51,8 @@ def test_result_json_is_not_duplicated_in_postgres() -> None:
 def test_outbox_and_audit_payloads_are_bounded() -> None:
     assert UP.count("octet_length(payload::text) <= 4096") == 2
     assert "UNIQUE (aggregate_type, aggregate_id, aggregate_version, topic)" in UP
+    assert "claimed_at" not in UP
+    assert "claimed_by" not in UP
     assert "interval '365 days'" in UP
 
 

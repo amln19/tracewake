@@ -155,7 +155,6 @@
     "state": {
       "enum": [
         "pending",
-        "uploaded",
         "validating",
         "ready",
         "invalid",

@@ -1,11 +1,5 @@
-// Tests for claims contracts/threat-model-v1.md makes but nothing else checks.
-//
-// Most of that document is already pinned by tests written for other reasons —
-// fencing by the operations tests, telemetry by the evidence harness, browser
-// session shape by the end-to-end suite. What was missing is any test a reader
-// can follow back to the sentence it defends, for the claims no other test
-// happens to cover. Each test below quotes the claim it exists for, so a claim
-// that stops being true fails here rather than waiting to be read.
+// Security regression tests for claims in contracts/threat-model-v1.md that
+// are not covered by the lifecycle and end-to-end suites.
 package workerapi_test
 
 import (

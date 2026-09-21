@@ -38,6 +38,7 @@ func TestWorkerFailuresDoNotMasqueradeAsCredentialOrLeaseLoss(t *testing.T) {
 	}{
 		{name: "invalid credential", actual: controlplane.ErrUnauthenticated, classify: workerAuthenticationFailure, status: http.StatusUnauthorized, code: "unauthenticated"},
 		{name: "credential store unavailable", actual: errors.New("database unavailable"), classify: workerAuthenticationFailure, status: http.StatusServiceUnavailable, code: "internal"},
+		{name: "malformed worker request", actual: fmt.Errorf("progress: %w", controlplane.ErrInvalidRequest), classify: attemptFailure, status: http.StatusBadRequest, code: "invalid_request"},
 		{name: "stale attempt", actual: controlplane.ErrLeaseLost, classify: attemptFailure, status: http.StatusConflict, code: "lease_lost"},
 		{name: "attempt store unavailable", actual: errors.New("database unavailable"), classify: attemptFailure, status: http.StatusServiceUnavailable, code: "internal"},
 	} {

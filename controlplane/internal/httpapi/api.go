@@ -8,7 +8,9 @@ import (
 	"io"
 	"io/fs"
 	"mime"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -23,11 +25,13 @@ import (
 )
 
 type API struct {
-	service   *controlplane.Service
-	artifacts artifacts.Store
-	baseURL   string
-	dashboard string
-	metrics   *telemetry.Metrics
+	service      *controlplane.Service
+	artifacts    artifacts.Store
+	baseURL      string
+	dashboard    string
+	cookieName   string
+	cookieSecure bool
+	metrics      *telemetry.Metrics
 }
 
 func New(service *controlplane.Service, store artifacts.Store, baseURL string, dashboard ...string) *API {
@@ -35,7 +39,8 @@ func New(service *controlplane.Service, store artifacts.Store, baseURL string, d
 	if len(dashboard) > 0 {
 		directory = dashboard[0]
 	}
-	return &API{service: service, artifacts: store, baseURL: baseURL, dashboard: directory, metrics: telemetry.NoMetrics()}
+	cookieName, cookieSecure := browserCookieFor(baseURL)
+	return &API{service: service, artifacts: store, baseURL: baseURL, dashboard: directory, cookieName: cookieName, cookieSecure: cookieSecure, metrics: telemetry.NoMetrics()}
 }
 
 // UseTelemetry replaces the recorder this surface reports requests to.
@@ -65,7 +70,22 @@ func (a *API) Handler() http.Handler {
 	return securityHeaders(a.metrics.Instrument("public", mux))
 }
 
-const browserCookie = "__Host-tracewake_session"
+const (
+	secureBrowserCookie = "__Host-tracewake_session"
+	localBrowserCookie  = "tracewake_session"
+)
+
+func browserCookieFor(baseURL string) (string, bool) {
+	parsed, err := url.Parse(baseURL)
+	if err == nil && parsed.Scheme == "http" {
+		host := parsed.Hostname()
+		ip := net.ParseIP(host)
+		if strings.EqualFold(host, "localhost") || ip != nil && ip.IsLoopback() {
+			return localBrowserCookie, false
+		}
+	}
+	return secureBrowserCookie, true
+}
 
 func (a *API) createBrowserSession(w http.ResponseWriter, r *http.Request) {
 	var body struct {
@@ -85,7 +105,7 @@ func (a *API) createBrowserSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) refreshBrowserSession(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie(browserCookie)
+	cookie, err := r.Cookie(a.cookieName)
 	if err != nil {
 		errorJSON(w, http.StatusUnauthorized, "unauthenticated")
 		return
@@ -99,7 +119,7 @@ func (a *API) refreshBrowserSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) deleteBrowserSession(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie(browserCookie)
+	cookie, err := r.Cookie(a.cookieName)
 	if err != nil {
 		errorJSON(w, http.StatusUnauthorized, "unauthenticated")
 		return
@@ -127,8 +147,8 @@ func (a *API) setSessionCookie(w http.ResponseWriter, token string, expires time
 		maxAge = -1
 	}
 	http.SetCookie(w, &http.Cookie{
-		Name: browserCookie, Value: token, Path: "/", Expires: expires,
-		MaxAge: maxAge, HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode,
+		Name: a.cookieName, Value: token, Path: "/", Expires: expires,
+		MaxAge: maxAge, HttpOnly: true, Secure: a.cookieSecure, SameSite: http.SameSiteStrictMode,
 	})
 }
 
@@ -144,7 +164,7 @@ func authError(w http.ResponseWriter, err error) {
 }
 
 func (a *API) browserPrincipal(w http.ResponseWriter, r *http.Request, scope string) (controlplane.Principal, bool) {
-	cookie, err := r.Cookie(browserCookie)
+	cookie, err := r.Cookie(a.cookieName)
 	if err != nil {
 		errorJSON(w, http.StatusUnauthorized, "unauthenticated")
 		return controlplane.Principal{}, false
@@ -305,7 +325,7 @@ func (a *API) principal(w http.ResponseWriter, r *http.Request, scope string) (c
 			return controlplane.Principal{}, false
 		}
 		p, err = a.service.Authenticate(r.Context(), token, scope)
-	} else if cookie, cookieErr := r.Cookie(browserCookie); cookieErr == nil {
+	} else if cookie, cookieErr := r.Cookie(a.cookieName); cookieErr == nil {
 		requireCSRF := r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions
 		p, _, err = a.service.AuthenticateBrowserSession(r.Context(), cookie.Value, scope, r.Header.Get("X-Tracewake-CSRF"), requireCSRF)
 	} else {

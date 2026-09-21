@@ -322,6 +322,38 @@ def test_hosted_localize_needs_only_the_failing_run(tmp_path: Path, objects, bad
     assert len(result_of(output)["provenance"]["inputs"]) == 1
 
 
+@pytest.mark.parametrize("operation", ["validate", "diff", "localize", "otlp", "pprof"])
+@pytest.mark.parametrize(
+    "field,expected_error",
+    [("digest", "declared upload digest"), ("size", "expected")],
+)
+def test_every_hosted_operation_rejects_mismatched_input(
+    tmp_path: Path,
+    objects,
+    good: Recorded,
+    bad: Recorded,
+    operation: str,
+    field: str,
+    expected_error: str,
+) -> None:
+    runs = [good, bad] if operation == "diff" else [good]
+    claim = claim_for(operation, runs)
+    if field == "digest":
+        claim["input_artifacts"][0][field] = "0" * 64
+    else:
+        claim["input_artifacts"][0][field] += 1
+
+    handler = {
+        "validate": worker._validate,
+        "diff": worker._diff,
+        "localize": worker._localize,
+        "otlp": worker._otlp,
+        "pprof": worker._pprof,
+    }[operation]
+    with pytest.raises(ValueError, match=expected_error):
+        handler(deploy(objects, runs), claim, tmp_path)
+
+
 @pytest.mark.parametrize("operation", ["otlp", "pprof", "diff", "localize"])
 def test_analyses_are_deterministic_from_normalized_inputs(
     tmp_path: Path, objects, good: Recorded, bad: Recorded, operation: str

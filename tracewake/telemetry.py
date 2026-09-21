@@ -27,7 +27,7 @@ TRACEPARENT = re.compile(r"^00-(?P<trace>[0-9a-f]{32})-(?P<span>[0-9a-f]{16})-[0
 
 # Every dimension value comes from one of these sets, so an unexpected value
 # collapses rather than creating an unbounded number of metric series.
-OPERATIONS = ("validate", "diff", "otlp", "pprof")
+OPERATIONS = ("validate", "diff", "localize", "otlp", "pprof")
 OUTCOMES = ("succeeded", "failed", "fenced", "refused")
 STAGES = ("download", "analyze", "upload", "commit")
 OTHER = "other"

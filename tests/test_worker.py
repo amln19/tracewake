@@ -4,12 +4,14 @@ import hashlib
 import json
 import ssl
 import threading
+import time
 from pathlib import Path
 from typing import Any, Self
 
 import pytest
 
 from tracewake import worker
+from tracewake.contracts import ArtifactCommit
 from tracewake.worker import LeaseLost, WorkerClient, _BundleBlobs, _validate, run_once
 
 BUNDLE = Path("contracttest/fixtures/v1/accepted/bundle-v1.tar")
@@ -133,6 +135,7 @@ class FakeQueue:
         self.body = body
         self.deleted: list[str] = []
         self.visibility: list[int] = []
+        self.visibility_event = threading.Event()
 
     def receive_message(self, **kwargs: Any) -> dict[str, Any]:
         assert kwargs["VisibilityTimeout"] == worker.LEASE_SECONDS
@@ -145,6 +148,7 @@ class FakeQueue:
 
     def change_message_visibility(self, *, QueueUrl: str, ReceiptHandle: str, VisibilityTimeout: int) -> None:
         self.visibility.append(VisibilityTimeout)
+        self.visibility_event.set()
 
 
 def test_queue_delivery_exposes_notification_and_acknowledgement() -> None:
@@ -178,8 +182,7 @@ def test_visibility_is_extended_only_while_the_lease_holds(monkeypatch: pytest.M
     stop = threading.Event()
     thread = threading.Thread(target=worker._heartbeat, args=(Live(b""), "j", 1, "token", stop, delivery))
     thread.start()
-    while not queue.visibility:
-        pass
+    assert queue.visibility_event.wait(timeout=2)
     stop.set()
     thread.join(timeout=2)
     assert queue.visibility[0] == worker.LEASE_SECONDS
@@ -249,8 +252,10 @@ def test_active_work_is_interrupted_when_cancellation_is_observed(
     def handler(_client: WorkerClient, _claim: dict[str, Any], _root: Path) -> dict[str, Any]:
         started.set()
         try:
-            while True:
-                pass
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                time.sleep(0.01)
+            raise AssertionError("cancellation was not observed")
         finally:
             stopped.set()
 
@@ -268,6 +273,25 @@ def test_active_work_is_interrupted_when_cancellation_is_observed(
     assert run_once(client, source)
     assert stopped.is_set()
     assert client.acked
+
+
+def test_download_rejects_an_oversized_object(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Response:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self, _size: int) -> bytes:
+            return b"12345"
+
+    monkeypatch.setattr(worker, "MAX_BUNDLE_BYTES", 4)
+    monkeypatch.setattr(worker.urllib.request, "urlopen", lambda *args, **kwargs: Response())
+    with pytest.raises(ValueError, match="exceeds 4 bytes"):
+        worker._fetch_object("memory:oversized")
 
 
 def test_worker_supervisor_retries_after_an_unexpected_failure(
@@ -328,6 +352,7 @@ def test_an_attempt_traces_its_stages_within_the_job_trace(memory_objects: dict[
     trace = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
     client, emitted = run_traced(bundle, trace)
     assert client.completed is not None
+    ArtifactCommit.model_validate(client.completed)
     spans = [record for record in emitted if record["telemetry"] == "span"]
     assert {span["name"] for span in spans} == {
         "worker.execute",

@@ -12,7 +12,8 @@ timestamps.
 `runs` owns ingestion readiness and validated identities. `job_inputs` owns the
 immutable normalized request. `jobs` owns current lifecycle and exact terminal
 artifact identity. `job_attempts` records monotonic attempts and leases.
-`outbox` transports transactional notifications. `audit_records` is an
+`outbox` transports transactional notifications. Publishers coordinate with
+transactional row locks rather than persisted claim ownership. `audit_records` is an
 append-only description of meaningful events, not a state-reconstruction log.
 Distinct jobs with the same normalized request share one immutable `job_inputs`
 row; idempotency keys determine whether the job itself is reused or newly

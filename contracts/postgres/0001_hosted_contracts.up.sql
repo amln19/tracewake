@@ -2,7 +2,7 @@ BEGIN;
 
 CREATE TYPE workspace_state AS ENUM ('active', 'disabled', 'deleting');
 CREATE TYPE ingestion_state AS ENUM (
-    'pending', 'uploaded', 'validating', 'ready', 'invalid', 'deleted'
+    'pending', 'validating', 'ready', 'invalid', 'deleted'
 );
 CREATE TYPE job_operation AS ENUM ('diff', 'otlp', 'pprof');
 CREATE TYPE job_state AS ENUM (
@@ -12,7 +12,7 @@ CREATE TYPE attempt_state AS ENUM (
     'running', 'succeeded', 'failed', 'fenced', 'cancelled'
 );
 CREATE TYPE artifact_kind AS ENUM (
-    'diff_json', 'diff_html', 'otlp_json', 'pprof', 'worker_diagnostic'
+    'diff_json', 'diff_html', 'otlp_json', 'pprof'
 );
 
 CREATE TABLE workspaces (
@@ -272,14 +272,11 @@ CREATE TABLE outbox (
     topic varchar(64) NOT NULL,
     payload jsonb NOT NULL CHECK (octet_length(payload::text) <= 4096),
     available_at timestamptz NOT NULL DEFAULT transaction_timestamp(),
-    claimed_at timestamptz,
-    claimed_by uuid,
     published_at timestamptz,
     publish_attempts integer NOT NULL DEFAULT 0 CHECK (publish_attempts >= 0),
     last_error_code varchar(64),
     created_at timestamptz NOT NULL DEFAULT transaction_timestamp(),
-    UNIQUE (aggregate_type, aggregate_id, aggregate_version, topic),
-    CHECK ((claimed_at IS NULL) = (claimed_by IS NULL))
+    UNIQUE (aggregate_type, aggregate_id, aggregate_version, topic)
 );
 CREATE INDEX outbox_publishable_idx
     ON outbox (available_at, id)

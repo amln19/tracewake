@@ -97,6 +97,16 @@ def test_metrics_use_embedded_format_with_bounded_dimensions(recorder: tuple[Tel
     assert staged["WorkerStageMillis"] == 12.5
 
 
+def test_metrics_keep_localize_as_a_known_operation(
+    recorder: tuple[Telemetry, io.StringIO],
+) -> None:
+    telemetry, stream = recorder
+    telemetry.job_finished("localize", "succeeded")
+    (record,) = records(stream)
+    assert record["Operation"] == "localize"
+    assert record["Outcome"] == "succeeded"
+
+
 def test_telemetry_can_be_turned_off(recorder: tuple[Telemetry, io.StringIO]) -> None:
     _, stream = recorder
     telemetry = Telemetry(stream=stream, enabled=False)

@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from .align import LexicalEmbedder, diff_runs, extract_steps
-from .bundle import ValidatedBundle, bundle_header, validate_bundle
+from .bundle import MAX_BUNDLE_BYTES, ValidatedBundle, bundle_header, validate_bundle
 from .contracts import (
     REQUIRED_PROFILE,
     AlignmentColumn,
@@ -224,7 +224,15 @@ def _canonical(value: Any) -> bytes:
 
 def _fetch_object(url: str) -> bytes:
     with urllib.request.urlopen(urllib.request.Request(url, method="GET"), timeout=120) as response:
-        return response.read()
+        data = bytearray()
+        while len(data) <= MAX_BUNDLE_BYTES:
+            chunk = response.read(min(1024 * 1024, MAX_BUNDLE_BYTES + 1 - len(data)))
+            if not chunk:
+                break
+            data.extend(chunk)
+        if len(data) > MAX_BUNDLE_BYTES:
+            raise ValueError(f"downloaded bundle exceeds {MAX_BUNDLE_BYTES} bytes")
+        return bytes(data)
 
 
 def _store_object(grant: dict[str, Any], data: bytes) -> str:
@@ -303,15 +311,21 @@ def _download_input(client: WorkerClient, claim: dict[str, Any], artifact: dict[
     path = f"/internal/v1/jobs/{job}/attempts/{attempt}/inputs/{artifact['artifact_id']}"
     with _stage("download"):
         reference = client.json("GET", path, None, attempt_token=claim["attempt_token"])
-        destination.write_bytes(_fetch_object(reference["download_url"]))
+        data = _fetch_object(reference["download_url"])
+        if len(data) != artifact["size"]:
+            raise ValueError(
+                f"downloaded bundle has size {len(data)}; expected {artifact['size']}"
+            )
+        digest = hashlib.sha256(data).hexdigest()
+        if digest != artifact["digest"]:
+            raise ValueError("downloaded bundle bytes do not match the declared upload digest")
+        destination.write_bytes(data)
         return validate_bundle(destination)
 
 
 def _validate(client: WorkerClient, claim: dict[str, Any], root: Path) -> dict[str, Any]:
     artifact = claim["input_artifacts"][0]
     validated = _download_input(client, claim, artifact, root / "bundle.tar")
-    if validated.bundle_digest != artifact["digest"]:
-        raise ValueError("stored bundle bytes do not match the declared upload digest")
     manifest = validated.manifest
     provenance = ResultProvenance(
         inputs=[
@@ -547,6 +561,8 @@ def _attempt(client: WorkerClient, delivery: Delivery, recorder: Telemetry, span
                 "POST",
                 f"/internal/v1/jobs/{job}/attempts/{attempt}/complete",
                 {
+                    "protocol_version": 1,
+                    "attempt_number": attempt,
                     **identity,
                     "schema_name": "result-envelope",
                     "schema_version": 1,

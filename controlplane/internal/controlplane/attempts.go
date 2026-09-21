@@ -18,22 +18,24 @@ type Progress struct {
 	Message         string `json:"message"`
 }
 type Completion struct {
-	ArtifactID     string              `json:"artifact_id"`
-	Kind           string              `json:"kind"`
-	ObjectKey      string              `json:"object_key"`
-	ObjectVersion  string              `json:"object_version"`
-	Digest         string              `json:"digest"`
-	MediaType      string              `json:"media_type"`
-	SchemaName     string              `json:"schema_name"`
-	Size           int64               `json:"size"`
-	SchemaVersion  int                 `json:"schema_version"`
-	LogicalDigest  string              `json:"logical_run_digest"`
-	BundleDigest   string              `json:"bundle_digest"`
-	EventCount     int                 `json:"event_count"`
-	BundleFormat   int                 `json:"bundle_format_version"`
-	CassetteFormat int                 `json:"cassette_format_version"`
-	EventSchema    int                 `json:"event_schema_version"`
-	Companions     []CompanionArtifact `json:"companions"`
+	ProtocolVersion int                 `json:"protocol_version"`
+	AttemptNumber   int                 `json:"attempt_number"`
+	ArtifactID      string              `json:"artifact_id"`
+	Kind            string              `json:"kind"`
+	ObjectKey       string              `json:"object_key"`
+	ObjectVersion   string              `json:"object_version"`
+	Digest          string              `json:"digest"`
+	MediaType       string              `json:"media_type"`
+	SchemaName      string              `json:"schema_name"`
+	Size            int64               `json:"size"`
+	SchemaVersion   int                 `json:"schema_version"`
+	LogicalDigest   string              `json:"logical_run_digest"`
+	BundleDigest    string              `json:"bundle_digest"`
+	EventCount      int                 `json:"event_count"`
+	BundleFormat    int                 `json:"bundle_format_version"`
+	CassetteFormat  int                 `json:"cassette_format_version"`
+	EventSchema     int                 `json:"event_schema_version"`
+	Companions      []CompanionArtifact `json:"companions"`
 }
 
 type CompanionArtifact struct {
@@ -57,6 +59,47 @@ type ResultInput struct {
 	BundleFormat   int
 	CassetteFormat *int
 	EventSchema    *int
+}
+
+func (result Completion) ValidWorkerRequest(attempt int) bool {
+	if result.ProtocolVersion != 1 || result.AttemptNumber != attempt ||
+		!validID(result.ArtifactID) || len(result.ObjectKey) < 1 || len(result.ObjectKey) > 512 ||
+		len(result.ObjectVersion) < 1 || len(result.ObjectVersion) > 256 ||
+		!validDigest(result.Digest) || result.Size < 0 || result.Size > 64*1024*1024 ||
+		result.MediaType != "application/json" || result.SchemaName != "result-envelope" || result.SchemaVersion != 1 ||
+		result.EventCount < 0 || result.EventCount > 100_000 {
+		return false
+	}
+	expectedCompanion, knownKind := map[string]string{
+		"validation_json":      "",
+		"diff_json":            "diff_html",
+		"localize_result_json": "localize_json",
+		"otlp_result_json":     "otlp_json",
+		"pprof_result_json":    "pprof",
+	}[result.Kind]
+	if !knownKind {
+		return false
+	}
+	if expectedCompanion == "" {
+		return len(result.Companions) == 0 && validDigest(result.LogicalDigest) && validDigest(result.BundleDigest) &&
+			result.BundleFormat > 0 && result.CassetteFormat > 0 && result.EventSchema > 0
+	}
+	if len(result.Companions) != 1 || result.LogicalDigest != "" || result.BundleDigest != "" || result.EventCount != 0 ||
+		result.BundleFormat != 0 || result.CassetteFormat != 0 || result.EventSchema != 0 {
+		return false
+	}
+	companion := result.Companions[0]
+	expectedMediaType := map[string]string{
+		"diff_html":     "text/html; charset=utf-8",
+		"localize_json": "application/json",
+		"otlp_json":     "application/json",
+		"pprof":         "application/octet-stream",
+	}[expectedCompanion]
+	return companion.Kind == expectedCompanion && validID(companion.ArtifactID) &&
+		len(companion.ObjectKey) >= 1 && len(companion.ObjectKey) <= 512 &&
+		len(companion.ObjectVersion) >= 1 && len(companion.ObjectVersion) <= 256 &&
+		validDigest(companion.Digest) && companion.Size >= 0 && companion.Size <= 64*1024*1024 &&
+		companion.MediaType == expectedMediaType && companion.SchemaName == nil && companion.SchemaVersion == nil
 }
 
 func (s *Service) Cancellation(ctx context.Context, jobID string, attempt int, token string) (bool, error) {
@@ -207,8 +250,8 @@ func (s *Service) Heartbeat(ctx context.Context, jobID string, attempt int, toke
 }
 
 func (s *Service) UpdateProgress(ctx context.Context, jobID string, attempt int, token string, progress Progress) error {
-	if progress.Sequence < 1 || len(progress.Message) < 1 || len(progress.Message) > 512 {
-		return errors.New("invalid progress")
+	if progress.Sequence < 1 || len(progress.Message) < 1 || len(progress.Message) > 512 || !validProgressStage(progress.Stage) {
+		return fmt.Errorf("%w: invalid progress", ErrInvalidRequest)
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -247,6 +290,15 @@ func (s *Service) UpdateProgress(ctx context.Context, jobID string, attempt int,
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func validProgressStage(stage string) bool {
+	switch stage {
+	case "claiming", "downloading", "validating", "analyzing", "uploading", "committing":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Service) RequestCancellation(ctx context.Context, principal Principal, jobID string) error {
@@ -289,13 +341,13 @@ func (s *Service) RequestCancellation(ctx context.Context, principal Principal, 
 }
 
 func (s *Service) FailAttempt(ctx context.Context, jobID string, attempt int, token, code, message string, retryable bool) (string, error) {
-	if len(code) == 0 || len(code) > 64 || len(message) > 512 {
-		return "", errors.New("invalid failure")
+	if len(code) == 0 || len(code) > 64 || len(message) < 1 || len(message) > 512 {
+		return "", fmt.Errorf("%w: invalid failure", ErrInvalidRequest)
 	}
 	permanent := map[string]bool{"invalid_bundle": true, "unsupported_version": true, "invalid_result": true, "unauthorized_input": true, "cancelled": true}
 	retryableCodes := map[string]bool{"artifact_commit_failed": true, "transient_dependency": true, "internal": true}
 	if (!permanent[code] && !retryableCodes[code]) || retryable != retryableCodes[code] {
-		return "", errors.New("failure retryability does not match policy")
+		return "", fmt.Errorf("%w: failure retryability does not match policy", ErrInvalidRequest)
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {

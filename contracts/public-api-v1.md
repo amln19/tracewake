@@ -27,6 +27,10 @@ returns a per-session CSRF token. The database stores only keyed verifiers for
 both values. Browser code keeps the CSRF value in memory and never stores the
 durable token or session token.
 
+The local loopback server uses an unprefixed, host-only cookie without the
+`Secure` attribute so browser sessions work over its documented HTTP URL.
+Non-loopback deployments retain the `__Host-` cookie and require HTTPS.
+
 `GET /v1/browser/session` authenticates the cookie, rotates the CSRF token, and
 returns the session expiry and scopes. A refresh therefore reconstructs browser
 state without browser storage. `DELETE /v1/browser/session` revokes the session
@@ -76,7 +80,7 @@ active run identity and the same bytes may be uploaded as a new run.
 `POST /v1/runs/uploads/{upload_id}/complete` records the immutable object
 version and queues mandatory validation transactionally. It is idempotent for
 the same object identity. It rejects a changed identity. The run progresses
-through `pending`, `uploaded`, `validating`, then `ready` or `invalid`. No API,
+through `pending`, `validating`, then `ready` or `invalid`. No API,
 worker, administrator, or same-digest optimization can use a run before
 `ready`. Same-bundle reuse is workspace-local and only reuses a previously
 validated compatible immutable object.

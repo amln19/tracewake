@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from contracttest.generate_fixtures import fixture_bytes
 from tracewake.bundle import validate_bundle
 from tracewake.contracts import (
+    ArtifactCommit,
     Claim,
     ClaimRequest,
     Failure,
@@ -21,6 +22,7 @@ from tracewake.events import sha256_hex
 
 ROOT = Path(__file__).parents[1] / "contracttest" / "fixtures" / "v1"
 MODELS = {
+    "artifact-commit": ArtifactCommit,
     "failure": Failure,
     "job-notification": JobNotification,
     "claim-request": ClaimRequest,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/amln19/tracewake/controlplane/internal/controlplane"
 )
@@ -30,6 +31,10 @@ func TestDeletionHidesARunImmediately(t *testing.T) {
 	}
 	if err := f.service.DeleteRun(ctx, f.principal, run); err != nil {
 		t.Fatal(err)
+	}
+	var deletedAt *time.Time
+	if err := f.pool.QueryRow(ctx, "SELECT deleted_at FROM runs WHERE id=$1", run).Scan(&deletedAt); err != nil || deletedAt == nil {
+		t.Fatalf("deleted_at=%v err=%v", deletedAt, err)
 	}
 	if _, err := f.service.GetRun(ctx, f.principal, run); !errors.Is(err, controlplane.ErrNotFound) {
 		t.Fatalf("a deleted run is still readable: %v", err)
@@ -191,6 +196,10 @@ func TestRetentionRemovesOnlyExpiredRows(t *testing.T) {
 	}
 	if _, err := f.service.GetRun(ctx, f.principal, expired); !errors.Is(err, controlplane.ErrNotFound) {
 		t.Fatalf("an expired run is still readable: %v", err)
+	}
+	var deletedAt *time.Time
+	if err := f.pool.QueryRow(ctx, "SELECT deleted_at FROM runs WHERE id=$1", expired).Scan(&deletedAt); err != nil || deletedAt == nil {
+		t.Fatalf("expired run deleted_at=%v err=%v", deletedAt, err)
 	}
 	if _, err := f.service.GetRun(ctx, f.principal, live); err != nil {
 		t.Fatalf("retention removed a run inside its window: %v", err)

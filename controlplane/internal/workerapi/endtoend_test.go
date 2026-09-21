@@ -227,7 +227,7 @@ func browserCall(t *testing.T, method, url string, credentials browserCredential
 func TestBrowserSessionIsShortLivedScopedAndCSRFProtected(t *testing.T) {
 	deployed := newDeployment(t, false)
 	credentials := deployed.browserSession(t, deployed.token)
-	if credentials.cookie.Name != "__Host-tracewake_session" || !credentials.cookie.HttpOnly || !credentials.cookie.Secure || credentials.cookie.SameSite != http.SameSiteStrictMode || credentials.cookie.Path != "/" {
+	if credentials.cookie.Name != "tracewake_session" || !credentials.cookie.HttpOnly || credentials.cookie.Secure || credentials.cookie.SameSite != http.SameSiteStrictMode || credentials.cookie.Path != "/" {
 		t.Fatalf("unsafe browser cookie: %+v", credentials.cookie)
 	}
 	if credentials.cookie.MaxAge < 14*60 || credentials.cookie.MaxAge > 15*60 {
@@ -462,7 +462,8 @@ func TestSingleRunAnalysisCommitsItsResultAndCompanion(t *testing.T) {
 	}
 
 	completion := map[string]any{
-		"artifact_id": "", "kind": "otlp_result_json", "object_key": uploaded["otlp_result_json"]["object_key"],
+		"protocol_version": 1, "attempt_number": 1,
+		"artifact_id": newID(t), "kind": "otlp_result_json", "object_key": uploaded["otlp_result_json"]["object_key"],
 		"object_version": uploaded["otlp_result_json"]["object_version"], "digest": hexDigest(invalidEnvelope),
 		"media_type": "application/json", "schema_name": "result-envelope", "size": len(invalidEnvelope), "schema_version": 1,
 		"logical_run_digest": "", "bundle_digest": "", "event_count": 0,
@@ -699,14 +700,14 @@ func TestHostedRoundTripCommitsExactArtifactIdentity(t *testing.T) {
 			resultVersion := objectVersion(t, stored)
 
 			completion := map[string]any{
-				"artifact_id": nil, "kind": "validation_json", "object_key": declaration["object_key"],
+				"protocol_version": 1, "attempt_number": 1,
+				"artifact_id": newID(t), "kind": "validation_json", "object_key": declaration["object_key"],
 				"object_version": resultVersion, "digest": hexDigest(result), "media_type": "application/json",
 				"schema_name": "result-envelope", "size": len(result), "schema_version": 1,
 				"logical_run_digest": hexDigest([]byte("logical")), "bundle_digest": hexDigest(bundle),
 				"event_count": 1, "bundle_format_version": 1, "cassette_format_version": 1, "event_schema_version": 3,
 				"companions": []any{},
 			}
-			completion["artifact_id"] = ""
 			status, _ = deployed.call(t, "POST", deployed.private.URL+"/internal/v1/jobs/"+jobID+"/attempts/1/complete", deployed.workerToken, completion, attemptToken)
 			if status != http.StatusOK {
 				t.Fatalf("completion status=%d", status)
@@ -785,12 +786,9 @@ func TestDeletionRemovesATenantRunThroughThePublicAPI(t *testing.T) {
 	}
 }
 
-// TestCompleteAuthorizesBeforeReadingAWorkerSuppliedKey pins the ordering the
-// threat model promises: "a worker cannot choose a workspace or arbitrary
-// object key". The completion body names the key to commit, so the attempt
-// token has to be judged before the object store is consulted. A request that
-// holds no live attempt must be refused as a lost lease, not reported as a
-// failed commit of an object it was never entitled to have read.
+// TestCompleteAuthorizesBeforeReadingAWorkerSuppliedKey ensures lease
+// authorization precedes object-store reads and keeps supplied keys scoped to
+// the current attempt.
 func TestCompleteAuthorizesBeforeReadingAWorkerSuppliedKey(t *testing.T) {
 	deployed := newDeployment(t, false)
 	ctx := context.Background()
@@ -816,13 +814,19 @@ func TestCompleteAuthorizesBeforeReadingAWorkerSuppliedKey(t *testing.T) {
 	envelope := []byte(`{"protocol_version":1,"status":"succeeded"}`)
 	completion := func(key string) map[string]any {
 		return map[string]any{
-			"artifact_id": "", "kind": "otlp_result_json", "object_key": key,
+			"protocol_version": 1, "attempt_number": 1,
+			"artifact_id": newID(t), "kind": "otlp_result_json", "object_key": key,
 			"object_version": hexDigest(envelope), "digest": hexDigest(envelope),
 			"media_type": "application/json", "schema_name": "result-envelope",
 			"size": len(envelope), "schema_version": 1,
 			"logical_run_digest": "", "bundle_digest": "", "event_count": 0,
 			"bundle_format_version": 0, "cassette_format_version": 0, "event_schema_version": 0,
-			"companions": []any{},
+			"companions": []any{map[string]any{
+				"artifact_id": newID(t), "kind": "otlp_json",
+				"object_key":     "workspaces/" + deployed.workspace + "/jobs/" + jobID + "/attempts/1/otlp_json",
+				"object_version": hexDigest([]byte("companion")), "digest": hexDigest([]byte("companion")),
+				"size": 1, "media_type": "application/json", "schema_name": nil, "schema_version": nil,
+			}},
 		}
 	}
 	url := deployed.private.URL + "/internal/v1/jobs/" + jobID + "/attempts/1/complete"

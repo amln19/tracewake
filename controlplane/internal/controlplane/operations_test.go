@@ -12,8 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// operations exercises every hosted analysis, including the mandatory
-// ingestion job, against one lifecycle so no operation gets a weaker one.
+// Keep lifecycle assertions in sync with every supported operation.
 type operationCase struct {
 	name      string
 	kind      string
@@ -25,6 +24,7 @@ func operations() []operationCase {
 	return []operationCase{
 		{name: "validate", kind: "validation_json"},
 		{name: "diff", kind: "diff_json", companion: "diff_html", media: "text/html; charset=utf-8"},
+		{name: "localize", kind: "localize_result_json", companion: "localize_json", media: "application/json"},
 		{name: "otlp", kind: "otlp_result_json", companion: "otlp_json", media: "application/json"},
 		{name: "pprof", kind: "pprof_result_json", companion: "pprof", media: "application/octet-stream"},
 	}
@@ -109,6 +109,9 @@ func (f *fixture) job(t *testing.T, operation, key string) (string, string) {
 	if operation == "diff" {
 		profile := "align-v2"
 		request.RunIDs = append(request.RunIDs, f.readyRun(t))
+		request.Profile = &profile
+	} else if operation == "localize" {
+		profile := "localize-v1"
 		request.Profile = &profile
 	}
 	job, _, err := f.service.CreateJob(ctx, f.principal, key, request)
@@ -243,7 +246,7 @@ func TestEveryOperationRetriesFencesAndCommitsOneResult(t *testing.T) {
 			}
 
 			mismatched := f.completion(t, jobID, 2, operation, bundleDigest)
-			mismatched.Kind = "worker_diagnostic"
+			mismatched.Kind = "unexpected_result"
 			if err := f.service.CompleteAttempt(ctx, jobID, 2, second.AttemptToken, mismatched); err == nil {
 				t.Fatal("a result of the wrong kind completed the job")
 			}
@@ -352,6 +355,9 @@ func TestRepeatedRequestsProduceOneJobPerOperation(t *testing.T) {
 			if operation.name == "diff" {
 				profile := "align-v2"
 				request.RunIDs = append(request.RunIDs, f.readyRun(t))
+				request.Profile = &profile
+			} else if operation.name == "localize" {
+				profile := "localize-v1"
 				request.Profile = &profile
 			}
 			key := "idempotent-" + operation.name

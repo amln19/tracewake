@@ -7,9 +7,34 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/amln19/tracewake/controlplane/internal/controlplane"
 )
+
+func TestBrowserCookieMatchesThePublicURL(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		baseURL  string
+		wantName string
+		secure   bool
+	}{
+		{name: "production HTTPS", baseURL: "https://tracewake.example", wantName: secureBrowserCookie, secure: true},
+		{name: "loopback IPv4", baseURL: "http://127.0.0.1:8080", wantName: localBrowserCookie, secure: false},
+		{name: "loopback hostname", baseURL: "http://localhost:8080", wantName: localBrowserCookie, secure: false},
+		{name: "non-loopback HTTP fails closed", baseURL: "http://tracewake.example", wantName: secureBrowserCookie, secure: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			api := New(nil, nil, test.baseURL)
+			response := httptest.NewRecorder()
+			api.setSessionCookie(response, "token", time.Now().Add(15*time.Minute))
+			cookies := response.Result().Cookies()
+			if len(cookies) != 1 || cookies[0].Name != test.wantName || cookies[0].Secure != test.secure || !cookies[0].HttpOnly || cookies[0].SameSite != http.SameSiteStrictMode || cookies[0].Path != "/" || cookies[0].Domain != "" {
+				t.Fatalf("cookie=%+v", cookies)
+			}
+		})
+	}
+}
 
 func TestProgressCursorAdvancesAcrossAttemptSequenceReset(t *testing.T) {
 	if !progressIsNewer(controlplane.Progress{AttemptNumber: 2, Sequence: 1}, 1, 50) {
@@ -120,7 +145,7 @@ func TestInlineReportPolicyRunsOnlyTheSelfContainedRenderer(t *testing.T) {
 	}
 	for _, value := range [][3]string{
 		{"attachment", "diff_html", "text/html; charset=utf-8"},
-		{"inline", "worker_diagnostic", "text/html"},
+		{"inline", "otlp_result_json", "text/html"},
 		{"inline", "diff_html", "application/octet-stream"},
 	} {
 		if inlineReport(value[0], value[1], value[2]) {

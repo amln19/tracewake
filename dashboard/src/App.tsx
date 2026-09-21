@@ -131,7 +131,7 @@ function SessionExchange({ onSession }: { onSession: (session: Session) => void 
           <button className="primary" disabled={busy}>{busy ? "Exchanging…" : "Open control room"}</button>
         </form>
         {error && <p className="error" role="alert">{error}</p>}
-        <div className="security-note"><span className="status-dot ready" />Secure cookie · strict same-site · CSRF bound</div>
+        <div className="security-note"><span className="status-dot ready" />Host-only cookie · strict same-site · CSRF bound</div>
       </section>
     </main>
   );
@@ -179,7 +179,7 @@ function Shell({ session, route, onExpired, onSignOut }: { session: Session; rou
 
   useEffect(() => { void reload(); }, [reload]);
   useEffect(() => {
-    if (!runs.some((run) => ["pending", "uploaded", "validating"].includes(run.state))) return;
+    if (!runs.some((run) => ["pending", "validating"].includes(run.state))) return;
     const timer = window.setInterval(() => void reload(), 2000);
     return () => window.clearInterval(timer);
   }, [reload, runs]);

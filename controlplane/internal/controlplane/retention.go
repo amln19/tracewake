@@ -41,7 +41,7 @@ func (s *Service) EnforceRetention(ctx context.Context) (Retention, error) {
 		statement string
 		count     *int64
 	}{
-		{`UPDATE runs SET state='deleted',row_version=row_version+1
+		{`UPDATE runs SET state='deleted',deleted_at=transaction_timestamp(),row_version=row_version+1
           WHERE state<>'deleted' AND retention_expires_at<=transaction_timestamp()`, &applied.RunsExpired},
 		{`DELETE FROM artifacts WHERE NOT authoritative AND retention_expires_at<=transaction_timestamp()`, &applied.OrphanArtifactsRemoved},
 		{`DELETE FROM idempotency_records WHERE expires_at<=transaction_timestamp()`, &applied.IdempotencyRecordsGone},
@@ -88,7 +88,7 @@ func (s *Service) DeleteRun(ctx context.Context, principal Principal, runID stri
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	command, err := tx.Exec(ctx, `UPDATE runs SET state='deleted',retention_expires_at=transaction_timestamp(),row_version=row_version+1
+	command, err := tx.Exec(ctx, `UPDATE runs SET state='deleted',retention_expires_at=transaction_timestamp(),deleted_at=transaction_timestamp(),row_version=row_version+1
         WHERE id=$1 AND workspace_id=$2 AND state<>'deleted'`, runID, principal.WorkspaceID)
 	if err != nil {
 		return fmt.Errorf("delete run: %w", err)

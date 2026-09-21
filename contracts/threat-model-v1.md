@@ -98,8 +98,8 @@ A notification carries W3C trace context so one trace spans both languages.
 Trace and span identifiers are random and confer no authority; a worker
 presenting one gains nothing without its attempt token.
 
-The retained operational run is checked for exactly these leaks, so the claim
-rests on the bytes two real services emitted rather than on review alone.
+The evidence harness checks for exactly these leaks on each run, so the claim
+rests on the bytes two real services emit rather than on review alone.
 
 ## Data minimization and retention
 

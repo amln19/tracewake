@@ -11,6 +11,7 @@ from tracewake.bundle import build_bundle
 from tracewake.cassette import CassetteHeader, _line
 from tracewake.contracts import (
     AlignmentColumn,
+    ArtifactCommit,
     ArtifactRef,
     Claim,
     ClaimRequest,
@@ -151,6 +152,63 @@ def fixture_bytes() -> tuple[dict[str, bytes], list[dict[str, object]]]:
         operation="validate",
     )
     accepted: dict[str, tuple[str, bytes]] = {
+        "accepted/artifact-commit-validation.json": (
+            "artifact-commit",
+            _json(
+                ArtifactCommit(
+                    protocol_version=1,
+                    attempt_number=1,
+                    artifact_id=ARTIFACT_ID,
+                    kind="validation_json",
+                    object_key=f"workspaces/w/jobs/{JOB_ID}/attempts/1/validation_json",
+                    object_version="version-1",
+                    digest="6" * 64,
+                    size=123,
+                    media_type="application/json",
+                    schema_name="result-envelope",
+                    schema_version=1,
+                    logical_run_digest=logical_digest,
+                    bundle_digest=bundle_digest,
+                    event_count=1,
+                    bundle_format_version=1,
+                    cassette_format_version=1,
+                    event_schema_version=3,
+                    companions=[],
+                )
+            ),
+        ),
+        "accepted/artifact-commit-otlp.json": (
+            "artifact-commit",
+            _json(
+                ArtifactCommit(
+                    protocol_version=1,
+                    attempt_number=1,
+                    artifact_id=ARTIFACT_ID,
+                    kind="otlp_result_json",
+                    object_key=f"workspaces/w/jobs/{JOB_ID}/attempts/1/otlp_result_json",
+                    object_version="version-1",
+                    digest="6" * 64,
+                    size=123,
+                    media_type="application/json",
+                    schema_name="result-envelope",
+                    schema_version=1,
+                    logical_run_digest="",
+                    bundle_digest="",
+                    event_count=0,
+                    bundle_format_version=0,
+                    cassette_format_version=0,
+                    event_schema_version=0,
+                    companions=[
+                        {
+                            **companion("otlp_json", "application/json").model_dump(
+                                mode="json"
+                            ),
+                            "kind": "otlp_json",
+                        }
+                    ],
+                )
+            ),
+        ),
         "accepted/bundle-v1.tar": ("bundle", bundle),
         "accepted/failure.json": (
             "failure",
@@ -175,6 +233,18 @@ def fixture_bytes() -> tuple[dict[str, bytes], list[dict[str, object]]]:
             ),
         ),
         "accepted/job-notification.json": ("job-notification", _json(notification)),
+        "accepted/job-notification-localize.json": (
+            "job-notification",
+            _json(
+                JobNotification(
+                    protocol_version=1,
+                    job_id=JOB_ID,
+                    job_version=1,
+                    operation="localize",
+                    traceparent=None,
+                )
+            ),
+        ),
         "accepted/job-notification-traced.json": (
             "job-notification",
             _json(notification.model_copy(update={"traceparent": TRACEPARENT})),
@@ -347,6 +417,39 @@ def fixture_bytes() -> tuple[dict[str, bytes], list[dict[str, object]]]:
         ),
     }
     rejected: dict[str, tuple[str, str, bytes]] = {
+        "rejected/artifact-commit-wrong-companion.json": (
+            "artifact-commit",
+            "invalid_message",
+            _json(
+                {
+                    "protocol_version": 1,
+                    "attempt_number": 1,
+                    "artifact_id": ARTIFACT_ID,
+                    "kind": "otlp_result_json",
+                    "object_key": f"workspaces/w/jobs/{JOB_ID}/attempts/1/otlp_result_json",
+                    "object_version": "version-1",
+                    "digest": "6" * 64,
+                    "size": 123,
+                    "media_type": "application/json",
+                    "schema_name": "result-envelope",
+                    "schema_version": 1,
+                    "logical_run_digest": "",
+                    "bundle_digest": "",
+                    "event_count": 0,
+                    "bundle_format_version": 0,
+                    "cassette_format_version": 0,
+                    "event_schema_version": 0,
+                    "companions": [
+                        {
+                            **companion("pprof", "application/octet-stream").model_dump(
+                                mode="json"
+                            ),
+                            "kind": "pprof",
+                        }
+                    ],
+                }
+            ),
+        ),
         "rejected/compressed-bundle-v1.tar.gz": (
             "bundle",
             "invalid_archive",
