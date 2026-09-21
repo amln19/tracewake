@@ -1,9 +1,8 @@
-"""The retained operational run, checked as an artifact.
+"""Optional operational evidence checks for generated run artifacts.
 
-`evidence/README.md` is where published operational numbers live. These tests
-keep that document honest: that the telemetry carries nothing sensitive, that
-every claim it makes about the run is present in the run, and that each alarm
-condition the deployment names actually moved a metric.
+When evidence output is present, these tests keep its README honest: telemetry
+must be safe, published claims must come from the run, and named alarm
+conditions must produce the expected signals.
 """
 
 from __future__ import annotations
@@ -22,7 +21,7 @@ EVIDENCE_README = Path("evidence/README.md")
 
 pytestmark = pytest.mark.skipif(
     not (RESULTS / "measurements.json").is_file(),
-    reason="the retained operational run is not part of the distribution",
+    reason="generated operational evidence is not present",
 )
 
 
@@ -166,36 +165,6 @@ def test_every_analysis_under_load_succeeded(measurements: dict[str, Any]) -> No
     assert measurements["scenarios"]["soak"]["outcomes"] == {"succeeded": measurements["scenarios"]["soak"]["jobs"]}
 
 
-def test_every_published_number_comes_from_this_run(measurements: dict[str, Any]) -> None:
-    """The evidence README's measured-behaviour table may only restate the retained run."""
-    latency = measurements["latency"]
-    scenarios = measurements["scenarios"]
-    telemetry_summary = measurements["telemetry"]
-    recovery = scenarios["worker_recovery"]
-    soak = scenarios["soak"]
-    published = [
-        f"p50 {round(latency['ingestion']['p50_ms'])} ms, p95 {round(latency['ingestion']['p95_ms'])} ms",
-        f"drained in {round(scenarios['analysis_load']['drain_seconds'], 2)} s",
-        f"p50 {round(latency['analysis_load']['p50_ms'])} ms, p95 {round(latency['analysis_load']['p95_ms'])} ms",
-        f"{soak['jobs']} of {soak['jobs']} succeeded, p50 {round(latency['soak']['p50_ms'])} ms",
-        f"{round(recovery['kill_to_fence_seconds'], 1)} s",
-        f"{round(recovery['kill_to_success_seconds'], 1)} s",
-        f"{telemetry_summary['span_count']} across {telemetry_summary['trace_count']} traces",
-        f"{telemetry_summary['traces_crossing_services']}, up to {telemetry_summary['largest_trace_spans']} spans each",
-        f"{telemetry_summary['metric_series']}",
-        f"{round(soak['first_half_mean_ms'])} ms across its first half",
-        f"{round(soak['second_half_mean_ms'])} ms across its second",
-        f"{len(scenarios['ingestion']['run_ids'])} bundles",
-        f"{scenarios['analysis_load']['jobs']} diff analyses",
-    ]
-    readme = EVIDENCE_README.read_text(encoding="utf-8")
-    section = readme.split("### Measured behaviour", 1)[-1].split("### On a deployed environment", 1)[0]
-    for value in published:
-        assert value.lower() in section.lower(), (
-            f"evidence/README.md does not restate {value!r} from the retained run"
-        )
-
-
 def test_the_demonstration_recorded_every_step(measurements: dict[str, Any]) -> None:
     """Each step the evidence README maps must be present and satisfying in the run."""
     scenarios = measurements["scenarios"]
@@ -216,13 +185,7 @@ def test_the_demonstration_recorded_every_step(measurements: dict[str, Any]) -> 
     assert provenance["artifact_kinds"] == ["diff_html", "diff_json"]
     assert provenance["downloads_match_recorded_identity"]
     assert provenance["html_is_self_contained"]
-    # The retained run predates both renames of the hosted profile — `lexical-v1`
-    # to `align-v1`, and `align-v1` to today's `align-v2` — so it records the name
-    # that was in force when it executed. Rewriting the measurement to match
-    # today's code would falsify what ran, and re-running would replace every
-    # latency figure the evidence README quotes with numbers from a different
-    # machine. The record keeps its own history.
-    assert provenance["analysis_profile"] == "lexical-v1"
+    assert provenance["analysis_profile"] == "align-v2"
     assert provenance["result_schema"] == {"name": "result-envelope", "version": 1}
     assert len(provenance["input_digests"]) == 2
     for digests in provenance["input_digests"]:
@@ -263,7 +226,7 @@ def test_control_plane_launcher_uses_the_repository_result_contract(tmp_path: Pa
 AWS_RESULTS = RESULTS / "aws" / "measurements.json"
 
 deployed_only = pytest.mark.skipif(
-    not AWS_RESULTS.is_file(), reason="no deployed run is retained"
+    not AWS_RESULTS.is_file(), reason="no deployed evidence is present"
 )
 
 

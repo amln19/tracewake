@@ -341,7 +341,7 @@ def tenant_isolation(stack: Stack, client: Client, other_token: str, run_id: str
     """A second workspace must not observe the first workspace's records."""
     other = Client(stack.public_url, other_token)
     unknown = Client(stack.public_url, "tracewake_0000000000000000.notatoken")
-    observations = {
+    observations: dict[str, int | str] = {
         "runs_visible": len(other.request("GET", "/v1/runs")["runs"]),
         "audit_visible": len(other.audit()),
     }

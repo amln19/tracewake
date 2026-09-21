@@ -77,12 +77,8 @@ def main() -> int:
         shutil.rmtree(work)
     stack = Stack(root=work, repository=repository)
 
-    # Python's default SIGTERM handling terminates immediately without running
-    # `finally` blocks, so a job timeout or an external cancellation would
-    # otherwise skip `stack.stop()` below and leave postgres, the control
-    # plane, and the worker's `uv run` subprocess orphaned on the runner --
-    # exactly the kind of leftover process a shared uv cache's post-job prune
-    # can then contend with.
+    # Convert SIGTERM into an exception so the finally block can stop the
+    # disposable stack before a timeout or external cancellation leaves it running.
     def _terminated(signum: int, frame: FrameType | None) -> None:
         raise SystemExit(f"evidence harness received signal {signum}")
 

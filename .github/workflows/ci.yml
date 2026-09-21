@@ -72,8 +72,10 @@ jobs:
                       "LICENSE",
                       "PKG-INFO",
                       "README.md",
+                      "bench",
                       "contracts",
                       "contracttest",
+                      "evidence",
                       "pyproject.toml",
                       "tests",
                       "tracewake",
@@ -95,10 +97,7 @@ jobs:
           replayed=$("$RUNNER_TEMP/tracewake-wheel/bin/tracewake" replay smoke --store "$smoke/store")
           test "$(printf '%s\n' "$recorded" | head -n 1)" = \
             "$(printf '%s\n' "$replayed" | head -n 1)"
-      # The sdist ships this suite so a packager can verify the artifact. That
-      # is only worth anything if the shipped tests actually run against the
-      # shipped tree, which a checkout cannot show: the editable install puts
-      # the repository root on sys.path and hides everything the sdist omits.
+      # Run the tests from the sdist so omitted checkout files cannot mask issues.
       - name: Run the shipped suite against the unpacked sdist
         run: |
           sdist=$(ls dist/*.tar.gz)
@@ -160,12 +159,8 @@ jobs:
         with:
           go-version-file: controlplane/go.mod
           cache-dependency-path: controlplane/go.sum
-      # Every lifecycle, fencing, and end-to-end test here skips when
-      # TRACEWAKE_TEST_DATABASE_URL is unset, and `go test` still exits 0. A
-      # dropped env var or a renamed service would therefore report green
-      # having tested none of the guarantees this job exists to hold. With a
-      # database reachable nothing skips, so a skip is that failure and not a
-      # test opting out.
+      # These tests skip when the database is unavailable; treat any skip as a
+      # CI failure rather than reporting an untested job as successful.
       - name: Test, and fail if the database-backed tests skipped
         run: |
           if ! go test -count=1 -v ./... > "$RUNNER_TEMP/control-plane.log" 2>&1; then
@@ -195,16 +190,8 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      # No cache. This job launches tracewake-worker as a background `uv run`
-      # subprocess for most of its runtime (see stack.py); a shared cache's
-      # post-job `uv cache prune` then contends with that live process for the
-      # same lock file and can time out waiting on it, failing the job in
-      # cleanup after the real work already succeeded -- as it did once, from
-      # a since-fixed leak that left an extra worker running past teardown.
-      # Disabling the cache here removes that failure surface outright rather
-      # than relying only on getting every worker-lifecycle call site right;
-      # the dependency set is small enough that caching would not meaningfully
-      # speed up a ~10-minute job anyway.
+      # This job runs a long-lived worker; disabling the cache avoids teardown
+      # contention between that process and uv's cache cleanup.
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: false
@@ -215,8 +202,8 @@ jobs:
       - name: Put the PostgreSQL server binaries on PATH
         run: ls -d /usr/lib/postgresql/*/bin | tee -a "$GITHUB_PATH"
       - run: uv sync --locked --python 3.13
-      # Shortened: this proves the harness still drives the real services. The
-      # published numbers come from a full run retained in evidence/results.
+      # Evidence is generated in the runner workspace; generated results are
+      # not retained in the repository.
       - run: uv run --python 3.13 python -m evidence --quick --output "$RUNNER_TEMP/evidence"
 
   dashboard:

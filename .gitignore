@@ -1,4 +1,7 @@
 .tracewake/
+.env
+.env.*
+!.env.example
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -13,19 +16,18 @@ dashboard/test-results/
 dashboard/playwright-report/
 *.tsbuildinfo
 *.egg-info/
-# The recorded runs are large and regenerable-in-principle, but the hand labels
-# and the sheets derived from them are neither, and every published number
-# traces back to them. Those ship; the stores do not.
+evidence/results/
+
+# Keep authoritative labels, alignment data, runs, tasks, and corpus docs.
 corpus/*
 !corpus/labels/
 !corpus/alignment/
 !corpus/runs.jsonl
 !corpus/tasks.json
 !corpus/README.txt
-# Terraform working directories hold provider binaries; state and variable
-# files hold database and token material.
+
+# Ignore Terraform working data, state, and variable files.
 .terraform/
-.terraform.lock.hcl
 *.tfstate
 *.tfstate.*
 *.tfvars

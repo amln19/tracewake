@@ -51,6 +51,10 @@ class Sample:
     value: Any
 
 
+def _as_float(value: Any, default: float = 0.0) -> float:
+    return default if value is None else float(value)
+
+
 def samples(records: list[dict[str, Any]]) -> list[Sample]:
     collected: list[Sample] = []
     for record in records:
@@ -87,15 +91,15 @@ def _flatten(sample: Sample, statistic: str) -> tuple[float, float]:
     """Return (value, count) contributions of one sample to a statistic."""
     value = sample.value
     if isinstance(value, dict):
-        count = float(value.get("Count", 0))
+        count = _as_float(value.get("Count"))
         if statistic == "Sum":
-            return float(value.get("Sum", 0.0)), count
+            return _as_float(value.get("Sum")), count
         if statistic == "Average":
-            return float(value.get("Sum", 0.0)), count
+            return _as_float(value.get("Sum")), count
         if statistic == "Maximum":
-            return float(value.get("Max", value.get("Sum", 0.0))), count
+            return _as_float(value.get("Max", value.get("Sum"))), count
         if statistic == "Minimum":
-            return float(value.get("Min", value.get("Sum", 0.0))), count
+            return _as_float(value.get("Min", value.get("Sum"))), count
         return count, count
     return float(value), 1.0
 

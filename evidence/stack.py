@@ -20,7 +20,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-REQUIRED = ("go", "initdb", "pg_ctl", "pg_isready", "createdb", "psql", "pg_dump")
+REQUIRED = (
+    "createdb",
+    "git",
+    "go",
+    "initdb",
+    "pg_ctl",
+    "pg_isready",
+    "pg_dump",
+    "pg_restore",
+    "psql",
+    "uv",
+)
 # PostgreSQL refuses a socket directory longer than 103 bytes, which a
 # scratch directory easily exceeds.
 SOCKET_ROOT = Path("/tmp/tracewake-evidence")
@@ -183,7 +194,9 @@ class Stack:
             return False
 
     def stop_control_plane(self, kill: bool = False) -> None:
-        self.control_plane = _terminate(self.control_plane, kill)
+        process = self.control_plane
+        self.control_plane = None
+        _terminate(process, kill)
 
     def start_worker(self, build: str = "evidence") -> None:
         # A caller that starts a second worker without stopping the first
@@ -224,7 +237,9 @@ class Stack:
         return environment
 
     def stop_worker(self, kill: bool = True) -> None:
-        self.worker = _terminate(self.worker, kill)
+        process = self.worker
+        self.worker = None
+        _terminate(process, kill)
 
     def stop(self) -> None:
         self.stop_worker()

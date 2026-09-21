@@ -3,9 +3,9 @@ labels/, alignment/, runs.jsonl, tasks.json and this file — those are what is
 committed. They are neither large nor regenerable. The recorded stores are
 git-excluded.
 
-  store/              the corpus: 192 recorded runs over 64 injected bugs. CLOSED
-                      — the agent changed after these were recorded, so appending
-                      would mix runs from two different agents under one label.
+  store/              the corpus: 192 recorded runs over 64 injected bugs. Keep
+                      it immutable: mixing runs from another agent version would
+                      invalidate comparisons.
   runs.jsonl          one line per attempt: labels, trajectory shape, timing.
                       This is what `python -m bench status` reads.
   tasks.json          the 64-bug manifest. Rebuilt with `bench build-tasks`.
@@ -60,7 +60,7 @@ git-excluded.
                       of record.
 
                       predictions-rootse.jsonl scores align-v1's profiles
-                      against RootSE's external labels. That data is a ~200MB
+                      against RootSE's external labels. That data is a large
                       third-party checkout and is not vendored:
                         git clone https://github.com/LogAnalysisTech/TrajAudit \
                           corpus/external/TrajAudit
@@ -69,5 +69,3 @@ git-excluded.
                       TrajAudit for RootSE (~600MB). Clone it yourself; see the
                       alignment/ note above.
   counterfactual/     output from the intervention experiments.
-  archive-prefix11/   superseded runs from earlier agent versions. Never merge
-                      these with store/ — its own README says why.

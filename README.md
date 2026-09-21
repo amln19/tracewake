@@ -191,7 +191,7 @@ scripts/local-control-plane
 
 That starts PostgreSQL, the control plane, a Python worker, and the dashboard at `http://127.0.0.1:8080`. Docker is an alternative: `docker compose up --build`. The AWS environment is documented in [`deploy/aws/README.md`](deploy/aws/README.md).
 
-An end-to-end evidence harness drives bundle ingestion, mandatory validation, burst load, worker kill and recovery, stale completion rejection, tenant isolation, backup/restore, and local independence. Reproduce it with `uv run python -m evidence --output evidence/results` (about ten minutes; needs `go`, `uv`, and local PostgreSQL 17). Retained telemetry and methodology are in [`evidence/README.md`](evidence/README.md).
+An end-to-end evidence harness drives bundle ingestion, mandatory validation, burst load, worker kill and recovery, stale completion rejection, tenant isolation, backup/restore, and local independence. Reproduce it with `uv run python -m evidence --output evidence/results` (about ten minutes; needs `go`, `uv`, and local PostgreSQL 17). The methodology and output format are in [`evidence/README.md`](evidence/README.md).
 
 ## Development
 
@@ -222,7 +222,7 @@ Tracewake records through its documented agent boundary — not arbitrary syscal
 * [`contracts/README.md`](contracts/README.md) — bundle, public API, worker, lifecycle, persistence, and threat-model contracts
 * [`contracts/divergence.md`](contracts/divergence.md) — localization rule, measurements, and evaluation protocol
 * [`contracts/align-v2.md`](contracts/align-v2.md) — exact hosted alignment profile
-* [`evidence/README.md`](evidence/README.md) — operational harness and retained measurements
+* [`evidence/README.md`](evidence/README.md) — operational harness and measurement methodology
 * [`deploy/aws/README.md`](deploy/aws/README.md) — deployment, retention, and recovery
 * [`examples/demo.py`](examples/demo.py) — the offline end-to-end demo
 
