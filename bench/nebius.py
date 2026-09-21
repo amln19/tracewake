@@ -252,17 +252,16 @@ def export_packets(
     if not selected:
         raise RuntimeError("no nebius pairs to export; build the pool first")
 
+    from .label import _guard_label_export
+
     packets = dest / "packets"
     packets.mkdir(parents=True, exist_ok=True)
-    for old in packets.glob("N*.md"):
-        old.unlink()
 
     key_rows, sheet_rows = [], []
+    rendered_packets: list[tuple[str, str]] = []
     for i, pair in enumerate(selected, start=1):
         packet_id = f"N{i:02d}"
-        (packets / f"{packet_id}.md").write_text(
-            _render_packet(packet_id, pair), encoding="utf-8"
-        )
+        rendered_packets.append((packet_id, _render_packet(packet_id, pair)))
         key_rows.append(
             {
                 "packet_id": packet_id,
@@ -276,6 +275,11 @@ def export_packets(
         )
         sheet_rows.append({"packet_id": packet_id, "label": None, "note": ""})
 
+    _guard_label_export(dest, key_rows)
+    for old in packets.glob("N*.md"):
+        old.unlink()
+    for packet_id, text in rendered_packets:
+        (packets / f"{packet_id}.md").write_text(text, encoding="utf-8")
     (dest / "key.jsonl").write_text(
         "".join(json.dumps(r, sort_keys=True) + "\n" for r in key_rows), encoding="utf-8"
     )

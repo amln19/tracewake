@@ -233,8 +233,13 @@ def test_reading_outside_the_root_is_refused(tmp_path: Path, repo: Path) -> None
         rec.outcome(status="ok")
 
 
-def test_the_home_directory_is_not_in_a_recorded_path(tmp_path: Path) -> None:
-    target = Path.home() / ".tracewake-fs-test-file"
+def test_the_home_directory_is_not_in_a_recorded_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    target = home / ".tracewake-fs-test-file"
     target.write_text("x")
     try:
         run_id = _record(tmp_path / "store", tmp_path, lambda s: s.fs.read_text(target))
@@ -244,5 +249,5 @@ def test_the_home_directory_is_not_in_a_recorded_path(tmp_path: Path) -> None:
     db = Store(tmp_path / "store")
     (event,) = [e.event for e in db.events(run_id) if e.event.type == "fs_read"]
     db.close()
-    assert str(Path.home()) not in event.path
+    assert str(home) not in event.path
     assert event.path.startswith("<HOME>")

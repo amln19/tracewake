@@ -451,7 +451,7 @@ def test_search_shows_the_code_around_a_hit(tmp_path: Path, repo: Path) -> None:
 
 
 def test_an_ambiguous_edit_names_the_lines_it_could_mean(tmp_path: Path, repo: Path) -> None:
-    """"Appears twice" is a dead end; the lines are what make it actionable."""
+    """Duplicate matches are ambiguous; report their source lines."""
     (repo / "pkg" / "dup.py").write_text("a = 1\nb = 2\na = 1\n", encoding="utf-8")
     _, run_id, _ = drive(
         tmp_path / "store",
@@ -571,8 +571,7 @@ def test_an_edit_echoes_what_it_actually_wrote(tmp_path: Path, repo: Path) -> No
 
 
 def test_an_edit_that_breaks_the_file_says_so_at_once(tmp_path: Path, repo: Path) -> None:
-    """Real case: the model wrote two statements on one line separated by spaces,
-    which no amount of re-indentation can rescue."""
+    """Report a syntactically invalid edit instead of trying to re-indent it."""
     (repo / "pkg" / "cache.py").write_text(
         "def get(store, key):\n"
         "    if key in store:\n"
@@ -604,8 +603,8 @@ def test_an_edit_that_breaks_the_file_says_so_at_once(tmp_path: Path, repo: Path
     assert "now reads" in body, "the agent needs to see the broken state to repair it"
 
 
-def test_old_observations_are_elided_to_bound_the_context(tmp_path: Path, repo: Path) -> None:
-    """Inference cost tracks context, and an unbounded history makes late turns dear."""
+def test_stale_observations_are_elided_to_bound_the_context(tmp_path: Path, repo: Path) -> None:
+    """Keep context bounded while retaining the newest observations."""
     for n in range(7):
         (repo / "pkg" / f"f{n}.py").write_text(f"UNIQUE_MARKER_{n} = {n}\n", encoding="utf-8")
     replies = [block('{"action": "read_file", "path": "pkg/f%d.py"}' % n) for n in range(7)]
@@ -768,8 +767,7 @@ def test_a_multi_term_search_gets_a_specific_hint(tmp_path: Path, repo: Path) ->
 def test_retrying_a_stale_snippet_shows_the_current_file_not_just_an_error(
     tmp_path: Path, repo: Path
 ) -> None:
-    """Taken from a real run: a stale 'old' after a broken edit repeated forever
-    because the error told it to re-read rather than showing the current state."""
+    """A stale edit should show the current file so the agent can recover."""
     _trace, run_id, _ = drive(
         tmp_path / "store",
         repo,
@@ -796,11 +794,7 @@ def test_retrying_a_stale_snippet_shows_the_current_file_not_just_an_error(
 def test_a_multiline_repair_matches_even_when_offset_by_whitespace(
     tmp_path: Path, repo: Path
 ) -> None:
-    """Reproduces a real 14B trap: the first edit breaks the file, and the
-    repair's snippet — correct but re-typed without the file's original
-    indentation — was rejected as 'no match' because the fallback search window
-    was sized for one line while the snippet spanned two.
-    """
+    """Match a multiline repair even when its indentation differs from the file."""
     (repo / "pkg" / "cond.py").write_text(
         "def f(x):\n    if x:\n        return 1\n    return 0\n", encoding="utf-8"
     )

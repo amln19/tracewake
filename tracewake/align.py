@@ -1,9 +1,7 @@
-"""Trajectory alignment: find where two agent runs stopped agreeing.
+"""Trajectory alignment for comparing agent runs.
 
-Gotoh affine-gap alignment over a weighted step distance. The distance weights
-and the sub-constants below are frozen a priori — chosen before any hand label
-was scored against the aligner — so measured accuracy is not a product of
-tuning on the evaluation set.
+Uses Gotoh affine-gap alignment over weighted step similarity. The hosted
+profile parameters are defined here and must change only with a new profile.
 """
 
 from __future__ import annotations
@@ -23,20 +21,15 @@ from .events import (
 )
 from .patches import TracewakeError
 
-# ---------------------------------------------------------------------------
-# Frozen a priori. Do not change after evaluation numbers are published.
-# ---------------------------------------------------------------------------
+# Hosted profile parameters. Change them only with a new profile.
 
 WEIGHT_TOOL = 0.45
 WEIGHT_ARGS = 0.25
 WEIGHT_REASONING = 0.20
 WEIGHT_FILES = 0.10
 
-# Inside the argument component: the file or pattern the action aimed at carries
-# most of the weight. Runs of the same task mostly part on *how* they touch a
-# file, not on *which* file, so a comparison that treats the whole argument blob
-# as equal/not-equal collapses into a first-difference check and has nothing to
-# beat a positional baseline with.
+# Inside the argument component, the file or pattern the action targeted carries
+# most of the weight because it identifies the resource being changed.
 WEIGHT_TARGET = 0.70
 WEIGHT_ARG_REST = 0.30
 
@@ -55,17 +48,16 @@ LINE_FALLOFF = 50.0
 EMBEDDING_MODEL = "mlx-community/bge-small-en-v1.5-bf16"
 EMBEDDING_REVISION = "0e415031434cdf5f1b89d584e11be33b82abfc8d"
 
-# Divergence readout uses target-width agreement on aligned columns, not a
-# threshold on the total similarity. Name-plus-target agreement and
-# name-with-different-target can both land above any single cut on the weighted
-# sum; the unit the run-to-run measurement validated is the predicate below.
+# Divergence uses target-width agreement on aligned columns, not a threshold on
+# total similarity. Name-plus-target agreement and name-with-different-target
+# can otherwise receive similar weighted scores.
 
 _TOKEN = re.compile(r"[A-Za-z0-9_./-]+")
 
 
 @dataclass(frozen=True)
 class AlignConfig:
-    """Knobs for ablations. Defaults are the frozen evaluation settings."""
+    """Alignment configuration. Defaults match the hosted profile."""
 
     weight_tool: float = WEIGHT_TOOL
     weight_args: float = WEIGHT_ARGS
@@ -438,7 +430,7 @@ def step_similarity(
 
 
 class LexicalEmbedder:
-    """Bag-of-words vectors for tests. Not the pinned evaluation embedder."""
+    """Dependency-free bag-of-words embeddings."""
 
     def __call__(self, texts: Sequence[str]) -> list[list[float]]:
         # Match MlxEmbedder: blank strings still need a stable non-zero vector so
@@ -648,11 +640,7 @@ def align(
 
 
 def _trailing_identical_loop_start(steps: Sequence[Step]) -> int | None:
-    """0-based index of a trailing run of 2+ identical (name, args) steps, else None.
-
-    Matches the labeling rule: a run that ends by repeating an action with the
-    same arguments is looping, and the loop is not recovery.
-    """
+    """Return the start of a trailing run of 2+ identical steps, if any."""
     if len(steps) < 2:
         return None
     last = steps[-1]
@@ -671,21 +659,16 @@ def divergence_step(
     good: Sequence[Step],
     bad: Sequence[Step],
 ) -> int | None:
-    """1-based index on the failure (`bad`) side, or None if they re-align through the end.
+    """1-based failure-side index, or None if the runs re-align through the end.
 
     Walk the alignment to the last column that agrees at target width, then take
-    the first failure-side step after it. Never agreed → step 1. Trailing region
-    empty because they recovered → None (the product reports no standing
-    divergence; evaluation maps that to the last failure step, matching the
-    labeling rule for a run that was only doomed at the end).
+    the first failure-side step after it. Never agreed means step 1; an empty
+    trailing region means there is no standing divergence.
 
     Agreements whose failure-side step sits inside a trailing identical-arg loop
     do not count as recovery: a stuck `run_tests()` repeated against several
     separate real tests on the other side would otherwise look like sustained
-    re-alignment. A single shared terminal action (no loop) is unchanged — that
-    case still needs the ending stripped before diffing. Requiring 2+ agreeing
-    *columns* was tried and reverted; it broke real one-column recoveries and
-    did not fix the loop case.
+    re-alignment. A single shared terminal action is not treated as a loop.
     """
     if not bad:
         raise ValueError("the failure run has no steps to locate a divergence in")

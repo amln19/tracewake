@@ -96,12 +96,7 @@ def test_reliability_separates_the_class_that_cannot_be_localised():
 
 
 def test_every_class_carries_a_confidence_band():
-    """Callers abstain on the tail, so every class has to say where it sits.
-
-    The bands replaced per-class percentages: the ordering survives being
-    re-measured on fresh data and the percentages do not, so quoting one was
-    false precision on a figure with a twelve-point interval.
-    """
+    """Every reliability class exposes a confidence band for callers."""
     import typing
 
     from tracewake.diverge import Reliability
@@ -130,12 +125,7 @@ def test_the_scratch_rule_infers_writes_when_none_are_derived():
 
 
 def test_observations_do_not_enter_the_bounds():
-    """`Step.observation` is carried for adapters and future signals only.
-
-    Measured on the development halves, observation-based bounds added nothing,
-    so nothing in `diverge` reads the field. This pins that: attaching an
-    observation must not move an answer.
-    """
+    """Adapter observations must not affect localization or reliability."""
     plain = [read("a.py"), edit("a.py")] + [read("z.py")] * 4
     noisy = [
         Step(name=s.name, args=s.args, target=s.target, writes=s.writes,

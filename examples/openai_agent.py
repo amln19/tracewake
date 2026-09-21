@@ -1,13 +1,7 @@
-"""A tool-calling agent wired through Tracewake, using the shape most
-OpenAI-compatible clients speak: chat messages, an assistant turn carrying
-`tool_calls`, and tool results threaded back by `tool_call_id`.
+"""A small no-network tool-calling agent using an OpenAI-compatible message shape.
 
-`bench/agent.py` is not a portability proof — it parses actions out of a
-fenced JSON block tuned for small local models. This example uses the
-structured shape `tracewake.ToolCallRequest` already models directly, so wiring
-in a real client is a one-line change: replace `fake_create` below with
-`openai.OpenAI().chat.completions.create` (adapted to return a
-`tracewake.ModelResponse`) and pass it to `session.model(create_fn=...)`.
+It uses Tracewake's `ToolCallRequest` model directly. Replace `fake_create` with
+an adapter around a real client that returns `tracewake.ModelResponse`.
 
 Run standalone:
 
@@ -17,8 +11,7 @@ or wrapped, so `tracewake` owns the recording:
 
     tracewake record -- python examples/openai_agent.py --scenario good
 
-See `examples/demo.py` for the end-to-end path: record both scenarios, replay
-one, and diff them.
+See `examples/demo.py` for the end-to-end path.
 """
 
 from __future__ import annotations
@@ -38,15 +31,8 @@ from tracewake import (
 
 CITY_WEATHER = {"lisbon": "68F and sunny"}
 
-# `tracewake diff` groups a step by tool name plus a "target" pulled from a
-# `query` or `path` argument (see `target_of` in `tracewake/align.py`) — the same
-# convention a file-editing tool would use for a path. `get_weather` and
-# `write_note` reuse it so a query that resolves to nothing, or a note filed
-# under a different path, actually registers as a divergence rather than
-# aligning on name alone.
-#
-# One script per scenario, so the two runs share an identical first step —
-# same tool call, same args, same result — and only part ways afterward.
+# Keep the first step identical so the changed query and note path exercise the
+# aligner's tool-target matching.
 _SCRIPTS: dict[str, list[dict[str, Any]]] = {
     "good": [
         {
@@ -94,16 +80,14 @@ _SCRIPTS: dict[str, list[dict[str, Any]]] = {
 
 
 def fake_create(scenario: str) -> Any:
-    """A deterministic stand-in for `create_fn`, matching its real shape:
-    `(model_id, messages, params) -> ModelResponse`. Scripted so this example
-    needs no API key and makes no network call.
-    """
-    calls = {"n": 0}
+    """Return a deterministic `create_fn` for the selected scenario."""
+    call_index = 0
     script = _SCRIPTS[scenario]
 
     def create(model_id: str, messages: list[Message], params: DecodeParams) -> ModelResponse:
-        index = min(calls["n"], len(script) - 1)
-        calls["n"] += 1
+        nonlocal call_index
+        index = min(call_index, len(script) - 1)
+        call_index += 1
         turn = script[index]
         tool_calls = [
             ToolCallRequest(id=f"call_{index}_{i}", name=c["name"], args=c["args"], batch_index=i)
@@ -153,7 +137,7 @@ def run(session: tracewake.Session, scenario: str) -> None:
         ),
     ]
 
-    for _ in range(6):
+    for _ in range(len(_SCRIPTS[scenario])):
         completion = model.create(messages=messages, temperature=0.0)
         response = completion.response
         messages.append(Message(role="assistant", content=response.text))

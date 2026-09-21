@@ -234,12 +234,10 @@ def batch(
     model = LocalModel(model_id=model_id, temperature=temperature)
     model.warm()
     finished = done(ledger)
-    # Tasks are shuffled with a fixed seed, but a task's runs stay together. Both
-    # halves matter for a job that gets read long before it ends: shuffling makes
-    # any prefix a sample across all sixteen repositories, and keeping runs
-    # together means tasks *complete* as the job goes, so the successes-per-task
-    # histogram — the thing the gate turns on — has data early instead of only at
-    # the very end.
+    # Shuffle tasks with a fixed seed before flattening their runs. This keeps an
+    # unsharded prefix representative across repositories and lets complete tasks
+    # reach the status histogram early; shard selection below then partitions the
+    # flattened attempts across workers.
     order = list(tasks)
     random.Random(ORDER_SEED).shuffle(order)
     planned = [(t, i) for t in order for i in range(runs)]

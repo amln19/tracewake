@@ -302,6 +302,41 @@ def test_a_stream_that_errors_mid_flight_is_still_recorded(tmp_path: Path) -> No
     assert calls[0].response.finish_reason == "error"
 
 
+def test_a_stream_that_errors_before_its_first_chunk_is_still_recorded(
+    tmp_path: Path,
+) -> None:
+    def broken_stream(model_id, messages, params):
+        if False:
+            yield StreamChunk(index=0, text_delta="never")
+        raise RuntimeError("provider failed before streaming")
+
+    with tracewake.record("empty-broken-stream", store=tmp_path) as rec:
+        model = rec.model(
+            provider="mock",
+            model_id="mock-1",
+            stream_fn=broken_stream,
+        )
+        with pytest.raises(RuntimeError, match="before streaming"):
+            with model.stream(messages=[Message(role="user", content="hi")]) as stream:
+                next(stream)
+        rec.outcome(status="ok")
+        run_id = rec.run_id
+
+    store = Store(tmp_path)
+    calls = [e.event for e in store.events(run_id) if isinstance(e.event, ModelCallEvent)]
+    store.close()
+    assert len(calls) == 1
+    assert calls[0].response.finish_reason == "error"
+    assert calls[0].stream is not None and calls[0].stream.chunks == []
+
+    with tracewake.replay(run_id, store=tmp_path) as replay:
+        with replay.model(provider="mock", model_id="mock-1").stream(
+            messages=[Message(role="user", content="hi")]
+        ) as stream:
+            assert list(stream) == []
+            assert stream.response.finish_reason == "error"
+
+
 def test_replay_of_a_missing_run_names_what_exists(tmp_path: Path) -> None:
     record_run(tmp_path)
     with pytest.raises(KeyError, match="Known runs"):

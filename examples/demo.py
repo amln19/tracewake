@@ -1,7 +1,6 @@
-"""Record two runs of `openai_agent.py` and show where they diverge.
+"""Record, replay, and compare two offline example scenarios.
 
-Entirely offline: the agent's fake model backend makes no network call, so
-this needs no API key. Run it with:
+The fake model backend makes no network calls or API requests. Run it with:
 
     python examples/demo.py
 """

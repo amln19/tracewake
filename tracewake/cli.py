@@ -462,10 +462,9 @@ def diff_(
         db_b.close()
     db.close()
 
-    # Two different questions, and only one of them is "where did it go wrong".
-    # The alignment reports where the runs stopped agreeing, which lands within
-    # two steps of a human label about a quarter of the time; the single-trace
-    # rule reaches 60% held out. Lead with the one that answers the question.
+    # Alignment and localization answer different questions. Lead with the
+    # single-trace localization result, which directly answers where the run
+    # went wrong.
     if result.bad_steps:
         step, klass = localize(result.bad_steps)
         typer.echo(

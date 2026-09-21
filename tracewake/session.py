@@ -147,6 +147,9 @@ class StreamHandle:
         except StopIteration:
             self._response = self._finalize(self._chunks, self._offsets)
             raise
+        except BaseException:
+            self._response = self._finalize(self._chunks, self._offsets)
+            raise
         self._chunks.append(chunk)
         self._offsets.append((real_perf_counter() - self._start) * 1000.0)
         return chunk
@@ -182,7 +185,7 @@ class StreamHandle:
             return False
         if exc_type is None:
             self.drain()
-        elif self._chunks:
+        else:
             self._response = self._finalize(self._chunks, self._offsets)
         return False
 

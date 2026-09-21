@@ -49,10 +49,9 @@ class ProfileAlignment:
 def align_v2(good: Sequence[Step], bad: Sequence[Step]) -> ProfileAlignment:
     """Align two runs, and report where the failing one went wrong.
 
-    The alignment is `align-v1`'s, unchanged. The divergence is not: it comes
-    from the single-trace rule, which answers the question the alignment readout
-    was being asked and could not answer well. An empty failing run has no step
-    to report, and the alignment is still meaningful without one.
+    The alignment uses the hosted baseline parameters. Divergence comes from the
+    single-trace rule, while an empty failing run still has a meaningful
+    alignment but no step to report.
     """
     total, pairs, scores = align(
         good,

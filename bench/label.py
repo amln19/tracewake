@@ -241,6 +241,30 @@ def _render_packet(packet_id: str, good: list[dict], bad: list[dict]) -> str:
     )
 
 
+def _guard_label_export(dest: Path, key_rows: list[dict]) -> None:
+    """Refuse to replace a key that an existing label sheet belongs to."""
+    key_path = dest / "key.jsonl"
+    sheet_path = dest / LABELS_FILE
+    if not key_path.exists() and not sheet_path.exists():
+        return
+    if not key_path.is_file() or not sheet_path.is_file():
+        raise RuntimeError(
+            f"{dest} has an incomplete label export; preserve it and repair or move "
+            "the existing key and label files before exporting again."
+        )
+    existing = [
+        json.loads(line)
+        for line in key_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if existing != key_rows:
+        raise RuntimeError(
+            f"{key_path} no longer matches the selected packets. Refusing to replace "
+            f"it while {sheet_path} exists, because existing labels could be applied "
+            "to different trajectories. Move the old export aside before rebuilding it."
+        )
+
+
 def export_packets(
     dest: Path = LABEL_ROOT,
     store: Path = STORE,
@@ -267,20 +291,14 @@ def export_packets(
 
     dest.mkdir(parents=True, exist_ok=True)
     packets_dir = dest / "packets"
-    if packets_dir.exists():
-        for old in packets_dir.glob("*.md"):
-            old.unlink()
-    else:
-        packets_dir.mkdir()
 
     key_rows = []
+    rendered_packets: list[tuple[str, str]] = []
     for display_i, source_i in enumerate(order, start=1):
         pair, good, bad = packets[source_i]
         good, bad = _anonymize(good, bad)
         packet_id = f"P{display_i:02d}"
-        (packets_dir / f"{packet_id}.md").write_text(
-            _render_packet(packet_id, good, bad), encoding="utf-8"
-        )
+        rendered_packets.append((packet_id, _render_packet(packet_id, good, bad)))
         key_rows.append(
             {
                 "packet_id": packet_id,
@@ -297,6 +315,14 @@ def export_packets(
             }
         )
 
+    _guard_label_export(dest, key_rows)
+    if packets_dir.exists():
+        for old in packets_dir.glob("*.md"):
+            old.unlink()
+    else:
+        packets_dir.mkdir()
+    for packet_id, text in rendered_packets:
+        (packets_dir / f"{packet_id}.md").write_text(text, encoding="utf-8")
     key_path = dest / "key.jsonl"
     with key_path.open("w", encoding="utf-8") as fh:
         for row in key_rows:

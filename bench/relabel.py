@@ -149,7 +149,20 @@ def has_model_prose(messages: list[dict]) -> bool:
 
     nebius shows none of this: zero of 660 sampled rollouts lack prose.
     """
-    return any((m.get("content") or "").strip() for m in messages if m.get("role") == "assistant")
+    for message in messages:
+        if message.get("role") != "assistant":
+            continue
+        content = message.get("content")
+        if isinstance(content, str) and content.strip():
+            return True
+        if isinstance(content, list) and any(
+            isinstance(part, dict)
+            and isinstance(part.get("text"), str)
+            and part["text"].strip()
+            for part in content
+        ):
+            return True
+    return False
 
 
 def learned_something(steps: list[Step]) -> bool:

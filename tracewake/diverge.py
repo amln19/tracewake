@@ -1,25 +1,8 @@
-"""Locate where a failing run went irrecoverably wrong, from that run alone.
+"""Locate where a failing run went irrecoverably wrong.
 
-The readout this replaced took the divergence off the *last* aligned column
-that agreed, so one coincidental late agreement -- two long runs that both view
-the same file again at step 44 -- dragged the answer to the end of the trace. On
-externally labelled RootSE failures it landed within two steps of the label on 5
-of 58 pairs. It is retained as the `last-target-agreement` baseline in `bench/`.
-
-The rule here replaced that readout and drops the successful run entirely.
-Reading a file is recoverable; writing one is not, in practice, because these
-agents rarely undo. So the run commits at the first step that writes a file it
-did not create for itself, and everything before that is finding out.
-
-It needs no reference run, no alignment and no inference, and it was tuned only
-on 107 labelled training trajectories, never on RootSE or on any held-out set.
-
-`reliability` reports which of five classes the run falls into, because the
-same rule is right about nine times in ten on one class and one in ten on
-another. It reports a band, not a percentage: the ordering survives being
-re-measured and the percentages do not.
-
-See `contracts/divergence.md` for the measured comparison and the limits.
+The single-trace rule reports the first step that writes a path the run did not
+create for itself. It also returns a reliability band based on whether the run
+committed and how long the trace is.
 """
 
 from __future__ import annotations
@@ -50,18 +33,11 @@ def _commitments(
     Two facts are tracked, not one. `seen` is every path the run has referenced;
     `owned` is the subset it brought into existence.
 
-    Both are needed. A run that creates a scratch script and then edits it ten
-    times has written a path it referenced earlier every time after the first —
-    which looks identical to editing the project's source unless creation is
-    remembered separately.
+    Both are needed. A run that creates a scratch script and then edits it must
+    keep ownership of that path separate from paths that were already present.
 
-    Ownership is claimed by the *action*, not by novelty. Treating any first
-    write to an unseen path as creation — which is what this did originally —
-    silently excused every `sed -i` on a file the run had not opened first, and
-    left 14 of 58 RootSE failures registering no commitment at all despite up to
-    15 writing steps each. Anchoring on the verb takes that to 4 of 58. It is a
-    correctness fix and not an accuracy one: within-±2 moved 89 to 90 of 178
-    pooled pairs, which is nothing. See `contracts/divergence.md`.
+    Ownership is claimed by the action, not by novelty. A first write to an
+    unseen path is still a commitment unless the action explicitly creates it.
     """
     seen: set[str] = set()
     owned: set[str] = set()
@@ -99,21 +75,8 @@ def first_nonscratch_write(bad: Sequence[Step]) -> int:
     wrong what follows is repair, not reconsideration, and the run is already
     lost.
 
-    The carve-out is what makes it work on more than one scaffold. Almost every
-    run creates a reproduction script early; counting that as the commitment
-    lands a median of thirteen steps early. The scratch file is identified as
-    the first path written that was never read — created out of nothing — which
-    costs no parameter and no scaffold knowledge.
-
-    Measured on 262 trajectories it had never seen, including all 102 that
-    carry externally written labels: 29.4% exact and 50.8% within two steps.
-    `contracts/divergence.md` records what it replaced and why.
-
-    `SCRATCH_FALLBACK` is the only fitted number, the median development label,
-    and it is inert: sweeping it from 6 to 20 moves held-out exact match between
-    29.4% and 29.8%, and parameter-free replacements give 28.6% and 28.2%. It is
-    kept at the submitted value rather than swapped, because choosing between
-    them on the held-out set would be selecting on the evaluation.
+    The first path written without a prior read is treated as scratch work. A
+    later write to another path, or to a path already read, is a commitment.
     """
     read: set[str] = set()
     scratch: str | None = None
@@ -134,8 +97,8 @@ def _written_paths(step: Step) -> set[str]:
     """Paths this step wrote, falling back to the verb when nothing is derived.
 
     Adapters populate `Step.writes`; the fallback is insurance for one that does
-    not, so the rule stays meaningful on a scaffold this project has not seen.
-    On every labelled trajectory the two agree.
+    not, so the rule remains meaningful when an adapter cannot derive writes
+    directly.
     """
     if step.writes:
         return set(step.writes)
@@ -160,13 +123,8 @@ Reliability = Literal[
 # classes ever change, per AGENTS.md's versioning invariant.
 Confidence = Literal["high", "moderate", "low", "very low"]
 
-# How far to trust the answer, as a band rather than a number. The classes hold
-# their order across three independent evaluations, which is what makes
-# abstaining meaningful; the percentages do not survive being quoted. Measured
-# within ±2 on the 262 held-out trajectories: commit-short 88% (n=69),
-# commit-long-single 70% (n=23), commit-long-many 36% (n=144), silent-short 29%
-# (n=7), silent-long 11% (n=19). The two sparse classes swing by tens of points
-# between evaluations and are banded conservatively for that reason.
+# Reliability is a band rather than a score so callers can abstain on the least
+# reliable class without depending on a fragile numeric threshold.
 RELIABILITY_BAND: dict[Reliability, Confidence] = {
     "commit-short": "high",
     "commit-long-single": "moderate",
@@ -180,19 +138,14 @@ LONG_TRACE: Final = 18
 def reliability(bad: Sequence[Step]) -> Reliability:
     """How much to trust the reported step, decided without labels.
 
-    Two things predict whether the answer lands: whether the run committed at
-    all, and whether the trace is long. `silent-long` — a long run that never
-    changed anything pre-existing — is right about a fifth of the time and
-    should be treated as "cannot localise" rather than as an answer.
+    The band depends on whether the run committed at all and whether the trace
+    is long. `silent-long` should be treated as "cannot localise" rather than
+    as a precise answer.
 
-    The 18-step boundary is the alignment profile's existing long/short split, reused
-    rather than refitted.
+    The 18-step boundary is shared with the alignment profile.
     """
-    # Uses the inferred writes, not just the derived ones, so the class agrees
-    # with the step being reported. `commitment_steps` deliberately does not:
-    # the baselines in `bench/` share it, and 130 steps in the labelled corpus
-    # carry a write the verb sees and the adapter did not derive, so widening it
-    # there would silently restate every published figure.
+    # Use inferred writes here so the reliability class agrees with the step
+    # reported by `first_nonscratch_write`.
     commitments = [i for i, _ in _commitments(bad, _written_paths)]
     if not commitments:
         return "silent-long" if len(bad) > LONG_TRACE else "silent-short"
@@ -205,9 +158,7 @@ def localize(bad: Sequence[Step]) -> tuple[int, Reliability]:
     """Where the failing run went irrecoverably wrong, and how much to trust it.
 
     The single-trace entry point: no reference run, no alignment, no inference.
-    Callers that want to abstain should drop `silent-long`, which is about 14%
-    of observed pairs and carries most of the error.
-
+    Callers that cannot use an uncertain answer should drop `silent-long`.
     """
     if not bad:
         raise ValueError("the failure run has no steps to locate a divergence in")

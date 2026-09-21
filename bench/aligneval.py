@@ -136,7 +136,10 @@ def predict_pair(
     if len(bad) != pair.bad_actions:
         # key.jsonl records failure_steps after anonymize; bad_actions is the
         # pre-export count from select_pairs and must match extraction here.
-        pass
+        raise RuntimeError(
+            f"{pair.task_id}: extracted {len(bad)} failure steps, expected "
+            f"{pair.bad_actions}. Re-export the labeling packets."
+        )
     _, pairs, _ = align(good, bad, embed=embed, config=config)
     aligned = divergence_step(pairs, good, bad)
     pred = aligned if aligned is not None else len(bad)
@@ -417,7 +420,6 @@ def run_llm_judge(
                 next(stream)
         except StopIteration as stop:
             response = stop.value
-        assert isinstance(response, object)
         text = getattr(response, "text", "") or ""
         label = _parse_judge_label(text, 1, hi)
         rows.append(
