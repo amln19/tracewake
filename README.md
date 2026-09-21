@@ -2,11 +2,17 @@
 
 **Record. Replay. Find the divergence.**
 
-Tracewake makes AI agent runs inspectable and repeatable. Record the model calls, tool results, files, time, and other nondeterministic inputs an agent consumes. Replay them offline with the network blocked. Given a failing run, locate the step where it went irrecoverably wrong — no reference run, no model call — and get a calibrated read on how much to trust the answer.
+Tracewake makes AI agent runs inspectable and repeatable. Record the model calls, tool results, files, time, and other nondeterministic inputs an agent consumes. Replay them offline with the network blocked. Given a failing run, locate the step where it went irrecoverably wrong — no reference run, no model call — and get a reliability band for how much to trust the answer.
 
 The repo ships the full stack: a Python library and CLI, a Go control plane with versioned contracts, a TypeScript dashboard, a held-out evaluation on published agent-failure benchmarks, and Terraform for AWS. Everything works locally without a hosted service.
 
 ![Side-by-side HTML report of a passing and failing agent run, with alignment and the localized divergence](docs/assets/comparison.png)
+
+## At a glance
+
+* Record and replay agent runs offline
+* Localize likely failure steps without an LLM
+* Compare trajectories and export verified cassettes
 
 ```sh
 git clone https://github.com/amln19/tracewake.git
@@ -15,14 +21,14 @@ uv sync
 uv run python examples/demo.py
 ```
 
-The demo is offline and needs neither an API key nor a model server. It records two short tool-calling runs, replays one, and prints a real divergence report. Python 3.13 or newer is required. To install from a checkout with `pip`, run `python -m pip install .`.
+The demo is offline and needs neither an API key nor a model server. It records two short tool-calling runs, replays one, and prints a real divergence report using the dependency-free lexical aligner. Python 3.13 or newer is required. To install from a checkout with `pip`, run `python -m pip install .`.
 
 ```sh
 tracewake record -- python agent.py
 tracewake replay <run>
 tracewake localize <bad-run>
-tracewake diff <good-run> <bad-run>
-tracewake view <good-run> <bad-run>
+tracewake diff <good-run> <bad-run> --lexical
+tracewake view <good-run> <bad-run> --lexical
 ```
 
 `localize` needs only the failing run. `diff` and `view` need a passing run too: they align both trajectories even when the action sequences differ in length, then write a terminal or HTML comparison.
@@ -114,7 +120,7 @@ tracewake import cassette
 
 `localize` reports a step and a reliability class. `diff` leads with localization, then shows the alignment — where the two runs stopped agreeing. `view` writes the same comparison as a self-contained HTML report.
 
-`--lexical` is the dependency-free alignment profile. The richer local embedding path is optional: `uv sync --extra embeddings`.
+`--lexical` is the dependency-free alignment profile. The richer local embedding path is optional: run `uv sync --extra embeddings` and omit `--lexical`; the pinned model may download on first use.
 
 ## Evaluation
 
@@ -126,6 +132,8 @@ Tracewake localizes where a failing run went irrecoverably wrong from that run a
 | OpenHands | 59 | 44.1% | 59.3% | 69.5% |
 | **RootSE** (externally labelled) | 102 | **17.6%** | **45.1%** | **57.8%** |
 | **all** | **262** | **29.4%** | **50.8%** | **62.2%** |
+
+The pooled row includes in-house-labelled data; RootSE is the independent external evaluation and the more conservative result.
 
 Chance rates for the same population are 5%, 22%, and 40%.
 
@@ -140,11 +148,19 @@ On RootSE's exact-step metric, the published field looks like this:
 | Binary search over steps | 15.8% | LLM rollouts |
 | Random attribution | 5.4% | 0 |
 
-Tracewake is the first published non-LLM baseline for this task. It beats binary search and random attribution at zero marginal cost. On traces where the run committed early, localization lands within two steps of the label 88% of the time.
+The published comparison figures come from the RootSE evaluation reported by the [TrajAudit paper](https://arxiv.org/abs/2605.26563); Tracewake's row is the local, zero-inference-cost structural baseline. To our knowledge, Tracewake is the first published non-LLM baseline for this task. It beats binary search and random attribution at zero inference cost. On short traces that contain a commitment, localization lands within two steps of the label 88% of the time.
 
 Two label-free facts — whether the run wrote to anything it did not create, and whether the trace exceeds 18 steps — sort every failure into one of five reliability classes. `localize` reports the class so you know when to trust the step and when to treat the answer as unreliable.
 
-Full methodology, label protocol, and comparison to alignment-based readouts are in [`contracts/divergence.md`](contracts/divergence.md). [`corpus/`](corpus/README.txt) holds the labelled packets. `uv run --group bench python -m bench.score_cleanroom` reproduces every figure above.
+Full methodology, label protocol, and comparison to alignment-based readouts are in [`contracts/divergence.md`](contracts/divergence.md). [`corpus/`](corpus/README.txt) holds the labelled packets and dataset prerequisites.
+
+To score the implementation users install, run:
+
+```sh
+uv run --group bench python -m bench.score_shipped
+```
+
+The separate clean-room check is advanced research validation, not a product dependency. It asks whether an isolated author can derive a predictor from the 107 anonymised training examples without access to this repository or the held-out data. Create the isolated inputs with `uv run --group bench python -m bench.prepare_cleanroom`; after that author submits `predictor.py`, score it with `uv run --group bench python -m bench.score_cleanroom`. The preparation command deliberately does not generate a predictor — doing so would make the independence check circular.
 
 ## What's in this repository
 
@@ -182,8 +198,8 @@ An end-to-end evidence harness drives bundle ingestion, mandatory validation, bu
 ```sh
 uv sync
 PYTHONHASHSEED=0 uv run --python 3.13 pytest
-python -m tracewake.contracts --output contracts/schemas/v1 --check
-python -m contracttest.generate_fixtures --output contracttest/fixtures/v1 --check
+uv run --python 3.13 python -m tracewake.contracts --output contracts/schemas/v1 --check
+uv run --python 3.13 python -m contracttest.generate_fixtures --output contracttest/fixtures/v1 --check
 (cd contracttest/go && go test ./...)
 (cd controlplane && go test ./...)
 uv build

@@ -3,8 +3,10 @@
 Where did a failing agent run go irrecoverably wrong?
 
 This is the full evaluation writeup for `tracewake localize`. The repository
-README summarises headline results; every figure here is reproducible from
-`corpus/` via `uv run --group bench python -m bench.score_cleanroom`.
+README summarises headline results. Score the shipped implementation with
+`uv run --group bench python -m bench.score_shipped`. The separate clean-room
+check scores an independently authored predictor against the same held-out set;
+it is prepared with `uv run --group bench python -m bench.prepare_cleanroom`.
 
 Tracewake answers this from the failing run alone. No reference run, no
 alignment, no inference, no model call. `tracewake localize <run>` reports a
@@ -84,8 +86,15 @@ Chance rates for the same population are 5%, 22% and 40%.
 
 RootSE is the row that carries the most weight. It is the only set labelled by
 people unconnected to this project, and the only figure here that is both
-externally labelled and out-of-sample. Reproduce with
-`uv run --group bench python -m bench.score_cleanroom`.
+externally labelled and out-of-sample. Score the shipped rule with
+`uv run --group bench python -m bench.score_shipped`.
+
+The clean-room validation is a separate reproducibility check: an isolated
+author receives only the anonymised training material produced by
+`uv run --group bench python -m bench.prepare_cleanroom`, then submits a
+`predictor.py`. `uv run --group bench python -m bench.score_cleanroom` evaluates
+that predictor without importing Tracewake's implementation. It tests whether
+the structural idea is discoverable, not whether the shipped code works.
 
 ### Against published methods, on their metric
 

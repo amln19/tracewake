@@ -14,8 +14,8 @@ store come with it, and `git log --all` reaches `contracts/divergence.md` in one
 command.
 
 What is withheld: the implementation, the evaluation, every document describing
-either, the held-out set, and RootSE. What is given: 150 failing trajectories
-from the two in-house sets, their labels, the definition of what the label
+either, the held-out set, and RootSE. What is given: 107 failing trajectories
+from the development split of the two in-house sets, their labels, the definition of what the label
 means, and the metric. Source names are replaced with A/B and trajectory ids
 with opaque ones, so the benchmark cannot be looked up and its published
 baselines read off.
@@ -54,6 +54,7 @@ DEV_SOURCES = ("nebius", "openhands")
 # 80/37 split was well short of.
 DEV_FRACTION = 0.40
 PARTITION_SEED = 20260818
+PARTITION = CORPUS_ROOT / "alignment" / "cleanroom-partition.json"
 
 
 def _eligible(steps, messages=None) -> bool:
@@ -180,11 +181,22 @@ def _openhands_rows() -> list[tuple[str, int, list]]:
 
 def export(destination: pathlib.Path) -> dict[str, str]:
     """Write the development file. Returns the opaque-id map, which stays here."""
+    split = json.loads(PARTITION.read_text())
+    candidates = {
+        "nebius": {
+            f"neb-old/{packet}": (label, steps)
+            for packet, label, steps in _nebius_rows()
+        },
+        "openhands": {
+            f"oh-old/{packet}": (label, steps)
+            for packet, label, steps in _openhands_rows()
+        },
+    }
     rows: list[tuple[str, str, int, list]] = []
-    for packet, label, steps in _nebius_rows():
-        rows.append(("A", f"nebius/{packet}", label, steps))
-    for packet, label, steps in _openhands_rows():
-        rows.append(("B", f"openhands/{packet}", label, steps))
+    for source, opaque_source in (("nebius", "A"), ("openhands", "B")):
+        for real_id in split[source]["dev"]:
+            label, steps = candidates[source][real_id]
+            rows.append((opaque_source, real_id, label, steps))
 
     counter: collections.Counter = collections.Counter()
     mapping: dict[str, str] = {}
@@ -202,12 +214,18 @@ def export(destination: pathlib.Path) -> dict[str, str]:
     return mapping
 
 
+def write_id_map(mapping: dict[str, str]) -> pathlib.Path:
+    """Keep the anonymised-id map with the evaluation materials, not the rebuild."""
+    path = CORPUS_ROOT / "alignment" / "cleanroom-id-map.json"
+    path.write_text(json.dumps(mapping, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
 if __name__ == "__main__":
     import sys
 
     target = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "/tmp/cleanroom/data/train.jsonl")
     mapping = export(target)
-    map_path = CORPUS_ROOT / "alignment" / "cleanroom-id-map.json"
-    map_path.write_text(json.dumps(mapping, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    map_path = write_id_map(mapping)
     print(f"exported {len(mapping)} trajectories to {target}")
     print(f"id map (stays in this repo) -> {map_path}")

@@ -36,8 +36,8 @@ git-excluded.
                                           bounds.
                         holdout-2/        140 fresh trajectories, instance
                                           disjoint from every other set here
-                                          and from RootSE. Scored once by
-                                          `bench.score_cleanroom`.
+                                          and from RootSE. Scored by the
+                                          shipped and clean-room evaluators.
                       corpus/labels/README.txt is the entry point: the label
                       definition, the exclusion codes, the labelling protocol,
                       and the calibration-measured agreement ceiling that
@@ -45,7 +45,8 @@ git-excluded.
                       against.
   alignment/          prediction sheets and external_scout.json (source
                       inventory). cleanroom-partition.json is the train/test
-                      split, read by bench.score_cleanroom; a directory under
+                      split, read by bench.score_shipped and
+                      bench.score_cleanroom; a directory under
                       labels/ records how a set was labelled, never its split
                       role, so repartitioning is a one-line edit here rather
                       than a move of labelled data. cleanroom-id-map.json

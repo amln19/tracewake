@@ -11,6 +11,7 @@ the write-anchored labelling the in-house sets carry.
 
 from __future__ import annotations
 
+import argparse
 import collections
 import json
 import pathlib
@@ -149,8 +150,25 @@ def _row(name: str, items: list, predict) -> str:
     return f"  {name:<14}{cells}"
 
 
-def main() -> None:
-    sys.path.insert(0, str(CLEANROOM))
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--cleanroom",
+        type=pathlib.Path,
+        default=CLEANROOM,
+        help=f"directory containing an independently authored predictor (default: {CLEANROOM})",
+    )
+    args = parser.parse_args(argv)
+    cleanroom = args.cleanroom.resolve()
+    predictor = cleanroom / "predictor.py"
+    if not predictor.is_file():
+        raise FileNotFoundError(
+            f"no independently authored predictor at {predictor}.\n"
+            "Create fresh inputs with:\n"
+            "  uv run --group bench python -m bench.prepare_cleanroom"
+        )
+
+    sys.path.insert(0, str(cleanroom))
     from predictor import predict as rebuilt
 
     def rebuilt_on(steps):
