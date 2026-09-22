@@ -49,6 +49,22 @@ from .events import (
     hash_messages,
     run_digest,
 )
+from .llm import (
+    DEFAULT_LOCALIZATION_PROMPT,
+    LLMConfig,
+    LLMError,
+    LLMLocalizationDecision,
+    LLMLocalizationEvidence,
+    LLMLocalizationResult,
+    LLMProvider,
+    LLMRequest,
+    LLMResponse,
+    OpenAICompatibleProvider,
+    build_localization_evidence,
+    load_prompt,
+    localize_with_llm,
+    write_llm_result,
+)
 from .matching import ReplayReport
 from .patches import (
     HashSeedError,
@@ -75,6 +91,7 @@ from .store import STORE_SCHEMA_VERSION, BlobStore, Store
 
 __all__ = [
     "CASSETTE_FORMAT_VERSION",
+    "DEFAULT_LOCALIZATION_PROMPT",
     "EVENT_SCHEMA_VERSION",
     "MATCHERS",
     "RECORD_MODES",
@@ -94,11 +111,20 @@ __all__ = [
     "HashSeedError",
     "Intervention",
     "InterventionEvent",
+    "LLMConfig",
+    "LLMError",
+    "LLMLocalizationDecision",
+    "LLMLocalizationEvidence",
+    "LLMLocalizationResult",
+    "LLMProvider",
+    "LLMRequest",
+    "LLMResponse",
     "Message",
     "ModelCallEvent",
     "ModelIdentity",
     "ModelResponse",
     "NetworkBlocked",
+    "OpenAICompatibleProvider",
     "OutcomeEvent",
     "RecordMode",
     "Redactor",
@@ -116,6 +142,7 @@ __all__ = [
     "ToolOutcome",
     "TracewakeError",
     "Usage",
+    "build_localization_evidence",
     "canonical_order",
     "configure",
     "current",
@@ -125,12 +152,15 @@ __all__ = [
     "hash_messages",
     "import_cassette",
     "intervene",
+    "load_prompt",
+    "localize_with_llm",
     "plan_intervention",
     "read_header",
     "record",
     "replay",
     "run_digest",
     "session",
+    "write_llm_result",
 ]
 
 _ambient: Session | None = None

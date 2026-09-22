@@ -126,6 +126,29 @@ def test_replay_reproduces_the_run_with_the_network_disabled(
     assert server.connections == 0, "replay reached the network"
 
 
+def test_llm_environment_configuration_does_not_activate_during_replay(
+    server: _Server, tmp_path: Path, env: dict[str, str]
+) -> None:
+    store = tmp_path / "store"
+    recorded = _tracewake(
+        "record", "--store", str(store), "--name", "gate", "--", sys.executable, str(AGENT), env=env
+    )
+    assert recorded.returncode == 0, recorded.stderr
+    run_id = Store(store).latest_named("gate").run_id
+    server.reset()
+    configured = {
+        **env,
+        "TRACEWAKE_LLM_MODEL": "configured-but-unused",
+        "TRACEWAKE_LLM_BASE_URL": f"http://127.0.0.1:{server.server_address[1]}/v1",
+        "TRACEWAKE_LLM_API_KEY": "must-not-be-used",
+    }
+
+    replayed = _tracewake("replay", run_id, "--store", str(store), env=configured)
+
+    assert replayed.returncode == 0, replayed.stderr
+    assert server.connections == 0, "LLM configuration activated during replay"
+
+
 def test_a_network_call_during_replay_fails_the_run(
     server: _Server, tmp_path: Path, env: dict[str, str]
 ) -> None:

@@ -26,6 +26,13 @@ from .align import (
 from .cassette import _validate_cassette, export_cassette, import_cassette, read_header
 from .config import RECORD_MODES, Config, RecordMode
 from .events import RunHeader, StoredEvent
+from .llm import (
+    LLMConfig,
+    LLMLocalizationResult,
+    load_prompt,
+    localize_with_llm,
+    write_llm_result,
+)
 from .matching import ReplayReport
 from .patches import TracewakeError
 from .redaction import Redactor
@@ -412,6 +419,85 @@ StoreBOption = Annotated[
 ]
 
 
+LLMOption = Annotated[
+    bool,
+    typer.Option(
+        "--llm",
+        help="Ask a configured LLM for a separate, non-authoritative localization.",
+    ),
+]
+
+
+LLMPromptOption = Annotated[
+    Path | None,
+    typer.Option(
+        "--llm-prompt",
+        help="Custom system prompt. The evidence and required JSON schema are still supplied.",
+    ),
+]
+
+
+LLMJSONOption = Annotated[
+    Path | None,
+    typer.Option("--llm-json", help="Write the validated LLM advisory and provenance as JSON."),
+]
+
+
+LLMUnredactedOption = Annotated[
+    bool,
+    typer.Option(
+        "--llm-allow-unredacted",
+        help="Allow sending a run that was recorded with redaction disabled.",
+    ),
+]
+
+
+def _check_llm_options(
+    enabled: bool,
+    prompt: Path | None,
+    output: Path | None,
+    allow_unredacted: bool,
+) -> None:
+    if not enabled and (prompt is not None or output is not None or allow_unredacted):
+        raise typer.BadParameter("--llm-prompt, --llm-json, and --llm-allow-unredacted require --llm")
+
+
+def _check_llm_redaction(
+    headers: list[RunHeader], *, allow_unredacted: bool
+) -> None:
+    unredacted = [header.run_id[:12] for header in headers if not header.redacted]
+    if unredacted and not allow_unredacted:
+        raise typer.BadParameter(
+            "refusing to send unredacted run(s) "
+            f"{', '.join(unredacted)} to an LLM; pass --llm-allow-unredacted "
+            "only after reviewing the disclosure risk"
+        )
+
+
+def _echo_llm_result(result: LLMLocalizationResult, output: Path | None) -> None:
+    typer.echo("")
+    if result.advisory.abstain:
+        typer.echo(
+            "LLM advisory (not authoritative): abstained "
+            f"[{result.advisory.confidence} model-reported confidence]"
+        )
+    else:
+        typer.echo(
+            "LLM advisory (not authoritative): failing step "
+            f"{result.advisory.suggested_step} "
+            f"[{result.advisory.confidence} model-reported confidence]"
+        )
+    if result.advisory.evidence_steps:
+        cited = ", ".join(str(step) for step in result.advisory.evidence_steps)
+        typer.echo(f"  evidence steps: {cited}")
+    typer.echo(f"  {result.advisory.explanation}")
+    if result.truncation.truncated:
+        typer.echo("  note: the bounded LLM evidence was truncated")
+    if output is not None:
+        write_llm_result(output, result)
+        typer.echo(f"wrote LLM advisory to {output}")
+
+
 def _align_pair(
     db: Store,
     db_b: Store,
@@ -451,33 +537,64 @@ def diff_(
     store: StoreOption = Path(".tracewake"),
     store_b: StoreBOption = None,
     lexical: LexicalOption = False,
+    llm: LLMOption = False,
+    llm_prompt: LLMPromptOption = None,
+    llm_json: LLMJSONOption = None,
+    llm_allow_unredacted: LLMUnredactedOption = False,
 ) -> None:
     """Align two runs, and locate where the failing one went wrong."""
     from .diverge import RELIABILITY_BAND, localize
 
+    _check_llm_options(llm, llm_prompt, llm_json, llm_allow_unredacted)
     db = Store(store)
     db_b = Store(store_b) if store_b else db
-    good_header, _, bad_header, _, result = _align_pair(db, db_b, good, bad, lexical)
-    if db_b is not db:
-        db_b.close()
-    db.close()
-
-    # Alignment and localization answer different questions. Lead with the
-    # single-trace localization result, which directly answers where the run
-    # went wrong.
-    if result.bad_steps:
-        step, klass = localize(result.bad_steps)
-        typer.echo(
-            f"{bad_header.run_id[:8]} went wrong at step {step} of "
-            f"{len(result.bad_steps)}  [{klass}, "
-            f"{RELIABILITY_BAND[klass]} confidence]"
+    try:
+        good_header, good_events, bad_header, bad_events, result = _align_pair(
+            db, db_b, good, bad, lexical
         )
-        if klass == "silent-long":
+
+        # Alignment and localization answer different questions. Lead with the
+        # single-trace localization result, which directly answers where the run
+        # went wrong.
+        if result.bad_steps:
+            step, klass = localize(result.bad_steps)
             typer.echo(
-                "  this run changed nothing it had not created, over a long trace; "
-                "treat that step as unreliable"
+                f"{bad_header.run_id[:8]} went wrong at step {step} of "
+                f"{len(result.bad_steps)}  [{klass}, "
+                f"{RELIABILITY_BAND[klass]} confidence]"
             )
-        typer.echo("")
+            if klass == "silent-long":
+                typer.echo(
+                    "  this run changed nothing it had not created, over a long trace; "
+                    "treat that step as unreliable"
+                )
+            if llm:
+                _check_llm_redaction(
+                    [good_header, bad_header],
+                    allow_unredacted=llm_allow_unredacted,
+                )
+                config = LLMConfig.from_environment()
+                advisory = localize_with_llm(
+                    config.make_provider(),
+                    config.model,
+                    bad_events,
+                    db_b.blobs,
+                    deterministic_step=step,
+                    reliability=klass,
+                    timeout_seconds=config.timeout_seconds,
+                    prompt=load_prompt(llm_prompt),
+                    reference_events=good_events,
+                    reference_blobs=db.blobs,
+                    alignment=result.alignment,
+                )
+                _echo_llm_result(advisory, llm_json)
+            typer.echo("")
+        elif llm:
+            raise typer.BadParameter("the failing run has no steps to send to an LLM")
+    finally:
+        if db_b is not db:
+            db_b.close()
+        db.close()
 
     typer.echo(
         format_diff(
@@ -494,6 +611,10 @@ def diff_(
 def localize_(
     run: Annotated[str, typer.Argument(help="Failing run id or cassette name.")],
     store: StoreOption = Path(".tracewake"),
+    llm: LLMOption = False,
+    llm_prompt: LLMPromptOption = None,
+    llm_json: LLMJSONOption = None,
+    llm_allow_unredacted: LLMUnredactedOption = False,
 ) -> None:
     """Report where a failing run went irrecoverably wrong, from that run alone.
 
@@ -503,23 +624,41 @@ def localize_(
     """
     from .diverge import RELIABILITY_BAND, localize
 
+    _check_llm_options(llm, llm_prompt, llm_json, llm_allow_unredacted)
     db = Store(store)
-    header = db.resolve(run)
-    steps = extract_steps(db.events(header.run_id))
-    db.close()
+    try:
+        header = db.resolve(run)
+        events = db.events(header.run_id)
+        steps = extract_steps(events)
 
-    if not steps:
-        raise typer.BadParameter(f"run {header.run_id} has no steps to localize")
+        if not steps:
+            raise typer.BadParameter(f"run {header.run_id} has no steps to localize")
 
-    step, klass = localize(steps)
-    typer.echo(f"first irrecoverable step: {step} of {len(steps)}")
-    typer.echo(f"reliability {klass} ({RELIABILITY_BAND[klass]} confidence)")
-    typer.echo(f"  {steps[step - 1].name} {steps[step - 1].target}".rstrip())
-    if klass == "silent-long":
-        typer.echo(
-            "this run changed nothing it had not created, over a long trace; "
-            "treat the step above as unreliable"
-        )
+        step, klass = localize(steps)
+        typer.echo(f"first irrecoverable step: {step} of {len(steps)}")
+        typer.echo(f"reliability {klass} ({RELIABILITY_BAND[klass]} confidence)")
+        typer.echo(f"  {steps[step - 1].name} {steps[step - 1].target}".rstrip())
+        if klass == "silent-long":
+            typer.echo(
+                "this run changed nothing it had not created, over a long trace; "
+                "treat the step above as unreliable"
+            )
+        if llm:
+            _check_llm_redaction([header], allow_unredacted=llm_allow_unredacted)
+            config = LLMConfig.from_environment()
+            advisory = localize_with_llm(
+                config.make_provider(),
+                config.model,
+                events,
+                db.blobs,
+                deterministic_step=step,
+                reliability=klass,
+                timeout_seconds=config.timeout_seconds,
+                prompt=load_prompt(llm_prompt),
+            )
+            _echo_llm_result(advisory, llm_json)
+    finally:
+        db.close()
 
 
 @app.command("view")
