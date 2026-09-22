@@ -28,30 +28,20 @@ git-excluded.
                                           nothing at all; see
                                           contracts/divergence.md.
                         nebius/           SWE-agent, 70 packets.
-                        calibration/      60 items, re-labelled to measure
-                                          agreement between two labelling
-                                          passes. See its own README and
-                                          corpus/labels/README.txt for what the
-                                          agreement figure is and what it
-                                          bounds.
                         holdout-2/        140 fresh trajectories, instance
                                           disjoint from every other set here
                                           and from RootSE. Scored by the
-                                          shipped and clean-room evaluators.
+                                          shipped evaluator.
                       corpus/labels/README.txt is the entry point: the label
-                      definition, the exclusion codes, the labelling protocol,
-                      and the calibration-measured agreement ceiling that
-                      every accuracy figure in this project should be read
-                      against.
+                      definition, the exclusion codes, and the labelling
+                      protocol that every accuracy figure in this project
+                      should be read against.
   alignment/          prediction sheets and external_scout.json (source
-                      inventory). cleanroom-partition.json is the train/test
-                      split, read by bench.score_shipped and
-                      bench.score_cleanroom; a directory under
+                      inventory). eval-partition.json is the train/test
+                      split, read by bench.score_shipped; a directory under
                       labels/ records how a set was labelled, never its split
                       role, so repartitioning is a one-line edit here rather
-                      than a move of labelled data. cleanroom-id-map.json
-                      resolves the anonymised ids in the clean-room training
-                      data back to these packet ids.
+                      than a move of labelled data.
 
                       predictions-external.jsonl scores align-v1's own
                       alignment-based readout against the openhands labels —

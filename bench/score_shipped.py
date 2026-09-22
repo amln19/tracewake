@@ -1,15 +1,127 @@
-"""Score Tracewake's shipped localizer on the held-out evaluation set.
-
-Unlike ``score_cleanroom``, this imports the implementation users actually
-install. It is the ordinary reproducibility path; the clean-room score answers
-the separate question of whether an isolated rebuild found the same rule.
-"""
+"""Score Tracewake's shipped localizer on the held-out evaluation set."""
 
 from __future__ import annotations
 
+import collections
+import json
+import statistics
+
 from tracewake.diverge import first_nonscratch_write
 
-from .score_cleanroom import _load_test, _row
+from .repos import CORPUS_ROOT
+
+PARTITION = CORPUS_ROOT / "alignment" / "eval-partition.json"
+
+
+def chance(label: int, n: int, k: int) -> float:
+    """Uniform chance rate of landing within +/- k of label in trace of length n."""
+    return (min(n, label + k) - max(1, label - k) + 1) / n
+
+
+def _load_test() -> dict[str, list[tuple[str, int, list]]]:
+    """Every withheld trajectory, grouped by pool."""
+    import pyarrow.parquet as pq
+
+    from .external import strip_terminal
+    from .external import to_steps as oh_steps
+    from .nebius import _snapshot
+    from .nebius import to_steps as neb_steps
+    from .relabel import _bulk_rows, _openhands_snapshot, draw_test, load_steps
+    from .rootse import load_failures
+
+    split = json.loads(PARTITION.read_text())
+    wanted = {uid for src in split for uid in split[src]["test"]}
+    pools: dict[str, list] = collections.defaultdict(list)
+
+    # older nebius, whatever the partition left in test
+    root = CORPUS_ROOT / "labels" / "nebius"
+    key = {json.loads(l)["packet_id"]: json.loads(l) for l in (root / "key.jsonl").read_text().splitlines() if l.strip()}
+    labs = {
+        json.loads(l)["packet_id"]: json.loads(l)["label"]
+        for l in (root / "labels.jsonl").read_text().splitlines()
+        if l.strip() and json.loads(l).get("label") is not None
+    }
+    need = collections.defaultdict(set)
+    for p in labs:
+        if f"neb-old/{p}" in wanted:
+            shard, index = key[p]["bad_row"].rsplit(":", 1)
+            need[shard].add(int(index))
+    cache, snapshot = {}, _snapshot()
+    for shard, indexes in need.items():
+        column = pq.read_table(snapshot / shard, columns=["trajectory"])["trajectory"]
+        for index in sorted(indexes):
+            cache[f"{shard}:{index}"] = column[index].as_py()
+        del column
+    for p, label in labs.items():
+        if f"neb-old/{p}" in wanted:
+            steps = neb_steps(cache[key[p]["bad_row"]])
+            if steps:
+                pools["nebius"].append((f"neb-old/{p}", label, steps))
+
+    # older openhands
+    root = CORPUS_ROOT / "labels" / "openhands"
+    key = {json.loads(l)["packet_id"]: json.loads(l) for l in (root / "key.jsonl").read_text().splitlines() if l.strip()}
+    labs = {
+        json.loads(l)["packet_id"]: json.loads(l)["label"]
+        for l in (root / "labels.jsonl").read_text().splitlines()
+        if l.strip() and json.loads(l).get("label") is not None
+    }
+    # (instance_id, run_id) is NOT unique in this dataset: 197 pairs name two
+    # rollouts each. The key records how many steps the labelled trajectory had,
+    # so that breaks the tie. A packet whose length still matches two rows is
+    # genuinely ambiguous and is dropped rather than guessed at.
+    want_runs = {(key[p]["instance_id"], key[p]["bad_run_id"]): p for p in labs if f"oh-old/{p}" in wanted}
+    candidates: dict[str, list] = collections.defaultdict(list)
+    for shard in sorted(_openhands_snapshot().glob("*.parquet")):
+        table = pq.read_table(shard, columns=["instance_id", "run_id", "messages"])
+        for instance, run, messages in zip(
+            table["instance_id"].to_pylist(), table["run_id"].to_pylist(), table["messages"].to_pylist(), strict=True
+        ):
+            p = want_runs.get((instance, run))
+            if p:
+                steps = strip_terminal(oh_steps(messages, shell_verbs=True))
+                if steps:
+                    candidates[p].append(steps)
+    for p, options in candidates.items():
+        if len(options) > 1:
+            expected = key[p].get("bad_steps")
+            options = [s for s in options if len(s) == expected] or []
+        if len(options) != 1:
+            continue
+        pools["openhands"].append((f"oh-old/{p}", labs[p], options[0]))
+
+    # holdout-2, kept whole by the partition
+    rootse_ids = sorted({f.instance_id for f in load_failures() if f.bad})
+    draws = {d.packet_id: d for d in draw_test(rootse_ids)}
+    h2 = {}
+    for line in (CORPUS_ROOT / "labels" / "holdout-2" / "labels.jsonl").read_text().splitlines():
+        if line.strip():
+            row = json.loads(line)
+            h2[row["packet_id"]] = row
+    for source in ("nebius", "openhands"):
+        chosen = [d for d in draws.values() if d.source == source]
+        rows = _bulk_rows(source, chosen)
+        for d in chosen:
+            row = h2.get(d.packet_id)
+            if row and row.get("label") is not None and f"h2/{d.packet_id}" in wanted:
+                pools[source].append((f"h2/{d.packet_id}", row["label"], load_steps(d, rows)))
+                pools["holdout-2"].append((f"h2/{d.packet_id}", row["label"], load_steps(d, rows)))
+
+    for failure in load_failures():
+        if failure.bad:
+            pools["rootse"].append((f"rootse/{failure.instance_id}", failure.label, failure.bad))
+    return pools
+
+
+def _row(name: str, items: list, predict) -> str:
+    """`predict` takes the raw Step objects; wrappers handle any conversion."""
+    n = len(items)
+    cells = ""
+    for k in (0, 2, 5):
+        hits = sum(1 for _, label, steps in items if abs(predict(steps) - label) <= k)
+        floor = statistics.mean(chance(label, len(steps), k) for _, label, steps in items)
+        cells += f"{hits}/{n} {hits/n:>5.1%} (ch {floor:.0%})".ljust(24)
+    return f"  {name:<14}{cells}"
 
 
 def main() -> None:

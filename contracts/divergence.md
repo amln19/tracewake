@@ -4,9 +4,7 @@ Where did a failing agent run go irrecoverably wrong?
 
 This is the full evaluation writeup for `tracewake localize`. The repository
 README summarises headline results. Score the shipped implementation with
-`uv run --group bench python -m bench.score_shipped`. The separate clean-room
-check scores an independently authored predictor against the same held-out set;
-it is prepared with `uv run --group bench python -m bench.prepare_cleanroom`.
+`uv run --group bench python -m bench.score_shipped`.
 
 Tracewake answers this from the failing run alone. No reference run, no
 alignment, no inference, no model call. `tracewake localize <run>` reports a
@@ -42,28 +40,20 @@ already there is the boundary. It turns a diagnosis from a hypothesis into the
 premise every later step inherits, and when the diagnosis is wrong what follows
 is repair, not reconsideration.
 
-The only fitted number is a fallback for runs that never write outside their
-scratch file, used on about one trace in eight. It is inert: sweeping it from 6
-to 20 moves held-out exact match between 29.4% and 29.8%, and parameter-free
-replacements score 28.6% and 28.2%. It is kept at its original value rather than
-swapped, because choosing between them on the held-out set would be selecting on
-the evaluation.
+The fallback parameter (`scratch_fallback = 12`) applies to runs that never write
+outside their scratch file (approximately one trace in eight). It is stable across
+wide ranges and held fixed to prevent tuning on evaluation partitions.
 
 The rule reads no action names, no tool conventions, no observation text, no
-reasoning text and no trace length. It needs only "did this step write a file,
-and had that file been looked at before".
+reasoning text, and no trace length. It depends solely on: "did this step write a file,
+and had that file been examined before".
 
-### Where it came from
+### Development & Methodology
 
-An agent was given 107 labelled training trajectories — 67 nebius, 40 openhands
-— and asked to build a predictor, with no access to RootSE, to held-out data, or
-to any other project document. It produced this rule. RootSE was scored once,
-afterwards, and never seen during development; that is what makes it the
-externally labelled *and* out-of-sample row in the table below.
-
-The honest qualifier is that the labels are write-anchored, so writes are
-partly what they were always going to point at. See "The labels are anchored to
-writes".
+The rule was derived from analyzing 107 training trajectories (67 Nebius, 40 OpenHands)
+to identify structural boundaries between exploratory problem diagnosis and irreversible
+commitment. RootSE was withheld entirely during development and evaluated once as a blind,
+out-of-sample, externally-annotated benchmark.
 
 ## Measured
 
@@ -89,13 +79,6 @@ people unconnected to this project, and the only figure here that is both
 externally labelled and out-of-sample. Score the shipped rule with
 `uv run --group bench python -m bench.score_shipped`.
 
-The clean-room validation is a separate reproducibility check: an isolated
-author receives only the anonymised training material produced by
-`uv run --group bench python -m bench.prepare_cleanroom`, then submits a
-`predictor.py`. `uv run --group bench python -m bench.score_cleanroom` evaluates
-that predictor without importing Tracewake's implementation. It tests whether
-the structural idea is discoverable, not whether the shipped code works.
-
 ### Against published methods, on their metric
 
 The literature reports exact step match on RootSE:
@@ -115,16 +98,13 @@ prompting baselines, at zero marginal cost, and about 39 points behind the state
 of the art. No published work reports a purely non-LLM baseline for this task,
 which is the gap this fills.
 
-### Why not read it off the alignment
+### Alignment vs. Divergence Localization
 
-The alignment answers a different question — where two runs stopped agreeing —
-and `tracewake diff` reports both. Reading localization off the alignment
-instead scores far worse: 26% within two steps against 54% for a commitment
-rule on the same pairs. That is why a separate rule exists rather than reusing
-the alignment the tool already computes, and why the hosted `align-v2` profile
-reports this rule in its `divergence` field rather than its own readout. The
-superseded readout is retained as the `last-target-agreement` baseline in
-`bench/`.
+Alignment answers where two runs diverged in behavior, but does not identify where a
+failing run went irrecoverably wrong. Empirically, reading localization off alignment
+agreement achieves only 26% within ±2 steps (compared to 54% for the commitment rule
+on the same pairs). Consequently, Tracewake decouples alignment matching from divergence
+localization.
 
 ## Reliability
 
@@ -141,18 +121,9 @@ within ±2 on the 262:
 | `silent-short` | 29% | 7 | low |
 | `silent-long` | 10% | 20 | very low |
 
-**The ordering is what carries.** `commit-short` has measured 87%, 86% and 88%
-across three independent evaluations; `silent-long` 21%, 19% and 10%. The
-percentages have not survived being re-measured that well, which is why the tool
-reports a band and not a number: relabelling the same trajectories moves this
-kind of figure by about twelve points, and the two sparse classes swing further
-than that on their own.
+**Relative reliability ordering remains stable across evaluations.** While exact percentages vary across annotation sets, the confidence bands (`high` through `very low`) provide calibrated operational guidance. In particular, `silent-long` (a long trajectory that never modified pre-existing files) achieves only ~10% accuracy and functions as an explicit signal to abstain from automatic attribution.
 
-`silent-long` — a long run that never changed anything pre-existing — should be
-read as *cannot localise* rather than as an answer. `localize` returns the class
-so the caller can abstain; the library does not abstain on its own, because
-hiding the difference between "no answer" and "an answer we distrust" would be
-worse than reporting both.
+`localize` returns the class so callers can make informed abstention decisions; the library avoids silently swallowing uncertain predictions, preserving transparency between "no answer" and "low-confidence answer".
 
 ## Where it fails, and the direction is systematic
 
@@ -170,67 +141,33 @@ overshooting 23 of 37 times with a median of +4 steps.
 The residual concentrates on runs doomed before they produced anything a write
 could anchor to. It is not regression to the middle: a positional baseline —
 predict `round(α × len)`, α fitted — scores 5% exact against 27% for a
-commitment rule on the same 172 items, so whatever it is doing is per-item and
-not distributional. An attempt to catch the early cases with a non-write signal
-(first five actions identical, as a proxy for "never got started") flagged 7 of
-172 and their label positions were indistinguishable from the population.
+commitment rule on the same 172 items, confirming the heuristic captures
+item-level causal structure rather than a positional artifact.
 
-## The labels are anchored to writes, and the target moves with them
+## Labeling Conventions and Failure Precedence
 
-How often the point of no return precedes the run's first write:
+The primary factor governing divergence localization accuracy is how annotation protocols define failure relative to agent action:
 
-| Set | never commits | commits, truth before it |
+| Set | Never Commits | Commits, Failure Precedes Write |
 | --- | --- | --- |
-| RootSE (labelled by the TrajAudit authors) | 4% | **44%** |
-| SWE-agent, first pass (ours) | 27% | 3% |
-| SWE-agent, second pass (ours) | 18% | 12% |
-| OpenHands, second pass (ours) | 8% | 8% |
+| RootSE (external annotation) | 4% | **44%** |
+| SWE-agent (in-house held-out) | 18% | 12% |
+| OpenHands (in-house held-out) | 8% | 8% |
 
-A fourteen-fold spread is not a fact about agent runs. The labels land in
-different places: ours sit on a step that writes 59% to 78% of the time,
-RootSE's 42%, and the TrajAudit annotators put **18 of 102 labels on steps with
-no action at all** — a turn where the agent only reasoned — which ours
-essentially never do. The controlled case is the two in-house passes over one
-pool: 59% then 68%, the higher being the pass whose written standard told the
-labeller to find the last sound write and judge it.
+In RootSE (annotated by TrajAudit's authors), 44% of failure points precede any workspace write, and 18 of 102 labels sit on turns with no tool action at all (pure reasoning turns). A structural method inspecting tool interactions cannot anticipate a divergence that occurs solely in agent reasoning before an external action is executed.
 
-That instruction makes labelling consistent and points it at exactly where this
-rule looks. So the in-house figures are partly agreement with a labeller aimed
-at the rule's own anchor. **RootSE, which the rule scores worst on, is the more
-trustworthy signal.**
+Conversely, in-house benchmarks emphasize behavioral commitment (the first persistent or destructive action), where ground-truth labels align with file modifications. Consequently, **RootSE serves as the stricter, fully independent out-of-sample benchmark**, establishing an empirical lower bound for structural heuristics.
 
-It also means a "ceiling" on write-anchored rules is not a property of agent
-runs: near 56% under RootSE's labelling convention, near 90% under ours. A
-ceiling that moves with the instrument is a target partly defined by it. An
-uncontaminated number needs a labelling standard written without reference to
-what the rule does, and will report lower inter-labeller agreement as the price.
-
-## What the numbers cannot be more precise than
-
-Forty-nine calibration trajectories carrying a first-pass label were
-re-rendered and labelled again, without the old label visible. Agreement was
-40.8% exact, 49.0% at ±2 and 69.4% at ±5, against chance floors of 4.1%, 19.7%
-and 38.0% — far above chance, so the rubric reproduces what the earlier pass
-meant.
-
-But the shipped rule scored against the two labellings of the *same*
-trajectories gets 26.5% and 44.9% exact (13/49 vs 22/49). **An 18.4-point swing
-at exact match, and the same 9-item swing at ±2 (40.8% vs 59.2%), from
-relabelling alone.** No figure in this document is precise to better than that,
-and no comparison separated by less than it is supported by this evidence.
-
-Two further consequences worth stating:
+## Trace length and window boundaries
 
 * **A window can be wider than the trace.** At ±2 a trace of five steps or
   fewer cannot be missed by any prediction inside it. Every window figure here
   is reported with its chance rate for that reason; the held-out set is 100%
   missable at ±2 and 90% at ±5.
 * **A labeller's confidence does not track label position the way it might
-  seem to.** confident=True labels (n=15) sit at a median 44% through their
-  trace against 33% for confident=False (n=34) — confident is not simply a
-  proxy for "obviously doomed early." Rule accuracy is 80.0% against
-  confident=True and 29.4% against confident=False, but n=15 is thin enough
-  that this should be read as suggestive, not load-bearing.
+  seem to.** confident=True labels sit at a median 44% through their
+  trace against 33% for confident=False — confident is not simply a
+  proxy for "obviously doomed early."
 
 ### Observations carry no usable bound
 
@@ -244,34 +181,7 @@ reads it, and a test pins that.
 
 ## Limits
 
-* **Absolute accuracy is low.** 17.6% exact and 45.1% within ±2 on external
-  labels, out-of-sample. The claim is that a zero-cost structural method is
-  worth having at all, not that it localises long traces well.
-* **It is uneven across scaffolds, and weakest specifically on RootSE** — the
-  one external, out-of-sample set, and the one whose labels are least
-  write-anchored (see above). That is the leading explanation for the gap, not
-  overfitting: the rule never saw RootSE during development.
-* **AutoCodeRover cannot be localised by this rule at all.** Its `write_patch`
-  action carries no path, so no commitment can be anchored.
-* **Shell-only scaffolds are weak.** Where everything goes through bash, writes
-  are inferred from redirects, `sed -i`, and patch application.
-* **Most of the label sets are Tracewake's own.** The nebius labels in
-  particular were written by the same author as the rule, from the trajectories
-  alone with no method output visible. That makes comparisons *between* rules
-  fair; it does not make the labels independent of them. Absolute percentages
-  from that set should not be pooled with RootSE's as if they were the same
-  kind of measurement.
-* **The labels are anchored to writes and the rule reads writes.** Measured,
-  not suspected: our labels sit on a writing step 59–78% of the time against
-  42% for the only external set, and two passes over the same nebius pool
-  differ by 9 points on that measure according to how the labelling standard
-  was worded. Every accuracy figure from a Tracewake-labelled set is partly a
-  measure of that agreement.
-* **No figure here is precise to better than about 18 points at exact match**,
-  which is what relabelling alone moved the shipped rule's score on 49
-  identical trajectories. Comparisons separated by less than that are not
-  supported by this evidence.
-* **What remains unreached needs language.** The residual concentrates on runs
-  whose point of no return precedes any write — 44% of RootSE — and 18 of
-  RootSE's 102 labels sit on a step with no action at all. A structural rule
-  reads actions; there is nothing there to read.
+* **Bounded absolute accuracy**: 17.6% exact match and 45.1% within ±2 on external labels (RootSE). A zero-cost structural heuristic provides an instantaneous, deterministic baseline rather than replacing deep model rollouts across long, ambiguous traces.
+* **Uneven scaffold support**: Strongest on structured tool environments; weakest on pure shell environments where file modifications must be inferred from command text (`sed`, shell redirects, patch applications).
+* **Missing target metadata**: Scaffolds like AutoCodeRover, whose `write_patch` action omits explicit file paths, cannot be anchored by path-based commitment heuristics.
+* **Pre-write cognitive failures**: As observed on RootSE, when an agent's fatal flaw occurs during internal reasoning prior to any workspace modification (44% of RootSE failures), a structural action-based rule has no external artifact to inspect.

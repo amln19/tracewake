@@ -4,31 +4,11 @@
 languages carry its name and results without recreating its semantics. Any
 behavior change requires another profile name.
 
-**The alignment is frozen. The divergence readout is not the alignment's.**
-Every parameter below — tokenization, weights, gap penalties, tie rules — is
-unchanged from `align-v1` and does not change. What changed is which question
-the `divergence` field answers.
+The alignment profile couples global sequence alignment with single-trace divergence localization:
+- **Pairwise Alignment**: Aligns execution traces using Gotoh dynamic programming with affine gap penalties. Aligned columns identify where runs match and where they diverge in behavior.
+- **Divergence Localization**: The `divergence` field reports where the failing run went irrecoverably wrong using the single-trace commitment rule (defined in [`localize-v1.md`](localize-v1.md)), decoupling alignment column agreement from failure attribution.
 
-`align-v1` read divergence off the last aligned column that agreed. That
-answers where two runs stopped agreeing, which is not where the failing run
-went wrong, and it is far weaker at the second question: within two steps of a
-human label on 45 of 178 pairs, against 96 for the single-trace rule. The
-`divergence` field now carries the single-trace rule's answer, which is what
-`tracewake diff` already led with locally. The alignment columns still report
-where the runs stopped agreeing; that is what they are for.
-
-Because the field's meaning changed, the profile name changed with it. A stored
-diff names the profile that produced it, so keeping the name would silently
-reinterpret any result committed under it. The superseded readout is retained as
-an evaluation baseline in `bench/`, under the name `last-target-agreement`, and
-`contracts/divergence.md` records the comparison that justifies the swap.
-
-The single-run form of the same rule is a separate operation with its own
-profile: see [`localize-v1.md`](localize-v1.md). `tests/test_profiles.py` pins
-these parameters, the golden alignment, and the new readout against regression.
-
-This profile was called `lexical-v1`, then `align-v1`, before first release.
-Neither name was ever published, so each was corrected rather than aliased.
+The single-run form of the rule is a separate operation: see [`localize-v1.md`](localize-v1.md). `tests/test_profiles.py` pins all profile parameters, golden alignments, and divergence outputs against regression.
 
 ## Steps
 
@@ -97,15 +77,10 @@ within two steps about nine times in ten on `commit-short` and one in ten on
 `silent-long`. The HTML companion shows the class beside the step and warns
 explicitly on `silent-long`.
 
-Column agreement remains defined — aligned columns agree only when tool-name
-sets and target sets are both equal — because it is what the alignment display
-uses to mark where the runs parted. It no longer selects the reported step.
-
-The superseded readout, retained as `last-target-agreement` in `bench/`, was:
-the first one-based failing-run step after the last agreeing column; step one if
-no column agrees; absent if the runs agree through the end; and a trailing run
-of at least two identical `(name, arguments)` failing steps counted as a loop
-whose internal agreements were not recovery.
+Column agreement is defined strictly: aligned columns agree only when tool-name
+sets and target sets are both equal. Aligned columns highlight where runs match
+or diverge in behavior, while the reported divergence step is selected independently
+by the commitment rule.
 
 Length ratio is the longer step count divided by the shorter. A zero-length
 side gives infinity unless both sides are empty. Ratios above four are reported

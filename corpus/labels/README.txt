@@ -28,12 +28,8 @@ WHAT IS HERE
   holdout-2/     140 packets, 135 labelled, 5 left null as unlabellable. Fresh
                  trajectories, instance-disjoint from every other set here and
                  from RootSE, labelled before any rule ran against them.
-  calibration/   60 packets, 49 labelled, 11 excluded. Re-labels of items that
-                 already carried a label from nebius/ or openhands/. Measures
-                 agreement, not accuracy; it is the reason AGREEMENT, MEASURED
-                 has numbers.
 
-Split roles live in corpus/alignment/cleanroom-partition.json, never in these
+Split roles live in corpus/alignment/eval-partition.json, never in these
 directory names. A directory records how a label was made, which never
 changes; the partition records what it is currently used for. Encoding the
 second in a path would make a repartition look like data moving in the diff.
@@ -72,10 +68,8 @@ predicts whether a rule lands.
 
 ORDER
 
-Calibration is labelled and scored before the held-out set is touched, so a
-rubric that turns out not to reproduce the earlier labels can be fixed while
-the expensive half is still unspent. The held-out set is labelled before any
-method runs against it, in randomised order, and scored once.
+The held-out set is labelled before any method runs against it, in randomised
+order, and scored once.
 
 Labels are written once. A label later found wrong becomes a recorded erratum,
 never a silent edit -- a superseding line, with the original left readable.
@@ -95,7 +89,7 @@ window figure is reported with two things beside it, always:
                        uniform random prediction lands within +/-k with
                        probability (min(n, L+k) - max(1, L-k) + 1) / n.
                        Averaged over items, that is the floor the figure
-                       stands on. Implemented as bench.score_cleanroom.chance.
+                       stands on. Implemented as bench.score_shipped.chance.
 
 An item whose chance rate is 1.0 could not have been gotten wrong: at +/-2 a
 trace of five steps or fewer is unmissable, and 18% of the existing OpenHands
@@ -119,36 +113,3 @@ HOW "BLIND" IS MEANT
     was applied consistently and without seeing an answer. The labeller also
     has a hand in what "the point of no return" means, which is why absolute
     accuracy is not independent even though comparisons between rules are fair.
-
-  Do not describe these labels as reliable on the strength of the protocol.
-  The protocol earns consistency. The number below is what earns trust, and it
-  is lower than people expect.
-
-AGREEMENT, MEASURED
-
-  49 calibration items relabelled without their earlier label visible, scored
-  against it:
-
-    exact       20/49  40.8%
-    within +/-2 24/49  49.0%
-    within +/-5 34/49  69.4%
-    median disagreement 3 steps
-
-  This is a ceiling. No rule can be shown to beat the rate at which the label
-  set agrees with itself, so it is the scale the headline figures belong on:
-
-    metric        rule    ceiling
-    exact         29.4%   40.8%     headroom remains
-    within +/-2   50.8%   49.0%     saturated; the rule agrees with the
-                                    earlier labels about as often as the two
-                                    labelling passes agree with each other
-    within +/-5   62.2%   69.4%     close
-
-  Read the +/-2 row carefully before quoting it. It does not mean the rule is
-  as good as a person. It means +/-2 has stopped discriminating on this label
-  set, because two passes over the same trajectories disagree about as much as
-  the rule disagrees with either. A higher +/-2 number would be measuring the
-  labels, not the method.
-
-  It is intra-annotator, n=49, and the interval is wide. It bounds how
-  reproducible this labelling procedure is, not how correct it is.

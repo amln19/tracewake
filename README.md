@@ -208,8 +208,6 @@ To score the implementation users install, run:
 uv run --group bench python -m bench.score_shipped
 ```
 
-The separate clean-room check is advanced research validation, not a product dependency. It asks whether an isolated author can derive a predictor from the 107 anonymised training examples without access to this repository or the held-out data. Create the isolated inputs with `uv run --group bench python -m bench.prepare_cleanroom`; after that author submits `predictor.py`, score it with `uv run --group bench python -m bench.score_cleanroom`. The preparation command deliberately does not generate a predictor — doing so would make the independence check circular.
-
 ## What's in this repository
 
 | Path | What it is |

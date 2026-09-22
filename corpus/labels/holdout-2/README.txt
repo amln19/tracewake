@@ -25,8 +25,7 @@ about 38% of OpenHands failing rollouts and none of nebius.
 CHECKED
 
   * the exported key matches a fresh draw_test rerun exactly;
-  * zero instance overlap with calibration/, any other Tracewake-labelled set,
-    or RootSE;
+  * zero instance overlap with any other Tracewake-labelled set or RootSE;
   * stratification matches the plan;
   * every label lies within [1, step_count];
   * label position is not clustered at an extreme: 22% at step 1, 4% at the
@@ -42,7 +41,7 @@ RESULT
 
 135 integer labels, 2 E2, 3 E3. Scored once, deterministic on rerun, by
 
-  uv run --group bench python -m bench.score_cleanroom
+  uv run --group bench python -m bench.score_shipped
 
 E2/E3 items are not scored: there is no location for a rule to land on. See
 contracts/divergence.md for the current figures.

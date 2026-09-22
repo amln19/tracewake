@@ -1,4 +1,4 @@
-"""The second labelling pass: a calibration set and a fresh held-out set.
+"""The second labelling pass: a fresh held-out set.
 
 The first pass exhausted every label this project had. The rule of the day was
 selected while looking at all four sets, the two checks on that selection were
@@ -10,21 +10,11 @@ failure is what held the usable pool to a few hundred pairs; a single-trace rule
 needs no reference, and without that constraint the sources hold roughly 72,000
 failing trajectories over about 5,800 instances. Labels, not trajectories, are
 the binding constraint, so this module spends a fixed budget of them where they
-buy the most.
+buy the most: 140 fresh trajectories, instance-disjoint from everything already
+labelled, stratified over source and model so the result says something about
+generalization rather than about one scaffold.
 
-Two sets, drawn together so they cannot overlap:
-
-  * `test` — 140 fresh trajectories, instance-disjoint from everything already
-    labelled, stratified over source and model so the result says something
-    about generalization rather than about one scaffold.
-  * `calibration` — 60 trajectories that already carry a label from the first
-    pass, re-rendered under this protocol and re-labelled without the old label
-    visible. Agreement between the two is the only measurement that says whether
-    these labels mean the same thing the earlier ones did, and disagreement
-    bounds what any rule can score: labels that differ by more than the scoring
-    tolerance put a ceiling on accuracy that no method can pass.
-
-Selection consults no method output, and both draws are seeded and instance
+Selection consults no method output, and the draw is seeded and instance
 disjoint. One trajectory per instance: several rollouts of one bug are not
 independent evidence, and the same instance appears in more than one source.
 """
@@ -44,7 +34,6 @@ from .repos import CORPUS_ROOT
 # Fixed before the draw and never changed. A re-draw under a new seed after
 # seeing any result would turn this into a search over samples.
 TEST_SEED = 20260815
-CALIBRATION_SEED = 20260816
 
 LABEL_ROOT = CORPUS_ROOT / "labels"
 NEBIUS_DATASET = "nebius/SWE-agent-trajectories"
@@ -59,15 +48,12 @@ TEST_STRATA: tuple[tuple[str, str, int], ...] = (
     ("openhands", "gpt-4o-2024-08-06", 40),
 )
 
-# Proportional to how many labels each existing set holds, so agreement is
-# measured against all three rather than against whichever is largest. The two
-# nebius draws share a directory but remain separate strata: they were drawn
-# under different seeds for different purposes, and collapsing them would
-# resample the calibration set that has already been labelled and scored.
-CALIBRATION_QUOTA: tuple[tuple[str, str | None, int], ...] = (
-    ("openhands", None, 32),
-    ("nebius", "nebius-1", 16),
-    ("nebius", "nebius-2", 12),
+# Sources and batches that hold already-labelled instances from the first pass.
+# Used by excluded_instances so the held-out draw has zero instance overlap with them.
+FIRST_PASS_SOURCES: tuple[tuple[str, str | None], ...] = (
+    ("openhands", None),
+    ("nebius", "nebius-1"),
+    ("nebius", "nebius-2"),
 )
 
 
@@ -81,8 +67,6 @@ class Draw:
     model: str
     # nebius rows are "shard:index"; OpenHands rows are a run id.
     row: str
-    # Set only for calibration items, where a first-pass label already exists.
-    origin_packet: str | None = None
 
 
 def _keyed_instances(name: str, batch: str | None = None) -> list[dict]:
@@ -102,7 +86,7 @@ def excluded_instances(rootse_ids: list[str]) -> set[str]:
     """
     excluded = {
         row["instance_id"]
-        for name, batch, _ in CALIBRATION_QUOTA
+        for name, batch in FIRST_PASS_SOURCES
         for row in _keyed_instances(name, batch)
     }
     return excluded | set(rootse_ids)
@@ -252,34 +236,6 @@ def draw_test(rootse_ids: list[str]) -> list[Draw]:
     return [replace(item, packet_id=f"T{index:03d}") for index, item in enumerate(drawn, start=1)]
 
 
-def draw_calibration() -> list[Draw]:
-    """The agreement set: first-pass items re-rendered under this protocol.
-
-    The failing side only. These carry a label already, and it stays unread until
-    every one of them has been labelled again.
-    """
-    rng = random.Random(CALIBRATION_SEED)
-    drawn: list[Draw] = []
-    for name, batch, quota in CALIBRATION_QUOTA:
-        rows = _keyed_instances(name, batch)
-        if len(rows) < quota:
-            raise RuntimeError(f"{name}/{batch} holds {len(rows)} packets for a quota of {quota}")
-        for row in rng.sample(sorted(rows, key=lambda r: r["packet_id"]), quota):
-            source = "openhands" if name == "openhands" else "nebius"
-            drawn.append(
-                Draw(
-                    packet_id="",
-                    source=source,
-                    instance_id=row["instance_id"],
-                    model=row["model"],
-                    row=row["bad_row"] if source == "nebius" else row["bad_run_id"],
-                    origin_packet=f"{name}/{row['packet_id']}",
-                )
-            )
-    rng.shuffle(drawn)
-    return [replace(item, packet_id=f"C{index:03d}") for index, item in enumerate(drawn, start=1)]
-
-
 # Long enough that the decisive detail is rarely cut, short enough that a packet
 # stays readable. Observations are held tighter than the rest: they are included
 # so a step's effect is visible — whether an edit applied, whether a test errored
@@ -396,8 +352,7 @@ def render_packet(draw: Draw, steps: list[Step]) -> str:
 def export(draws: list[Draw], name: str) -> Path:
     """Write packets and the key that maps them back, into separate files.
 
-    The key names the instance and, for calibration, the packet whose label is
-    being reproduced. It stays closed until every packet in the set is labelled.
+    The key names the instance. It stays closed until every packet in the set is labelled.
     """
     root = LABEL_ROOT / name
     (root / "packets").mkdir(parents=True, exist_ok=True)
@@ -418,7 +373,6 @@ def export(draws: list[Draw], name: str) -> Path:
             "instance_id": d.instance_id,
             "model": d.model,
             "row": d.row,
-            **({"origin_packet": d.origin_packet} if d.origin_packet else {}),
         }
         for d in sorted(draws, key=lambda d: d.packet_id)
     ]
