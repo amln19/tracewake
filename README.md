@@ -125,50 +125,17 @@ tracewake import cassette
 
 ### Optional LLM advisory
 
-`localize` and `diff` can also send bounded, structured evidence to an
-OpenAI-compatible HTTP endpoint. This is explicitly opt-in and does not replace
-the deterministic result:
+`localize` and `diff` can optionally request a natural-language advisory from any OpenAI-compatible endpoint (hosted services or local models via Ollama / vLLM):
 
 ```sh
-export TRACEWAKE_LLM_PROVIDER=compatible
-export TRACEWAKE_LLM_MODEL=my-model
 export TRACEWAKE_LLM_BASE_URL=http://127.0.0.1:11434/v1
-# Set TRACEWAKE_LLM_API_KEY for an endpoint that requires one.
+export TRACEWAKE_LLM_MODEL=my-model
 
 tracewake localize <bad-run> --llm
 tracewake diff <good-run> <bad-run> --lexical --llm
 ```
 
-The same adapter works with local/internal servers and hosted services that
-implement the documented chat-completions shape. HTTPS is required unless the
-endpoint is loopback; a trusted internal HTTP endpoint requires
-`TRACEWAKE_LLM_ALLOW_INSECURE_HTTP=1`. The timeout defaults to 30 seconds and can
-be set with `TRACEWAKE_LLM_TIMEOUT_SECONDS` up to 300 seconds.
-
-The terminal always labels the model answer **LLM advisory (not authoritative)**
-and keeps the `localize-v1` result alongside it. The response contains a
-suggested failing step, model-reported confidence, cited evidence steps, an
-abstention flag, and a short explanation. Write the validated result plus its
-provider, model, prompt/evidence/response hashes, usage, timing, and run
-provenance with `--llm-json result.json`. API keys and raw trace evidence are not
-written to that file.
-
-Tracewake refuses to send a run recorded with `--no-redact` unless
-`--llm-allow-unredacted` is explicit. Redaction is best-effort: even a redacted
-recording can contain proprietary prompts, source, and tool output, so review
-the configured endpoint's data policy before opting in.
-
-To customize the analysis instructions without changing code, pass
-`--llm-prompt prompt.txt` or set `TRACEWAKE_LLM_PROMPT_FILE`. Tracewake still
-supplies the evidence and required JSON schema and strictly validates the
-response. Library users can implement `tracewake.LLMProvider` or call
-`tracewake.localize_with_llm` directly; the built-in transport is
-`tracewake.OpenAICompatibleProvider`.
-
-This capability is experimental and its accuracy has not been evaluated. The
-evaluation figures below apply only to the deterministic localizer. Merely
-setting `TRACEWAKE_LLM_*` variables never makes a request: `--llm` or an
-explicit library call is required. Replay remains network-blocked.
+The advisory is explicitly non-authoritative: it supplies a conversational explanation, cited evidence steps, and model confidence alongside the deterministic `localize-v1` result. Replay-only sessions remain strictly network-blocked.
 
 ## Evaluation
 
