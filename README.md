@@ -6,8 +6,6 @@ Tracewake makes AI agent runs inspectable and repeatable. Record the model calls
 
 The repo ships the full stack: a Python library and CLI, a Go control plane with versioned contracts, a TypeScript dashboard, a held-out evaluation on published agent-failure benchmarks, and Terraform for AWS. Everything works locally without a hosted service.
 
-![Side-by-side HTML report of a passing and failing agent run, with alignment and the localized divergence](docs/assets/comparison.png)
-
 ## At a glance
 
 * Record and replay agent runs offline
