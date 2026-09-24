@@ -2,7 +2,7 @@
 
 **Record. Replay. Find the divergence.**
 
-Tracewake makes AI agent runs inspectable and repeatable. Record the model calls, tool results, files, time, and other nondeterministic inputs an agent consumes. Replay them offline with the network blocked. Given a failing run, locate the step where it went irrecoverably wrong — no reference run, no model call — and get a reliability band for how much to trust the answer.
+Tracewake makes AI agent runs inspectable and repeatable. Record model calls, tool results, filesystem edits, timestamps, and other nondeterministic inputs. Replay them offline with network calls blocked. Given a failing run, locate the exact step where execution went off course without needing a reference run or LLM call, accompanied by a reliability band indicating confidence.
 
 The repo ships the full stack: a Python library and CLI, a Go control plane with versioned contracts, a TypeScript dashboard, a held-out evaluation on published agent-failure benchmarks, and Terraform for AWS. Everything works locally without a hosted service.
 
@@ -36,7 +36,7 @@ tracewake view <good-run> <bad-run> --lexical
 
 ## Why this exists
 
-Agent failures are expensive to reproduce. The model said something different, a tool returned something different, the clock moved, or a retry took a new path. Logs tell you that two runs differ. They do not replay the run, and they do not tell you which step made the failure irrecoverable.
+Agent failures are difficult to reproduce: model outputs drift, tool outputs change, timestamps move, or retries diverge. Standard logs show that two runs differed, but they cannot replay the execution or identify which step triggered the failure.
 
 Tracewake is a local workflow for that:
 
@@ -119,7 +119,7 @@ tracewake import cassette
 | Export token use as pprof | `tracewake pprof <run> --view tokens -o tokens.pb.gz` |
 | Replay with selected context removed | `tracewake intervene <run> --drop-tag file_read --from-step 4 -- <agent>` |
 
-`localize` reports a step and a reliability class. `diff` leads with localization, then shows the alignment — where the two runs stopped agreeing. `view` writes the same comparison as a self-contained HTML report.
+`localize` reports a step and a reliability class. `diff` leads with localization, then shows the alignment to highlight where the two runs diverged. `view` writes the same comparison as a self-contained HTML report.
 
 `--lexical` is the dependency-free alignment profile. The richer local embedding path is optional: run `uv sync --extra embeddings` and omit `--lexical`; the pinned model may download on first use.
 
@@ -139,7 +139,7 @@ The advisory is explicitly non-authoritative: it supplies a conversational expla
 
 ## Evaluation
 
-Tracewake localizes where a failing run went irrecoverably wrong from that run alone. No reference run, no alignment step, no LLM call. The rule is structural: reading a file is recoverable; writing one the run did not create for itself is not. It was tuned on 107 labelled training trajectories, frozen, and scored once on 262 held-out trajectories it has never seen — including all 102 of [RootSE](https://arxiv.org/abs/2605.26563), labelled by the TrajAudit authors:
+Tracewake localizes failure points from the failing run alone, without a reference run, alignment step, or LLM call. The heuristic is structural: reading a file is treated as recoverable exploration, while modifying a file the run did not create is treated as irreversible commitment. The rule was tuned on 107 labelled training trajectories, frozen, and evaluated across 262 held-out trajectories (including all 102 from [RootSE](https://arxiv.org/abs/2605.26563), annotated by the TrajAudit authors):
 
 | Pool | n | Exact | ±2 | ±5 |
 | --- | --- | --- | --- | --- |
@@ -165,7 +165,7 @@ On RootSE's exact-step metric, the published field looks like this:
 
 The comparison figures come from the RootSE evaluation reported by the [TrajAudit paper](https://arxiv.org/abs/2605.26563); Tracewake's row is the local, zero-inference-cost structural baseline. Tracewake provides an empirical non-LLM baseline for this task that outperforms binary search and random attribution at zero inference cost. On short traces that contain a commitment, localization lands within two steps of the label 88% of the time.
 
-Two label-free facts — whether the run wrote to anything it did not create, and whether the trace exceeds 18 steps — sort every failure into one of five reliability classes. `localize` reports the class so you know when to trust the step and when to treat the answer as unreliable.
+Two structural properties (whether the run wrote to non-scratch files, and whether the trace exceeds 18 steps) sort each failure into one of five reliability classes. `localize` reports this class to indicate confidence in the identified step.
 
 Full methodology, label protocol, and comparison to alignment-based readouts are in [`contracts/divergence.md`](contracts/divergence.md). [`corpus/`](corpus/README.txt) holds the labelled packets and dataset prerequisites.
 
@@ -229,7 +229,7 @@ The control plane's lifecycle, fencing, and end-to-end tests need PostgreSQL. Po
 
 ## Limits
 
-Tracewake records through its documented agent boundary — not arbitrary syscalls, native code, or subprocess I/O. Redaction scrubs known secret patterns; it does not guarantee every sensitive value is gone. Hosted analysis accepts recorded bundles under the `align-v2` and `localize-v1` profiles only.
+Tracewake records through its documented agent boundary, not arbitrary syscalls, native code, or subprocess I/O. Redaction scrubs known secret patterns, but does not guarantee every sensitive value is removed. Hosted analysis accepts recorded bundles under the `align-v2` and `localize-v1` profiles only.
 
 ## Further reading
 
