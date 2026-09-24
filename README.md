@@ -20,6 +20,8 @@ git clone https://github.com/amln19/tracewake.git
 cd tracewake
 uv sync
 uv run python examples/demo.py
+# Run tests (PYTHONHASHSEED=0 enforces deterministic replay hashing)
+PYTHONHASHSEED=0 uv run pytest
 ```
 
 The demo is offline and needs neither an API key nor a model server. It records two short tool-calling runs, replays one, and prints a real divergence report using the dependency-free lexical aligner. Python 3.13 or newer is required. To install from a checkout with `pip`, run `python -m pip install .`.
@@ -163,7 +165,7 @@ On RootSE's exact-step metric, the published field looks like this:
 | Binary search over steps | 15.8% | LLM rollouts |
 | Random attribution | 5.4% | 0 |
 
-The published comparison figures come from the RootSE evaluation reported by the [TrajAudit paper](https://arxiv.org/abs/2605.26563); Tracewake's row is the local, zero-inference-cost structural baseline. To our knowledge, Tracewake is the first published non-LLM baseline for this task. It beats binary search and random attribution at zero inference cost. On short traces that contain a commitment, localization lands within two steps of the label 88% of the time.
+The comparison figures come from the RootSE evaluation reported by the [TrajAudit paper](https://arxiv.org/abs/2605.26563); Tracewake's row is the local, zero-inference-cost structural baseline. Tracewake provides an empirical non-LLM baseline for this task that outperforms binary search and random attribution at zero inference cost. On short traces that contain a commitment, localization lands within two steps of the label 88% of the time.
 
 Two label-free facts — whether the run wrote to anything it did not create, and whether the trace exceeds 18 steps — sort every failure into one of five reliability classes. `localize` reports the class so you know when to trust the step and when to treat the answer as unreliable.
 
@@ -210,6 +212,7 @@ An end-to-end evidence harness drives bundle ingestion, mandatory validation, bu
 
 ```sh
 uv sync
+# Replay requires PYTHONHASHSEED=0 to disable hash randomization and ensure byte-identical determinism
 PYTHONHASHSEED=0 uv run --python 3.13 pytest
 uv run --python 3.13 python -m tracewake.contracts --output contracts/schemas/v1 --check
 uv run --python 3.13 python -m contracttest.generate_fixtures --output contracttest/fixtures/v1 --check

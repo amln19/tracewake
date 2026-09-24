@@ -30,7 +30,7 @@ UNTAGGED = "untagged"
 
 
 # ---------------------------------------------------------------------------
-# Minimal protobuf writer for the subset of profile.proto we emit.
+# Minimal protobuf writer for the subset of profile.proto emitted.
 # ---------------------------------------------------------------------------
 
 
@@ -397,7 +397,7 @@ def format_top(
 
 
 # ---------------------------------------------------------------------------
-# Decoder — enough to prove what we emit, used by tests and Speedscope prep.
+# Decoder — enough to verify emitted profiles, used by tests and Speedscope prep.
 # ---------------------------------------------------------------------------
 
 
@@ -501,7 +501,7 @@ def _decode_sample(chunk: memoryview) -> dict:
         key, i = _read_varint(chunk, i)
         field, wire = key >> 3, key & 7
         if wire != 0:
-            # labels would be length-delimited; we don't emit them
+            # labels would be length-delimited; not emitted here
             if wire == 2:
                 length, i = _read_varint(chunk, i)
                 i += length

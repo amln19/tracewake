@@ -566,7 +566,7 @@ def run_ablations(
         if arm_name != "full":
             b_only, a_only, p = mcnemar(full_hits, hits)
             # Here full_hits is "a", arm hits is "b" in mcnemar(aligner, baseline)
-            # We want full vs arm: pass full as a, arm as b → a_only = full right arm wrong
+            # Full vs arm comparison: pass full as a, arm as b → a_only = full right arm wrong
             p_txt = f"{p:.3f}" if p is not None else "n/a"
             extra = f"  vs full: full-only {a_only}, arm-only {b_only}, n_disc {a_only + b_only}, p={p_txt}"
         lines.append(
